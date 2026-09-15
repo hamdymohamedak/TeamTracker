@@ -85,11 +85,11 @@ const GettingStarted: React.FC<{ orgName: string; onDismiss: () => void; showDis
       margin: '40px auto',
       borderRadius: '16px',
       overflow: 'hidden',
-      boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
-      backgroundColor: '#fff',
+      boxShadow: 'var(--tt-shadow-md)',
+      backgroundColor: 'var(--tt-surface)',
     },
     header: {
-      background: 'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)',
+      background: 'linear-gradient(135deg, var(--tt-text) 0%, var(--tt-teal) 100%)',
       padding: '36px 32px 28px',
       color: '#fff',
     },
@@ -110,7 +110,7 @@ const GettingStarted: React.FC<{ orgName: string; onDismiss: () => void; showDis
       fontSize: '13px',
       fontWeight: 600,
       textTransform: 'uppercase' as const,
-      color: '#95a5a6',
+      color: 'var(--tt-text-faint)',
       letterSpacing: '0.5px',
       marginBottom: '16px',
     },
@@ -120,14 +120,14 @@ const GettingStarted: React.FC<{ orgName: string; onDismiss: () => void; showDis
       gap: '14px',
       padding: '16px',
       borderRadius: '10px',
-      backgroundColor: '#f8f9fa',
+      backgroundColor: 'var(--tt-surface-muted)',
       marginBottom: '12px',
     },
     stepNumber: {
       width: '28px',
       height: '28px',
       borderRadius: '50%',
-      backgroundColor: '#3498db',
+      backgroundColor: 'var(--tt-teal)',
       color: '#fff',
       display: 'flex',
       alignItems: 'center',
@@ -142,17 +142,17 @@ const GettingStarted: React.FC<{ orgName: string; onDismiss: () => void; showDis
     stepTitle: {
       fontSize: '15px',
       fontWeight: 600,
-      color: '#2c3e50',
+      color: 'var(--tt-text)',
       margin: '0 0 4px',
     },
     stepDesc: {
       fontSize: '13px',
-      color: '#7f8c8d',
+      color: 'var(--tt-text-muted)',
       margin: 0,
       lineHeight: '1.5',
     },
     stepLink: {
-      color: '#3498db',
+      color: 'var(--tt-teal)',
       fontWeight: 500,
       cursor: 'pointer',
       textDecoration: 'none',
@@ -371,10 +371,10 @@ export const Dashboard: React.FC = () => {
   }
 
   const getProductivityColor = (score: number) => {
-    if (score >= 80) return '#27ae60';
-    if (score >= 60) return '#f39c12';
-    if (score >= 40) return '#e67e22';
-    return '#e74c3c';
+    if (score >= 80) return 'var(--tt-success)';
+    if (score >= 60) return 'var(--tt-amber)';
+    if (score >= 40) return 'var(--tt-amber)';
+    return 'var(--tt-danger)';
   };
 
   const getProductivityIcon = (level: string) => {
@@ -396,10 +396,11 @@ export const Dashboard: React.FC = () => {
           </div>
           <div role="tablist" aria-label="Dashboard scope" style={{
             display: 'inline-flex',
-            border: '1px solid #e0e6ed',
-            borderRadius: '8px',
+            border: '1px solid var(--tt-border-strong)',
+            borderRadius: '999px',
             overflow: 'hidden',
-            backgroundColor: '#fff'
+            backgroundColor: 'var(--tt-surface)',
+            boxShadow: 'var(--tt-shadow-sm)',
           }}>
             {(['today', 'week', 'all'] as DashboardScope[]).map(s => (
               <button
@@ -408,13 +409,13 @@ export const Dashboard: React.FC = () => {
                 aria-selected={scope === s}
                 onClick={() => changeScope(s)}
                 style={{
-                  padding: '8px 16px',
+                  padding: '9px 16px',
                   border: 'none',
-                  backgroundColor: scope === s ? '#3498db' : 'transparent',
-                  color: scope === s ? '#fff' : '#2c3e50',
+                  backgroundColor: scope === s ? 'var(--tt-teal)' : 'transparent',
+                  color: scope === s ? '#fff' : 'var(--tt-text-muted)',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  fontWeight: 600,
+                  fontWeight: 650,
                   textTransform: 'capitalize'
                 }}
               >
@@ -460,20 +461,20 @@ export const Dashboard: React.FC = () => {
             title={scope === 'all' ? 'Focus Time (All Time)' : scope === 'week' ? 'Focus Time (Week)' : 'Focus Time Today'}
             value={formatDurationSeconds(stats?.focusSecondsToday ?? (stats?.focusTimeMinutes || 0) * 60)}
             icon="🎯"
-            color="#27ae60"
+            color="var(--tt-success)"
           />
           <StatCard
             title="Idle/Wasted Time"
             value={formatDurationSeconds(stats?.distractedSecondsToday ?? (stats?.distractedTimeMinutes || 0) * 60)}
             icon="💤"
-            color="#e74c3c"
+            color="var(--tt-danger)"
             tooltip="Idle = the tracker logged the user as away (5+ min with no keyboard/mouse). Reading and meetings still count as tracked time as long as you're at your desk."
           />
           <StatCard
             title="Suspicious Activity"
             value={stats?.suspiciousActivityCount || 0}
             icon="⚠️"
-            color={stats?.suspiciousActivityCount ? '#e74c3c' : '#95a5a6'}
+            color={stats?.suspiciousActivityCount ? 'var(--tt-danger)' : 'var(--tt-text-faint)'}
           />
         </div>
 
@@ -540,12 +541,12 @@ export const Dashboard: React.FC = () => {
             <BreakdownItem
               label="Core Work"
               minutes={stats?.productivityBreakdown?.coreWork || 0}
-              color="#27ae60"
+              color="var(--tt-success)"
             />
             <BreakdownItem
               label="Communication"
               minutes={stats?.productivityBreakdown?.communication || 0}
-              color="#3498db"
+              color="var(--tt-teal)"
             />
             <BreakdownItem
               label="Research & Learning"
@@ -560,27 +561,27 @@ export const Dashboard: React.FC = () => {
             <BreakdownItem
               label="Break/Idle"
               minutes={stats?.productivityBreakdown?.breakIdle || 0}
-              color="#95a5a6"
+              color="var(--tt-text-faint)"
             />
             <BreakdownItem
               label="Entertainment"
               minutes={stats?.productivityBreakdown?.entertainment || 0}
-              color="#e74c3c"
+              color="var(--tt-danger)"
             />
             <BreakdownItem
               label="Social Media"
               minutes={stats?.productivityBreakdown?.socialMedia || 0}
-              color="#e67e22"
+              color="var(--tt-amber)"
             />
             <BreakdownItem
               label="Shopping/Personal"
               minutes={stats?.productivityBreakdown?.shoppingPersonal || 0}
-              color="#f39c12"
+              color="var(--tt-amber)"
             />
             <BreakdownItem
               label="Other"
               minutes={stats?.productivityBreakdown?.other || 0}
-              color="#bdc3c7"
+              color="var(--tt-text-faint)"
             />
           </div>
         </div>
@@ -617,7 +618,7 @@ export const Dashboard: React.FC = () => {
               <option value="shopping_personal">Shopping / Personal</option>
               <option value="other">Other</option>
             </select>
-            <span style={{ fontSize: '12px', color: '#7f8c8d' }}>
+            <span style={{ fontSize: '12px', color: 'var(--tt-text-muted)' }}>
               {feedActivities.length} of {feedTotal}
             </span>
           </div>
@@ -659,7 +660,7 @@ export const Dashboard: React.FC = () => {
               <button
                 onClick={() => loadFeed(false)}
                 disabled={feedLoading}
-                style={{ padding: '10px 24px', backgroundColor: '#3498db', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: feedLoading ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '10px 24px', backgroundColor: 'var(--tt-teal)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: feedLoading ? 'not-allowed' : 'pointer' }}
               >
                 {feedLoading ? 'Loading…' : 'Load more'}
               </button>
@@ -669,8 +670,8 @@ export const Dashboard: React.FC = () => {
 
         {/* Suspicious Activity Log */}
         {stats?.recentActivities?.some(a => a.isSuspicious) && (
-          <div style={{ ...styles.section, border: '2px solid #e74c3c' }}>
-            <h2 style={{ ...styles.sectionTitle, color: '#e74c3c' }}>
+          <div style={{ ...styles.section, border: '2px solid var(--tt-danger)' }}>
+            <h2 style={{ ...styles.sectionTitle, color: 'var(--tt-danger)' }}>
               🚨 Suspicious Activity Log
             </h2>
             <div style={styles.suspiciousList}>
@@ -823,20 +824,20 @@ const errorStyles: { [key: string]: React.CSSProperties } = {
   title: {
     fontSize: '24px',
     fontWeight: 600,
-    color: '#e74c3c',
+    color: 'var(--tt-danger)',
     marginBottom: '8px'
   },
   message: {
     fontSize: '16px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     marginBottom: '24px'
   },
   retryButton: {
     padding: '12px 24px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     fontSize: '16px',
     fontWeight: 500,
     cursor: 'pointer'
@@ -845,80 +846,91 @@ const errorStyles: { [key: string]: React.CSSProperties } = {
 
 const styles: { [key: string]: React.CSSProperties | any } = {
   container: {
-    padding: '32px'
+    padding: '8px 4px 24px',
+    animation: 'tt-rise 0.45s var(--tt-ease) both',
+    maxWidth: 1400,
+    margin: '0 auto',
   },
   loading: {
     padding: '40px',
     textAlign: 'center',
-    color: '#666'
+    color: 'var(--tt-text-muted)'
   },
   header: {
-    marginBottom: '24px'
+    marginBottom: '28px'
   },
   title: {
-    fontSize: '32px',
-    fontWeight: 600,
-    color: '#2c3e50',
+    fontSize: 'clamp(1.75rem, 2.5vw, 2.15rem)',
+    fontWeight: 750,
+    fontFamily: 'var(--tt-font-display)',
+    letterSpacing: '-0.03em',
+    color: 'var(--tt-text)',
     margin: 0
   },
   subtitle: {
-    fontSize: '16px',
-    color: '#7f8c8d',
-    marginTop: '4px'
+    fontSize: '15px',
+    color: 'var(--tt-text-muted)',
+    marginTop: '6px'
   },
   alertBanner: {
-    backgroundColor: '#fdf2f2',
-    border: '1px solid #fee2e2',
-    color: '#e74c3c',
-    padding: '12px 16px',
-    borderRadius: '8px',
-    marginBottom: '24px',
-    fontWeight: 500
+    backgroundColor: 'var(--tt-danger-soft)',
+    border: '1px solid rgba(232, 93, 76, 0.25)',
+    color: 'var(--tt-danger)',
+    padding: '14px 18px',
+    borderRadius: 'var(--tt-radius)',
+    marginBottom: '20px',
+    fontWeight: 600,
+  },
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '14px'
+  },
+  statCard: {
+    backgroundColor: 'var(--tt-surface)',
+    border: '1px solid var(--tt-border)',
+    borderRadius: 'var(--tt-radius)',
+    boxShadow: 'var(--tt-shadow-sm)',
+    padding: '18px 18px 18px 20px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    borderLeft: '4px solid var(--tt-teal)',
+    transition: 'transform 0.25s var(--tt-ease), box-shadow 0.25s var(--tt-ease)',
   },
   grid: {
     display: 'grid',
     gap: '24px'
   },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '16px'
-  },
-  statCard: {
-    backgroundColor: '#fff',
-    padding: '24px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '16px',
-    borderLeft: '4px solid'
-  },
   statIcon: (color: string) => ({
-    fontSize: '32px',
+    fontSize: '28px',
     backgroundColor: `${color}20`,
     padding: '12px',
-    borderRadius: '12px'
+    borderRadius: 'var(--tt-radius-sm)'
   }),
   statValue: {
-    fontSize: '28px',
-    fontWeight: 700
+    fontSize: '26px',
+    fontWeight: 750,
+    fontFamily: 'var(--tt-font-display)',
+    letterSpacing: '-0.02em',
   },
   statTitle: {
-    fontSize: '14px',
-    color: '#7f8c8d'
+    fontSize: '13px',
+    color: 'var(--tt-text-muted)',
+    fontWeight: 600,
   },
   section: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
+    border: '1px solid var(--tt-border)',
     padding: '24px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    borderRadius: 'var(--tt-radius)',
+    boxShadow: 'var(--tt-shadow-sm)'
   },
   sectionTitle: {
     fontSize: '18px',
     fontWeight: 600,
     marginBottom: '16px',
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   employeeGrid: {
     display: 'grid',
@@ -927,9 +939,9 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   employeeCard: (online: boolean, isIdle?: boolean) => ({
     padding: '16px',
-    borderRadius: '8px',
-    backgroundColor: isIdle ? '#fff5f5' : online ? '#f0fff4' : '#f8f9fa',
-    border: `2px solid ${isIdle ? '#e74c3c' : online ? '#27ae60' : '#e0e0e0'}`,
+    borderRadius: 'var(--tt-radius-sm)',
+    backgroundColor: isIdle ? '#fff5f5' : online ? 'var(--tt-success-soft)' : 'var(--tt-surface-muted)',
+    border: `2px solid ${isIdle ? 'var(--tt-danger)' : online ? 'var(--tt-success)' : 'var(--tt-border-strong)'}`,
     transition: 'all 0.2s'
   }),
   employeeHeader: {
@@ -942,18 +954,18 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     width: '10px',
     height: '10px',
     borderRadius: '50%',
-    backgroundColor: online ? '#27ae60' : '#95a5a6'
+    backgroundColor: online ? 'var(--tt-success)' : 'var(--tt-text-faint)'
   }),
   employeeName: {
     fontWeight: 600,
     fontSize: '16px',
-    color: '#2c3e50',
+    color: 'var(--tt-text)',
     flex: 1
   },
   onlineBadge: {
     fontSize: '10px',
     fontWeight: 700,
-    color: '#27ae60',
+    color: 'var(--tt-success)',
     backgroundColor: '#d4edda',
     padding: '2px 8px',
     borderRadius: '4px'
@@ -962,13 +974,13 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     fontSize: '10px',
     fontWeight: 700,
     color: '#fff',
-    backgroundColor: '#e74c3c',
+    backgroundColor: 'var(--tt-danger)',
     padding: '2px 8px',
     borderRadius: '4px'
   },
   currentActivity: {
     fontSize: '14px',
-    color: '#2c3e50',
+    color: 'var(--tt-text)',
     marginBottom: '4px'
   },
   categoryTag: (category?: string) => ({
@@ -976,14 +988,14 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     fontSize: '11px',
     fontWeight: 600,
     textTransform: 'uppercase' as const,
-    color: category === 'break_idle' ? '#e74c3c' :
-          category === 'entertainment' ? '#e74c3c' :
-          category === 'core_work' ? '#27ae60' :
-          category === 'communication' ? '#3498db' : '#7f8c8d',
-    backgroundColor: category === 'break_idle' ? '#fdf2f2' :
-                     category === 'entertainment' ? '#fdf2f2' :
-                     category === 'core_work' ? '#f0fff4' :
-                     category === 'communication' ? '#ebf5fb' : '#f8f9fa',
+    color: category === 'break_idle' ? 'var(--tt-danger)' :
+          category === 'entertainment' ? 'var(--tt-danger)' :
+          category === 'core_work' ? 'var(--tt-success)' :
+          category === 'communication' ? 'var(--tt-teal)' : 'var(--tt-text-muted)',
+    backgroundColor: category === 'break_idle' ? 'var(--tt-danger-soft)' :
+                     category === 'entertainment' ? 'var(--tt-danger-soft)' :
+                     category === 'core_work' ? 'var(--tt-success-soft)' :
+                     category === 'communication' ? 'var(--tt-info-soft)' : 'var(--tt-surface-muted)',
     padding: '2px 8px',
     borderRadius: '4px',
     marginBottom: '8px'
@@ -991,7 +1003,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   productivityBar: {
     position: 'relative',
     height: '20px',
-    backgroundColor: '#ecf0f1',
+    backgroundColor: 'var(--tt-surface-muted)',
     borderRadius: '10px',
     overflow: 'hidden',
     marginBottom: '8px'
@@ -999,7 +1011,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   productivityFill: (score: number) => ({
     height: '100%',
     width: `${score}%`,
-    backgroundColor: score >= 80 ? '#27ae60' : score >= 60 ? '#f39c12' : '#e74c3c',
+    backgroundColor: score >= 80 ? 'var(--tt-success)' : score >= 60 ? 'var(--tt-amber)' : 'var(--tt-danger)',
     borderRadius: '10px',
     transition: 'width 0.3s'
   }),
@@ -1010,15 +1022,15 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     transform: 'translate(-50%, -50%)',
     fontSize: '11px',
     fontWeight: 600,
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   employeeMeta: {
     fontSize: '12px',
-    color: '#7f8c8d'
+    color: 'var(--tt-text-muted)'
   },
   noActivity: {
     fontSize: '14px',
-    color: '#95a5a6',
+    color: 'var(--tt-text-faint)',
     fontStyle: 'italic'
   },
   breakdownGrid: {
@@ -1031,15 +1043,15 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '12px',
-    backgroundColor: '#f8f9fa',
-    borderRadius: '8px'
+    backgroundColor: 'var(--tt-surface-muted)',
+    borderRadius: 'var(--tt-radius-sm)'
   },
   breakdownLabel: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
     fontSize: '14px',
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   breakdownDot: {
     width: '10px',
@@ -1049,7 +1061,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   breakdownValue: {
     fontSize: '14px',
     fontWeight: 600,
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   activityList: {
     display: 'flex',
@@ -1058,10 +1070,10 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   activityItem: (isSuspicious: boolean, isIdle: boolean) => ({
     padding: '12px',
-    backgroundColor: isSuspicious ? '#fdf2f2' : isIdle ? '#f8f9fa' : '#fff',
-    border: `1px solid ${isSuspicious ? '#fee2e2' : isIdle ? '#e0e0e0' : '#ecf0f1'}`,
-    borderRadius: '8px',
-    borderLeft: isSuspicious ? '4px solid #e74c3c' : isIdle ? '4px solid #95a5a6' : '4px solid #27ae60'
+    backgroundColor: isSuspicious ? 'var(--tt-danger-soft)' : isIdle ? 'var(--tt-surface-muted)' : '#fff',
+    border: `1px solid ${isSuspicious ? 'rgba(232, 93, 76, 0.25)' : isIdle ? 'var(--tt-border-strong)' : 'var(--tt-surface-muted)'}`,
+    borderRadius: 'var(--tt-radius-sm)',
+    borderLeft: isSuspicious ? '4px solid var(--tt-danger)' : isIdle ? '4px solid var(--tt-text-faint)' : '4px solid var(--tt-success)'
   }),
   activityHeader: {
     display: 'flex',
@@ -1075,35 +1087,35 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   activityApp: {
     fontWeight: 600,
     fontSize: '14px',
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   activityCategory: (category: string) => ({
     fontSize: '11px',
     fontWeight: 500,
-    color: category === 'break_idle' ? '#e74c3c' :
-          category === 'entertainment' ? '#e74c3c' :
-          category === 'core_work' ? '#27ae60' :
-          category === 'communication' ? '#3498db' : '#7f8c8d',
-    backgroundColor: category === 'break_idle' ? '#fdf2f2' :
-                     category === 'entertainment' ? '#fdf2f2' :
-                     category === 'core_work' ? '#f0fff4' :
-                     category === 'communication' ? '#ebf5fb' : '#f8f9fa',
+    color: category === 'break_idle' ? 'var(--tt-danger)' :
+          category === 'entertainment' ? 'var(--tt-danger)' :
+          category === 'core_work' ? 'var(--tt-success)' :
+          category === 'communication' ? 'var(--tt-teal)' : 'var(--tt-text-muted)',
+    backgroundColor: category === 'break_idle' ? 'var(--tt-danger-soft)' :
+                     category === 'entertainment' ? 'var(--tt-danger-soft)' :
+                     category === 'core_work' ? 'var(--tt-success-soft)' :
+                     category === 'communication' ? 'var(--tt-info-soft)' : 'var(--tt-surface-muted)',
     padding: '2px 6px',
     borderRadius: '4px'
   }),
   activityTime: {
     marginLeft: 'auto',
     fontSize: '12px',
-    color: '#95a5a6'
+    color: 'var(--tt-text-faint)'
   },
   activityTitle: {
     fontSize: '13px',
-    color: '#555',
+    color: 'var(--tt-text-muted)',
     marginLeft: '22px'
   },
   suspiciousReason: {
     fontSize: '12px',
-    color: '#e74c3c',
+    color: 'var(--tt-danger)',
     marginLeft: '22px',
     marginTop: '4px',
     fontWeight: 500
@@ -1115,9 +1127,9 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   suspiciousItem: {
     padding: '12px',
-    backgroundColor: '#fdf2f2',
-    border: '1px solid #fee2e2',
-    borderRadius: '8px'
+    backgroundColor: 'var(--tt-danger-soft)',
+    border: '1px solid rgba(232, 93, 76, 0.25)',
+    borderRadius: 'var(--tt-radius-sm)'
   },
   suspiciousHeader: {
     display: 'flex',
@@ -1126,24 +1138,24 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   suspiciousApp: {
     fontWeight: 600,
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   suspiciousTime: {
     fontSize: '12px',
-    color: '#95a5a6'
+    color: 'var(--tt-text-faint)'
   },
   suspiciousTitle: {
     fontSize: '13px',
-    color: '#555',
+    color: 'var(--tt-text-muted)',
     marginBottom: '4px'
   },
   suspiciousReasonText: {
     fontSize: '12px',
-    color: '#e74c3c',
+    color: 'var(--tt-danger)',
     fontWeight: 500
   },
   emptyText: {
-    color: '#95a5a6',
+    color: 'var(--tt-text-faint)',
     textAlign: 'center',
     padding: '20px'
   }
@@ -1189,7 +1201,7 @@ const skeletonStyles: { [key: string]: React.CSSProperties } = {
   title: {
     height: '32px',
     width: '200px',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: 'var(--tt-border-strong)',
     borderRadius: '4px',
     marginBottom: '8px',
     animation: 'pulse 1.5s infinite'
@@ -1197,7 +1209,7 @@ const skeletonStyles: { [key: string]: React.CSSProperties } = {
   subtitle: {
     height: '16px',
     width: '300px',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: 'var(--tt-border-strong)',
     borderRadius: '4px',
     animation: 'pulse 1.5s infinite'
   },
@@ -1208,23 +1220,23 @@ const skeletonStyles: { [key: string]: React.CSSProperties } = {
     marginBottom: '24px'
   },
   statCard: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '20px',
-    borderRadius: '8px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+    borderRadius: 'var(--tt-radius-sm)',
+    boxShadow: 'var(--tt-shadow-sm)'
   },
   statIcon: {
     width: '40px',
     height: '40px',
-    backgroundColor: '#e0e0e0',
-    borderRadius: '8px',
+    backgroundColor: 'var(--tt-border-strong)',
+    borderRadius: 'var(--tt-radius-sm)',
     marginBottom: '12px',
     animation: 'pulse 1.5s infinite'
   },
   statValue: {
     height: '28px',
     width: '80px',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: 'var(--tt-border-strong)',
     borderRadius: '4px',
     marginBottom: '8px',
     animation: 'pulse 1.5s infinite'
@@ -1232,7 +1244,7 @@ const skeletonStyles: { [key: string]: React.CSSProperties } = {
   statLabel: {
     height: '14px',
     width: '120px',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: 'var(--tt-border-strong)',
     borderRadius: '4px',
     animation: 'pulse 1.5s infinite'
   },
@@ -1242,22 +1254,22 @@ const skeletonStyles: { [key: string]: React.CSSProperties } = {
     gap: '24px'
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '20px',
-    borderRadius: '8px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+    borderRadius: 'var(--tt-radius-sm)',
+    boxShadow: 'var(--tt-shadow-sm)'
   },
   cardTitle: {
     height: '20px',
     width: '150px',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: 'var(--tt-border-strong)',
     borderRadius: '4px',
     marginBottom: '16px',
     animation: 'pulse 1.5s infinite'
   },
   cardContent: {
     height: '200px',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: 'var(--tt-border-strong)',
     borderRadius: '4px',
     animation: 'pulse 1.5s infinite'
   }

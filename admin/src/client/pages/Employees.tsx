@@ -334,206 +334,208 @@ export const Employees: React.FC = () => {
 
       {showForm && (
         <div
-          style={styles.modal}
+          className="tt-modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-title"
+          onClick={() => setShowForm(false)}
         >
-          <div style={styles.modalContent}>
-            <h2 id="modal-title" style={styles.modalTitle}>
-              {editingEmployee ? 'Edit Employee' : 'Add Employee'}
-            </h2>
-            <form
-              onSubmit={handleSubmit}
-              style={styles.form}
-              noValidate
-            >
-              {formError && (
-                <div style={styles.errorBanner}>
-                  ⚠️ {formError}
-                </div>
-              )}
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. John Smith"
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  style={styles.input}
-                  required
-                />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Email</label>
-                <input
-                  type="email"
-                  placeholder="e.g. john@company.com (optional)"
-                  value={formData.email}
-                  onChange={e => setFormData({...formData, email: e.target.value})}
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Role</label>
-                <select
-                  value={formData.role}
-                  onChange={e => setFormData({...formData, role: e.target.value})}
-                  style={styles.input}
-                >
-                  <option value="employee">Employee</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Department</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Engineering"
-                  value={formData.department}
-                  onChange={e => setFormData({...formData, department: e.target.value})}
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Hourly Rate</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select
-                    value={formData.currency}
-                    onChange={e => setFormData({ ...formData, currency: e.target.value })}
-                    style={{ ...styles.input, flex: '0 0 110px' }}
-                    aria-label="Currency"
-                  >
-                    {SUPPORTED_CURRENCIES.map(c => (
-                      <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    placeholder="e.g. 50"
-                    value={formData.hourlyRate}
-                    onChange={e => setFormData({ ...formData, hourlyRate: e.target.value })}
-                    style={{ ...styles.input, flex: 1 }}
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-              </div>
-
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Job Type (for productivity scoring)</label>
-                <select
-                  value={formData.jobRoleType}
-                  onChange={e => setFormData({ ...formData, jobRoleType: e.target.value })}
-                  style={styles.input}
-                >
-                  {JOB_ROLES.map(r => (
-                    <option key={r.id} value={r.id}>
-                      {r.icon}  {r.label}
-                    </option>
-                  ))}
-                </select>
-                <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
-                  "Auto-detect" lets TeamTracker pick based on app usage. Override here if it's wrong.
-                </div>
-              </div>
-
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Timezone</label>
-                <select
-                  value={formData.timezone}
-                  onChange={e => setFormData({ ...formData, timezone: e.target.value })}
-                  style={styles.input}
-                >
-                  <option value="">Inherit organization ({org?.timezone || 'UTC'})</option>
-                  {COMMON_TIMEZONES.map(tz => (
-                    <option key={tz} value={tz}>{tz}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={styles.inputGroup}>
-                <label style={{ ...styles.label, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.businessHoursEnabled}
-                    onChange={e => setFormData({ ...formData, businessHoursEnabled: e.target.checked })}
-                  />
-                  Restrict tracking to business hours
-                </label>
-                {formData.businessHoursEnabled && (
-                  <div style={{
-                    marginTop: '8px',
-                    padding: '12px',
-                    backgroundColor: '#f8f9fa',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px'
-                  }}>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#555', minWidth: '40px' }}>Start</span>
-                      <input
-                        type="time"
-                        value={formData.businessHoursStart}
-                        onChange={e => setFormData({ ...formData, businessHoursStart: e.target.value })}
-                        style={{ ...styles.input, flex: 1 }}
-                      />
-                      <span style={{ fontSize: '12px', color: '#555', minWidth: '30px', textAlign: 'right' as const }}>End</span>
-                      <input
-                        type="time"
-                        value={formData.businessHoursEnd}
-                        onChange={e => setFormData({ ...formData, businessHoursEnd: e.target.value })}
-                        style={{ ...styles.input, flex: 1 }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' as const }}>
-                      {WEEKDAY_OPTIONS.map(day => {
-                        const selected = formData.businessHoursDays.includes(day.value);
-                        return (
-                          <button
-                            type="button"
-                            key={day.value}
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                businessHoursDays: selected
-                                  ? prev.businessHoursDays.filter(d => d !== day.value)
-                                  : [...prev.businessHoursDays, day.value].sort()
-                              }));
-                            }}
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              border: '1px solid #ddd',
-                              cursor: 'pointer',
-                              backgroundColor: selected ? '#3498db' : '#fff',
-                              color: selected ? '#fff' : '#555',
-                              fontSize: '12px',
-                              fontWeight: 500
-                            }}
-                          >
-                            {day.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#95a5a6' }}>
-                      Activity tracked outside these hours is stored but shown separately in Reports.
-                    </div>
+          <div className="tt-modal tt-modal--lg" onClick={e => e.stopPropagation()}>
+            <div className="tt-modal-header">
+              <h2 id="modal-title" className="tt-modal-title">
+                {editingEmployee ? 'Edit Employee' : 'Add Employee'}
+              </h2>
+              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
+            </div>
+            <form onSubmit={handleSubmit} noValidate style={{ display: 'contents' }}>
+              <div className="tt-modal-body">
+                {formError && (
+                  <div style={styles.errorBanner}>
+                    ⚠️ {formError}
                   </div>
                 )}
+                <div className="tt-modal-form tt-modal-form--2col">
+                  <div className="tt-field">
+                    <label className="tt-field-label">Name *</label>
+                    <input
+                      type="text"
+                      className="tt-input"
+                      placeholder="e.g. John Smith"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Email</label>
+                    <input
+                      type="email"
+                      className="tt-input"
+                      placeholder="e.g. john@company.com (optional)"
+                      value={formData.email}
+                      onChange={e => setFormData({...formData, email: e.target.value})}
+                    />
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Role</label>
+                    <select
+                      className="tt-input"
+                      value={formData.role}
+                      onChange={e => setFormData({...formData, role: e.target.value})}
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Department</label>
+                    <input
+                      type="text"
+                      className="tt-input"
+                      placeholder="e.g. Engineering"
+                      value={formData.department}
+                      onChange={e => setFormData({...formData, department: e.target.value})}
+                    />
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Hourly Rate</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <select
+                        value={formData.currency}
+                        onChange={e => setFormData({ ...formData, currency: e.target.value })}
+                        className="tt-input"
+                        style={{ flex: '0 0 110px' }}
+                        aria-label="Currency"
+                      >
+                        {SUPPORTED_CURRENCIES.map(c => (
+                          <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        className="tt-input"
+                        placeholder="e.g. 50"
+                        value={formData.hourlyRate}
+                        onChange={e => setFormData({ ...formData, hourlyRate: e.target.value })}
+                        style={{ flex: 1 }}
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Job Type</label>
+                    <select
+                      className="tt-input"
+                      value={formData.jobRoleType}
+                      onChange={e => setFormData({ ...formData, jobRoleType: e.target.value })}
+                    >
+                      {JOB_ROLES.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.icon}  {r.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="tt-field-hint">
+                      "Auto-detect" picks based on app usage. Override if it's wrong.
+                    </div>
+                  </div>
+                  <div className="tt-field tt-field-span-2">
+                    <label className="tt-field-label">Timezone</label>
+                    <select
+                      className="tt-input"
+                      value={formData.timezone}
+                      onChange={e => setFormData({ ...formData, timezone: e.target.value })}
+                    >
+                      <option value="">Inherit organization ({org?.timezone || 'UTC'})</option>
+                      {COMMON_TIMEZONES.map(tz => (
+                        <option key={tz} value={tz}>{tz}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="tt-field tt-field-span-2">
+                    <label className="tt-field-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.businessHoursEnabled}
+                        onChange={e => setFormData({ ...formData, businessHoursEnabled: e.target.checked })}
+                      />
+                      Restrict tracking to business hours
+                    </label>
+                    {formData.businessHoursEnabled && (
+                      <div style={{
+                        marginTop: '4px',
+                        padding: '12px',
+                        backgroundColor: 'var(--tt-surface-muted)',
+                        borderRadius: 'var(--tt-radius-sm)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--tt-text-muted)', minWidth: '40px' }}>Start</span>
+                          <input
+                            type="time"
+                            value={formData.businessHoursStart}
+                            onChange={e => setFormData({ ...formData, businessHoursStart: e.target.value })}
+                            className="tt-input"
+                            style={{ flex: 1, minWidth: 120 }}
+                          />
+                          <span style={{ fontSize: '12px', color: 'var(--tt-text-muted)', minWidth: '30px' }}>End</span>
+                          <input
+                            type="time"
+                            value={formData.businessHoursEnd}
+                            onChange={e => setFormData({ ...formData, businessHoursEnd: e.target.value })}
+                            className="tt-input"
+                            style={{ flex: 1, minWidth: 120 }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {WEEKDAY_OPTIONS.map(day => {
+                            const selected = formData.businessHoursDays.includes(day.value);
+                            return (
+                              <button
+                                type="button"
+                                key={day.value}
+                                onClick={() => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    businessHoursDays: selected
+                                      ? prev.businessHoursDays.filter(d => d !== day.value)
+                                      : [...prev.businessHoursDays, day.value].sort()
+                                  }));
+                                }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--tt-border-strong)',
+                                  cursor: 'pointer',
+                                  backgroundColor: selected ? 'var(--tt-teal)' : 'var(--tt-surface)',
+                                  color: selected ? '#fff' : 'var(--tt-text-muted)',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  minHeight: 36,
+                                }}
+                              >
+                                {day.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="tt-field-hint">
+                          Activity outside these hours is stored but shown separately in Reports.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div style={styles.formButtons}>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  style={styles.cancelButton}
-                >
+              <div className="tt-modal-footer">
+                <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setShowForm(false)}>
                   Cancel
                 </button>
-                <button type="submit" style={styles.saveButton}>
+                <button type="submit" className="tt-btn tt-btn-primary">
                   {editingEmployee ? 'Update' : 'Create'}
                 </button>
               </div>
@@ -545,113 +547,74 @@ export const Employees: React.FC = () => {
       {/* Setup Token Modal */}
       {setupToken && (
         <div
-          style={styles.modal}
+          className="tt-modal-overlay"
           role="dialog"
           aria-modal="true"
           onClick={() => setSetupToken(null)}
         >
-          <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-            <h2 style={styles.modalTitle}>Setup Token for {setupToken.employeeName}</h2>
-            <div style={{
-              backgroundColor: '#f8f9fa',
-              border: '1px solid #e0e0e0',
-              borderRadius: '8px',
-              padding: '16px',
-              fontFamily: 'monospace',
-              fontSize: '13px',
-              wordBreak: 'break-all' as const,
-              color: '#2c3e50',
-              marginBottom: '12px',
-            }}>
-              {setupToken.token}
+          <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
+            <div className="tt-modal-header">
+              <h2 className="tt-modal-title">Setup Token for {setupToken.employeeName}</h2>
+              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setSetupToken(null)}>✕</button>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <div className="tt-modal-body">
+              <div style={{
+                backgroundColor: 'var(--tt-surface-muted)',
+                border: '1px solid var(--tt-border-strong)',
+                borderRadius: 'var(--tt-radius-sm)',
+                padding: '16px',
+                fontFamily: 'ui-monospace, monospace',
+                fontSize: '13px',
+                wordBreak: 'break-all' as const,
+                color: 'var(--tt-text)',
+                marginBottom: '12px',
+              }}>
+                {setupToken.token}
+              </div>
+              <div style={{
+                backgroundColor: 'var(--tt-info-soft)',
+                border: '1px solid rgba(42, 143, 214, 0.25)',
+                borderRadius: 'var(--tt-radius-sm)',
+                padding: '14px 16px',
+                marginBottom: '12px',
+              }}>
+                <p style={{ fontSize: '13px', color: 'var(--tt-text)', margin: '0 0 8px', lineHeight: '1.5' }}>
+                  Share this token with <strong>{setupToken.employeeName}</strong>. They will need it to connect their desktop app.
+                </p>
+                <p style={{ fontSize: '12px', color: 'var(--tt-text-muted)', margin: 0, lineHeight: '1.5' }}>
+                  The token expires in 7 days and can only be used once.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
+                <a
+                  href="/download"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tt-btn tt-btn-primary"
+                  style={{ textDecoration: 'none' }}
+                >
+                  Download Tracker App
+                </a>
+                <a
+                  href="https://github.com/hamdymohamedak/TeamTracker#3-install-the-desktop-tracker"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tt-btn tt-btn-ghost"
+                  style={{ textDecoration: 'none' }}
+                >
+                  Setup instructions →
+                </a>
+              </div>
+            </div>
+            <div className="tt-modal-footer">
+              <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setSetupToken(null)}>Close</button>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(setupToken.token);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#3498db',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                }}
+                type="button"
+                className="tt-btn tt-btn-primary"
+                onClick={() => navigator.clipboard.writeText(setupToken.token)}
               >
                 Copy Token
               </button>
-              <button
-                onClick={() => setSetupToken(null)}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#ecf0f1',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                }}
-              >
-                Close
-              </button>
-            </div>
-            <div style={{
-              backgroundColor: '#f0f7ff',
-              border: '1px solid #d0e3f7',
-              borderRadius: '8px',
-              padding: '14px 16px',
-              marginBottom: '12px',
-            }}>
-              <p style={{ fontSize: '13px', color: '#2c3e50', margin: '0 0 8px', lineHeight: '1.5' }}>
-                Share this token with <strong>{setupToken.employeeName}</strong>. They will need it to connect their desktop app.
-              </p>
-              <p style={{ fontSize: '12px', color: '#7f8c8d', margin: 0, lineHeight: '1.5' }}>
-                The token expires in 7 days and can only be used once.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
-              <a
-                href="/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 16px',
-                  backgroundColor: '#27ae60',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                ⬇ Download Tracker App
-              </a>
-              <a
-                href="https://github.com/hamdymohamedak/TeamTracker#3-install-the-desktop-tracker"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  fontSize: '13px',
-                  color: '#3498db',
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  padding: '10px 16px',
-                }}
-              >
-                Setup instructions &rarr;
-              </a>
             </div>
           </div>
         </div>
@@ -660,69 +623,42 @@ export const Employees: React.FC = () => {
       {/* Install on this Device — post-click modal */}
       {installPrompt && (
         <div
-          style={styles.modal}
+          className="tt-modal-overlay"
           role="dialog"
           aria-modal="true"
           onClick={() => setInstallPrompt(null)}
         >
-          <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-            <h2 style={styles.modalTitle}>Install on this Device</h2>
-            <p style={{ color: '#2c3e50', marginBottom: '12px', fontSize: '14px', lineHeight: 1.5 }}>
-              An activation file for <strong>{installPrompt.employeeName}</strong> has been saved to your Downloads folder.
-            </p>
-            <div style={{
-              backgroundColor: '#eafaf1',
-              border: '1px solid #a9dfbf',
-              borderRadius: '8px',
-              padding: '12px 14px',
-              marginBottom: '16px',
-              fontSize: '13px',
-              color: '#1e7e44',
-              lineHeight: 1.5,
-            }}>
-              <div style={{ fontWeight: 600, marginBottom: '6px' }}>Next steps on this laptop:</div>
-              <ol style={{ margin: 0, paddingLeft: '18px' }}>
-                <li>Click the button below to download the TeamTracker installer</li>
-                <li>Run the installer</li>
-                <li>That's it — the tracker will auto-connect as <strong>{installPrompt.employeeName}</strong> on first launch</li>
-              </ol>
+          <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
+            <div className="tt-modal-header">
+              <h2 className="tt-modal-title">Install on this Device</h2>
+              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setInstallPrompt(null)}>✕</button>
             </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <a
-                href="/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 16px',
-                  backgroundColor: '#27ae60',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                ⬇ Download Installer
+            <div className="tt-modal-body">
+              <p style={{ color: 'var(--tt-text)', margin: '0 0 12px', fontSize: '14px', lineHeight: 1.5 }}>
+                An activation file for <strong>{installPrompt.employeeName}</strong> has been saved to your Downloads folder.
+              </p>
+              <div style={{
+                backgroundColor: 'var(--tt-success-soft)',
+                border: '1px solid rgba(31, 169, 113, 0.3)',
+                borderRadius: 'var(--tt-radius-sm)',
+                padding: '12px 14px',
+                fontSize: '13px',
+                color: 'var(--tt-success)',
+                lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 650, marginBottom: '6px' }}>Next steps on this laptop:</div>
+                <ol style={{ margin: 0, paddingLeft: '18px' }}>
+                  <li>Click the button below to download the TeamTracker installer</li>
+                  <li>Run the installer</li>
+                  <li>That's it — the tracker will auto-connect as <strong>{installPrompt.employeeName}</strong> on first launch</li>
+                </ol>
+              </div>
+            </div>
+            <div className="tt-modal-footer">
+              <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setInstallPrompt(null)}>Close</button>
+              <a href="/download" target="_blank" rel="noopener noreferrer" className="tt-btn tt-btn-primary" style={{ textDecoration: 'none' }}>
+                Download Installer
               </a>
-              <button
-                onClick={() => setInstallPrompt(null)}
-                style={{
-                  padding: '10px 16px',
-                  backgroundColor: '#ecf0f1',
-                  color: '#2c3e50',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
@@ -732,15 +668,15 @@ export const Employees: React.FC = () => {
         <div style={{
           textAlign: 'center' as const,
           padding: '60px 20px',
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          backgroundColor: 'var(--tt-surface)',
+          borderRadius: 'var(--tt-radius)',
+          boxShadow: 'var(--tt-shadow-sm)',
         }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>👥</div>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#2c3e50', margin: '0 0 8px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
             No employees yet
           </h2>
-          <p style={{ fontSize: '14px', color: '#7f8c8d', margin: '0 0 24px' }}>
+          <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 24px' }}>
             Add your first team member to start tracking.
           </p>
           <button
@@ -751,10 +687,10 @@ export const Employees: React.FC = () => {
             }}
             style={{
               padding: '12px 32px',
-              backgroundColor: '#27ae60',
+              backgroundColor: 'var(--tt-success)',
               color: '#fff',
               border: 'none',
-              borderRadius: '8px',
+              borderRadius: 'var(--tt-radius-sm)',
               cursor: 'pointer',
               fontSize: '15px',
               fontWeight: 600,
@@ -787,7 +723,7 @@ export const Employees: React.FC = () => {
                 </p>
               ) : null}
               {employee.timezone ? (
-                <p style={{ ...styles.info, fontSize: '12px', color: '#95a5a6' }}>
+                <p style={{ ...styles.info, fontSize: '12px', color: 'var(--tt-text-faint)' }}>
                   🌐 {employee.timezone}
                 </p>
               ) : null}
@@ -833,20 +769,20 @@ const errorStyles: { [key: string]: React.CSSProperties } = {
   title: {
     fontSize: '24px',
     fontWeight: 600,
-    color: '#e74c3c',
+    color: 'var(--tt-danger)',
     marginBottom: '8px'
   },
   message: {
     fontSize: '16px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     marginBottom: '24px'
   },
   retryButton: {
     padding: '12px 24px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     fontSize: '16px',
     fontWeight: 500,
     cursor: 'pointer'
@@ -862,11 +798,11 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     textAlign: 'center'
   },
   errorBanner: {
-    backgroundColor: '#fdf2f2',
-    border: '1px solid #fee2e2',
-    color: '#e74c3c',
+    backgroundColor: 'var(--tt-danger-soft)',
+    border: '1px solid rgba(232, 93, 76, 0.25)',
+    color: 'var(--tt-danger)',
     padding: '12px 16px',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     marginBottom: '16px',
     fontWeight: 500
   },
@@ -877,16 +813,18 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     marginBottom: '24px'
   },
   title: {
-    fontSize: '28px',
-    fontWeight: 600,
-    color: '#2c3e50'
+    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
+    fontWeight: 750,
+    fontFamily: 'var(--tt-font-display)',
+    letterSpacing: '-0.02em',
+    color: 'var(--tt-text)'
   },
   addButton: {
     padding: '12px 24px',
-    backgroundColor: '#27ae60',
+    backgroundColor: 'var(--tt-success)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: 500
@@ -904,15 +842,15 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     zIndex: 1000
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '32px',
-    borderRadius: '12px',
+    borderRadius: 'var(--tt-radius)',
     width: '100%',
     maxWidth: '400px'
   },
   modalTitle: {
     marginBottom: '20px',
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   form: {
     display: 'flex',
@@ -927,7 +865,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   label: {
     fontSize: '13px',
     fontWeight: 500,
-    color: '#555'
+    color: 'var(--tt-text-muted)'
   },
   input: {
     padding: '12px',
@@ -943,7 +881,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   cancelButton: {
     flex: 1,
     padding: '12px',
-    backgroundColor: '#ecf0f1',
+    backgroundColor: 'var(--tt-surface-muted)',
     border: 'none',
     borderRadius: '6px',
     cursor: 'pointer'
@@ -951,7 +889,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   saveButton: {
     flex: 1,
     padding: '12px',
-    backgroundColor: '#27ae60',
+    backgroundColor: 'var(--tt-success)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -964,10 +902,10 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     gap: '16px'
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '20px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    borderRadius: 'var(--tt-radius)',
+    boxShadow: 'var(--tt-shadow-sm)'
   },
   cardHeader: {
     display: 'flex',
@@ -978,7 +916,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   employeeName: {
     fontSize: '18px',
     fontWeight: 600,
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   roleBadge: (role: string) => ({
     padding: '4px 8px',
@@ -986,7 +924,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     fontSize: '11px',
     fontWeight: 600,
     textTransform: 'uppercase',
-    backgroundColor: role === 'admin' ? '#e74c3c' : role === 'manager' ? '#f39c12' : '#3498db',
+    backgroundColor: role === 'admin' ? 'var(--tt-danger)' : role === 'manager' ? 'var(--tt-amber)' : 'var(--tt-teal)',
     color: '#fff'
   }),
   cardBody: {
@@ -994,7 +932,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   info: {
     fontSize: '14px',
-    color: '#666',
+    color: 'var(--tt-text-muted)',
     margin: '4px 0'
   },
   cardActions: {
@@ -1004,7 +942,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   editButton: {
     flex: 1,
     padding: '8px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -1024,7 +962,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   installButton: {
     flex: 1.4,
     padding: '8px',
-    backgroundColor: '#27ae60',
+    backgroundColor: 'var(--tt-success)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -1035,7 +973,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   deleteButton: {
     flex: 1,
     padding: '8px',
-    backgroundColor: '#e74c3c',
+    backgroundColor: 'var(--tt-danger)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',

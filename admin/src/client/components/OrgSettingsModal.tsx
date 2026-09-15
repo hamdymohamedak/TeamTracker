@@ -194,55 +194,26 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
 
   return (
     <div
+      className="tt-modal-overlay"
       role="dialog"
       aria-modal="true"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2000
-      }}
       onClick={closeModal}
     >
       <div
+        className="tt-modal tt-modal--md"
         onClick={e => e.stopPropagation()}
-        style={{
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          padding: 'clamp(16px, 4vw, 32px)',
-          width: '100%',
-          maxWidth: '520px',
-          maxHeight: '90vh',
-          overflowY: 'auto',
-          margin: '0 12px',
-          boxSizing: 'border-box'
-        }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ margin: 0, color: '#2c3e50' }}>Organization Settings</h2>
-          <button
-            onClick={closeModal}
-            aria-label="Close"
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '20px',
-              color: '#95a5a6',
-              cursor: 'pointer'
-            }}
-          >
-            ✕
-          </button>
+        <div className="tt-modal-header">
+          <h2 className="tt-modal-title">Organization Settings</h2>
+          <button type="button" className="tt-modal-close" onClick={closeModal} aria-label="Close">✕</button>
         </div>
 
+        <div className="tt-modal-body">
         {error && (
           <div style={{
-            backgroundColor: '#fdf2f2',
-            border: '1px solid #fee2e2',
-            color: '#e74c3c',
+            backgroundColor: 'var(--tt-danger-soft)',
+            border: '1px solid rgba(232, 93, 76, 0.25)',
+            color: 'var(--tt-danger)',
             padding: '10px 12px',
             borderRadius: '6px',
             marginBottom: '12px',
@@ -254,9 +225,9 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
 
         {flash && !error && (
           <div style={{
-            backgroundColor: '#f0f9f0',
-            border: '1px solid #c6e6c6',
-            color: '#27ae60',
+            backgroundColor: 'var(--tt-success-soft)',
+            border: '1px solid rgba(31, 169, 113, 0.25)',
+            color: 'var(--tt-success)',
             padding: '10px 12px',
             borderRadius: '6px',
             marginBottom: '12px',
@@ -270,13 +241,13 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
         {/* Logo section */}
         <section style={{ marginBottom: '24px' }}>
           <div style={labelStyle}>Company Logo</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
             <div style={{
               width: '80px',
               height: '80px',
-              borderRadius: '12px',
-              backgroundColor: '#f8f9fa',
-              border: '1px dashed #d0d5dd',
+              borderRadius: 'var(--tt-radius)',
+              backgroundColor: 'var(--tt-surface-muted)',
+              border: '1px dashed var(--tt-border-strong)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -289,12 +260,12 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
                   style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                 />
               ) : (
-                <span style={{ fontSize: '11px', color: '#95a5a6', textAlign: 'center' as const }}>
+                <span style={{ fontSize: '11px', color: 'var(--tt-text-faint)', textAlign: 'center' as const }}>
                   No logo
                 </span>
               )}
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -324,60 +295,59 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
                   Remove
                 </button>
               )}
-              <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '6px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--tt-text-faint)', marginTop: '6px' }}>
                 PNG, JPEG, WebP or SVG. Max {MAX_LOGO_BYTES / 1000} KB.
               </div>
             </div>
           </div>
         </section>
 
-        {/* Name */}
-        <section style={{ marginBottom: '16px' }}>
-          <div style={labelStyle}>Organization Name</div>
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            style={inputStyle}
-          />
-        </section>
-
-        {/* Timezone */}
-        <section style={{ marginBottom: '16px' }}>
-          <div style={labelStyle}>Default Timezone</div>
-          <select
-            value={timezone}
-            onChange={e => setTimezone(e.target.value)}
-            style={inputStyle}
-          >
-            {COMMON_TIMEZONES.map(tz => (
-              <option key={tz} value={tz}>{tz}</option>
-            ))}
-          </select>
-          <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
-            Used for the "today" boundary on the Dashboard and Reports. Employees can override their own.
+        <div className="tt-modal-form tt-modal-form--2col" style={{ marginBottom: 8 }}>
+          <div className="tt-field tt-field-span-2">
+            <div style={labelStyle}>Organization Name</div>
+            <input
+              type="text"
+              className="tt-input"
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
           </div>
-        </section>
 
-        {/* Default currency */}
-        <section style={{ marginBottom: '20px' }}>
-          <div style={labelStyle}>Default Currency</div>
-          <select
-            value={defaultCurrency}
-            onChange={e => setDefaultCurrency(e.target.value)}
-            style={inputStyle}
-          >
-            {SUPPORTED_CURRENCIES.map(c => (
-              <option key={c.code} value={c.code}>{c.symbol} — {c.label} ({c.code})</option>
-            ))}
-          </select>
-          <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
-            New employees inherit this. Each employee can still use a different one.
+          <div className="tt-field">
+            <div style={labelStyle}>Default Timezone</div>
+            <select
+              className="tt-input"
+              value={timezone}
+              onChange={e => setTimezone(e.target.value)}
+            >
+              {COMMON_TIMEZONES.map(tz => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+            <div className="tt-field-hint">
+              Used for the "today" boundary on Dashboard and Reports.
+            </div>
           </div>
-        </section>
+
+          <div className="tt-field">
+            <div style={labelStyle}>Default Currency</div>
+            <select
+              className="tt-input"
+              value={defaultCurrency}
+              onChange={e => setDefaultCurrency(e.target.value)}
+            >
+              {SUPPORTED_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.symbol} — {c.label} ({c.code})</option>
+              ))}
+            </select>
+            <div className="tt-field-hint">
+              New employees inherit this. Each can override.
+            </div>
+          </div>
+        </div>
 
         {/* Daily Email Summary */}
-        <section style={{ marginBottom: '20px', padding: '14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+        <section style={{ marginBottom: '16px', padding: '14px', backgroundColor: 'var(--tt-surface-muted)', borderRadius: 'var(--tt-radius-sm)', border: '1px solid var(--tt-border)' }}>
           <div style={{ ...labelStyle, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <input
               type="checkbox"
@@ -387,30 +357,29 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
             />
             <span>Daily Email Summary</span>
           </div>
-          <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: 'var(--tt-text-muted)', marginBottom: '10px', lineHeight: 1.5 }}>
             We'll email a per-employee productivity summary once a day at the hour you pick (in your org's timezone).
-            You'll see total hours, idle time, top apps, productivity score, and any flagged suspicious activity.
           </div>
           {dailySummaryEnabled && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div>
-                <div style={{ fontSize: '11px', color: '#7f8c8d', marginBottom: '4px' }}>Recipient Email</div>
+            <div className="tt-modal-form tt-modal-form--2col">
+              <div className="tt-field tt-field-span-2">
+                <div style={{ fontSize: '11px', color: 'var(--tt-text-muted)', marginBottom: '4px' }}>Recipient Email</div>
                 <input
                   type="email"
+                  className="tt-input"
                   placeholder="you@company.com"
                   value={dailySummaryRecipient}
                   onChange={e => setDailySummaryRecipient(e.target.value)}
-                  style={inputStyle}
                 />
               </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#7f8c8d', marginBottom: '4px' }}>
+              <div className="tt-field tt-field-span-2">
+                <div style={{ fontSize: '11px', color: 'var(--tt-text-muted)', marginBottom: '4px' }}>
                   Send each day at (org local time)
                 </div>
                 <select
+                  className="tt-input"
                   value={dailySummaryHour}
                   onChange={e => setDailySummaryHour(parseInt(e.target.value, 10))}
-                  style={inputStyle}
                 >
                   {Array.from({ length: 24 }, (_, h) => h).map(h => (
                     <option key={h} value={h}>
@@ -419,20 +388,22 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
                   ))}
                 </select>
               </div>
-              <button
-                type="button"
-                onClick={handleSendTestSummary}
-                disabled={sendingTestSummary || !dailySummaryRecipient}
-                style={{ ...ghostBtn, alignSelf: 'flex-start' }}
-              >
-                {sendingTestSummary ? 'Sending…' : 'Send a test summary now'}
-              </button>
+              <div className="tt-field tt-field-span-2">
+                <button
+                  type="button"
+                  onClick={handleSendTestSummary}
+                  disabled={sendingTestSummary || !dailySummaryRecipient}
+                  className="tt-btn tt-btn-ghost"
+                >
+                  {sendingTestSummary ? 'Sending…' : 'Send a test summary now'}
+                </button>
+              </div>
             </div>
           )}
         </section>
 
         {/* Screenshots */}
-        <section style={{ marginBottom: '20px', padding: '14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+        <section style={{ marginBottom: '8px', padding: '14px', backgroundColor: 'var(--tt-surface-muted)', borderRadius: 'var(--tt-radius-sm)', border: '1px solid var(--tt-border)' }}>
           <div style={{ ...labelStyle, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <input
               type="checkbox"
@@ -442,46 +413,45 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
             />
             <span>Periodic Screenshots</span>
           </div>
-          <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px', lineHeight: 1.5 }}>
-            When enabled, the desktop tracker captures a screenshot at a fixed interval and uploads it to your dashboard.
-            Stored screenshots auto-delete after the retention window. You can browse them per-employee, per-day in the
-            Screenshots page.
+          <div style={{ fontSize: '12px', color: 'var(--tt-text-muted)', marginBottom: '10px', lineHeight: 1.5 }}>
+            Capture screenshots at a fixed interval. Browse them on the Screenshots page.
           </div>
           {screenshotsEnabled && (
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '11px', color: '#7f8c8d', marginBottom: '4px' }}>Capture every (minutes)</div>
+            <div className="tt-modal-form tt-modal-form--2col">
+              <div className="tt-field">
+                <div style={{ fontSize: '11px', color: 'var(--tt-text-muted)', marginBottom: '4px' }}>Capture every (minutes)</div>
                 <input
                   type="number"
+                  className="tt-input"
                   min={1}
                   max={60}
                   value={screenshotIntervalMinutes}
                   onChange={e => setScreenshotIntervalMinutes(parseInt(e.target.value, 10) || 10)}
-                  style={inputStyle}
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '11px', color: '#7f8c8d', marginBottom: '4px' }}>Keep for (days)</div>
+              <div className="tt-field">
+                <div style={{ fontSize: '11px', color: 'var(--tt-text-muted)', marginBottom: '4px' }}>Keep for (days)</div>
                 <input
                   type="number"
+                  className="tt-input"
                   min={1}
                   max={365}
                   value={screenshotRetentionDays}
                   onChange={e => setScreenshotRetentionDays(parseInt(e.target.value, 10) || 7)}
-                  style={inputStyle}
                 />
               </div>
             </div>
           )}
         </section>
+        </div>
 
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={closeModal} style={ghostBtn}>Cancel</button>
+        <div className="tt-modal-footer">
+          <button type="button" className="tt-btn tt-btn-ghost" onClick={closeModal}>Cancel</button>
           <button
             type="button"
+            className="tt-btn tt-btn-primary"
             onClick={handleSaveSettings}
             disabled={saving}
-            style={primaryBtn}
           >
             {saving ? 'Saving…' : 'Save Settings'}
           </button>
@@ -494,7 +464,7 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
 const labelStyle: React.CSSProperties = {
   fontSize: '12px',
   fontWeight: 600,
-  color: '#555',
+  color: 'var(--tt-text-muted)',
   textTransform: 'uppercase',
   letterSpacing: '0.5px',
   marginBottom: '6px'
@@ -511,7 +481,7 @@ const inputStyle: React.CSSProperties = {
 
 const primaryBtn: React.CSSProperties = {
   padding: '10px 16px',
-  backgroundColor: '#3498db',
+  backgroundColor: 'var(--tt-teal)',
   color: '#fff',
   border: 'none',
   borderRadius: '6px',
@@ -522,7 +492,7 @@ const primaryBtn: React.CSSProperties = {
 
 const ghostBtn: React.CSSProperties = {
   padding: '10px 16px',
-  backgroundColor: '#ecf0f1',
+  backgroundColor: 'var(--tt-surface-muted)',
   color: '#333',
   border: 'none',
   borderRadius: '6px',

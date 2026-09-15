@@ -108,10 +108,10 @@ export const Projects: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return '#27ae60';
-      case 'completed': return '#3498db';
-      case 'archived': return '#95a5a6';
-      default: return '#7f8c8d';
+      case 'active': return 'var(--tt-success)';
+      case 'completed': return 'var(--tt-teal)';
+      case 'archived': return 'var(--tt-text-faint)';
+      default: return 'var(--tt-text-muted)';
     }
   };
 
@@ -152,72 +152,75 @@ export const Projects: React.FC = () => {
 
       {showForm && (
         <div
-          style={styles.modal}
+          className="tt-modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-title"
+          onClick={() => setShowForm(false)}
         >
-          <div style={styles.modalContent}>
-            <h2 id="modal-title" style={styles.modalTitle}>
-              {editingProject ? 'Edit Project' : 'Add Project'}
-            </h2>
-            <form onSubmit={handleSubmit} style={styles.form}>
-              {formError && (
-                <div style={styles.errorBanner}>
-                  ⚠️ {formError}
+          <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
+            <div className="tt-modal-header">
+              <h2 id="modal-title" className="tt-modal-title">
+                {editingProject ? 'Edit Project' : 'Add Project'}
+              </h2>
+              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
+            </div>
+            <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
+              <div className="tt-modal-body">
+                {formError && (
+                  <div style={styles.errorBanner}>
+                    ⚠️ {formError}
+                  </div>
+                )}
+                <div className="tt-modal-form tt-modal-form--2col">
+                  <div className="tt-field tt-field-span-2">
+                    <label className="tt-field-label">Project Name *</label>
+                    <input
+                      type="text"
+                      className="tt-input"
+                      placeholder="e.g. Smith Residence"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="tt-field tt-field-span-2">
+                    <label className="tt-field-label">Description</label>
+                    <textarea
+                      className="tt-input"
+                      placeholder="Project details..."
+                      value={formData.description}
+                      onChange={e => setFormData({...formData, description: e.target.value})}
+                      style={{ minHeight: '80px', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Client Name</label>
+                    <input
+                      type="text"
+                      className="tt-input"
+                      placeholder="e.g. John Smith"
+                      value={formData.clientName}
+                      onChange={e => setFormData({...formData, clientName: e.target.value})}
+                    />
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Budget ({currencySymbol} {defaultCurrency})</label>
+                    <input
+                      type="number"
+                      className="tt-input"
+                      placeholder="e.g. 50000"
+                      value={formData.budget}
+                      onChange={e => setFormData({...formData, budget: e.target.value})}
+                      min="0"
+                      step="1000"
+                    />
+                  </div>
                 </div>
-              )}
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Project Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Smith Residence"
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  style={styles.input}
-                  required
-                />
               </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Description</label>
-                <textarea
-                  placeholder="Project details..."
-                  value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value})}
-                  style={{...styles.input, minHeight: '80px'}}
-                />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Client Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. John Smith"
-                  value={formData.clientName}
-                  onChange={e => setFormData({...formData, clientName: e.target.value})}
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Budget ({currencySymbol} {defaultCurrency})</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 50000"
-                  value={formData.budget}
-                  onChange={e => setFormData({...formData, budget: e.target.value})}
-                  style={styles.input}
-                  min="0"
-                  step="1000"
-                />
-              </div>
-              <div style={styles.formButtons}>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  style={styles.cancelButton}
-                >
-                  Cancel
-                </button>
-                <button type="submit" style={styles.saveButton}>
+              <div className="tt-modal-footer">
+                <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+                <button type="submit" className="tt-btn tt-btn-primary">
                   {editingProject ? 'Update' : 'Create'}
                 </button>
               </div>
@@ -230,15 +233,15 @@ export const Projects: React.FC = () => {
         <div style={{
           textAlign: 'center' as const,
           padding: '60px 20px',
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          backgroundColor: 'var(--tt-surface)',
+          borderRadius: 'var(--tt-radius)',
+          boxShadow: 'var(--tt-shadow-sm)',
         }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>💼</div>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#2c3e50', margin: '0 0 8px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
             No projects yet
           </h2>
-          <p style={{ fontSize: '14px', color: '#7f8c8d', margin: '0 0 24px' }}>
+          <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 24px' }}>
             Projects help you organize work and track time per client.
           </p>
           <button
@@ -249,10 +252,10 @@ export const Projects: React.FC = () => {
             }}
             style={{
               padding: '12px 32px',
-              backgroundColor: '#27ae60',
+              backgroundColor: 'var(--tt-success)',
               color: '#fff',
               border: 'none',
-              borderRadius: '8px',
+              borderRadius: 'var(--tt-radius-sm)',
               cursor: 'pointer',
               fontSize: '15px',
               fontWeight: 600,
@@ -319,20 +322,20 @@ const errorStyles: { [key: string]: React.CSSProperties } = {
   title: {
     fontSize: '24px',
     fontWeight: 600,
-    color: '#e74c3c',
+    color: 'var(--tt-danger)',
     marginBottom: '8px'
   },
   message: {
     fontSize: '16px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     marginBottom: '24px'
   },
   retryButton: {
     padding: '12px 24px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     fontSize: '16px',
     fontWeight: 500,
     cursor: 'pointer'
@@ -348,11 +351,11 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     textAlign: 'center'
   },
   errorBanner: {
-    backgroundColor: '#fdf2f2',
-    border: '1px solid #fee2e2',
-    color: '#e74c3c',
+    backgroundColor: 'var(--tt-danger-soft)',
+    border: '1px solid rgba(232, 93, 76, 0.25)',
+    color: 'var(--tt-danger)',
     padding: '12px 16px',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     marginBottom: '16px',
     fontWeight: 500
   },
@@ -363,16 +366,18 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     marginBottom: '24px'
   },
   title: {
-    fontSize: '28px',
-    fontWeight: 600,
-    color: '#2c3e50'
+    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
+    fontWeight: 750,
+    fontFamily: 'var(--tt-font-display)',
+    letterSpacing: '-0.02em',
+    color: 'var(--tt-text)'
   },
   addButton: {
     padding: '12px 24px',
-    backgroundColor: '#27ae60',
+    backgroundColor: 'var(--tt-success)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: 500
@@ -390,15 +395,15 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     zIndex: 1000
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '32px',
-    borderRadius: '12px',
+    borderRadius: 'var(--tt-radius)',
     width: '100%',
     maxWidth: '450px'
   },
   modalTitle: {
     marginBottom: '20px',
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   form: {
     display: 'flex',
@@ -413,7 +418,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   label: {
     fontSize: '13px',
     fontWeight: 500,
-    color: '#555'
+    color: 'var(--tt-text-muted)'
   },
   input: {
     padding: '12px',
@@ -430,7 +435,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   cancelButton: {
     flex: 1,
     padding: '12px',
-    backgroundColor: '#ecf0f1',
+    backgroundColor: 'var(--tt-surface-muted)',
     border: 'none',
     borderRadius: '6px',
     cursor: 'pointer'
@@ -438,7 +443,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   saveButton: {
     flex: 1,
     padding: '12px',
-    backgroundColor: '#27ae60',
+    backgroundColor: 'var(--tt-success)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -451,10 +456,10 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     gap: '16px'
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '20px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    borderRadius: 'var(--tt-radius)',
+    boxShadow: 'var(--tt-shadow-sm)'
   },
   cardHeader: {
     display: 'flex',
@@ -465,7 +470,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   projectName: {
     fontSize: '18px',
     fontWeight: 600,
-    color: '#2c3e50',
+    color: 'var(--tt-text)',
     margin: 0,
     flex: 1
   },
@@ -483,13 +488,13 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   description: {
     fontSize: '14px',
-    color: '#666',
+    color: 'var(--tt-text-muted)',
     marginBottom: '12px',
     lineHeight: 1.5
   },
   info: {
     fontSize: '13px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     margin: '4px 0'
   },
   cardActions: {
@@ -499,7 +504,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   editButton: {
     flex: 1,
     padding: '8px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -509,7 +514,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   deleteButton: {
     flex: 1,
     padding: '8px',
-    backgroundColor: '#e74c3c',
+    backgroundColor: 'var(--tt-danger)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',

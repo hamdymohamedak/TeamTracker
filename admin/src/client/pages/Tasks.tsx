@@ -140,19 +140,19 @@ export const Tasks: React.FC = () => {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return '#e74c3c';
-      case 'medium': return '#f39c12';
-      case 'low': return '#27ae60';
-      default: return '#7f8c8d';
+      case 'high': return 'var(--tt-danger)';
+      case 'medium': return 'var(--tt-amber)';
+      case 'low': return 'var(--tt-success)';
+      default: return 'var(--tt-text-muted)';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return '#27ae60';
-      case 'in_progress': return '#3498db';
-      case 'todo': return '#95a5a6';
-      default: return '#7f8c8d';
+      case 'completed': return 'var(--tt-success)';
+      case 'in_progress': return 'var(--tt-teal)';
+      case 'todo': return 'var(--tt-text-faint)';
+      default: return 'var(--tt-text-muted)';
     }
   };
 
@@ -193,115 +193,118 @@ export const Tasks: React.FC = () => {
 
       {showForm && (
         <div
-          style={styles.modal}
+          className="tt-modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-title"
+          onClick={() => setShowForm(false)}
         >
-          <div style={styles.modalContent}>
-            <h2 id="modal-title" style={styles.modalTitle}>
-              {editingTask ? 'Edit Task' : 'Add Task'}
-            </h2>
-            <form onSubmit={handleSubmit} style={styles.form}>
-              {formError && (
-                <div style={styles.errorBanner}>
-                  ⚠️ {formError}
+          <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
+            <div className="tt-modal-header">
+              <h2 id="modal-title" className="tt-modal-title">
+                {editingTask ? 'Edit Task' : 'Add Task'}
+              </h2>
+              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
+            </div>
+            <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
+              <div className="tt-modal-body">
+                {formError && (
+                  <div style={styles.errorBanner}>
+                    ⚠️ {formError}
+                  </div>
+                )}
+                <div className="tt-modal-form tt-modal-form--2col">
+                  <div className="tt-field tt-field-span-2">
+                    <label className="tt-field-label">Task Name *</label>
+                    <input
+                      type="text"
+                      className="tt-input"
+                      placeholder="e.g. Design floor plans"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="tt-field tt-field-span-2">
+                    <label className="tt-field-label">Description</label>
+                    <textarea
+                      className="tt-input"
+                      placeholder="Task details..."
+                      value={formData.description}
+                      onChange={e => setFormData({...formData, description: e.target.value})}
+                      style={{ minHeight: '60px', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Project *</label>
+                    <select
+                      className="tt-input"
+                      value={formData.projectId}
+                      onChange={e => setFormData({...formData, projectId: e.target.value})}
+                      required
+                    >
+                      <option value="">Select a project</option>
+                      {projects.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Assigned To</label>
+                    <select
+                      className="tt-input"
+                      value={formData.assignedTo}
+                      onChange={e => setFormData({...formData, assignedTo: e.target.value})}
+                    >
+                      <option value="">Unassigned</option>
+                      {employees.map(e => (
+                        <option key={e.id} value={e.id}>{e.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Priority</label>
+                    <select
+                      className="tt-input"
+                      value={formData.priority}
+                      onChange={e => setFormData({...formData, priority: e.target.value})}
+                    >
+                      <option value="low">Low Priority</option>
+                      <option value="medium">Medium Priority</option>
+                      <option value="high">High Priority</option>
+                    </select>
+                  </div>
+                  <div className="tt-field">
+                    <label className="tt-field-label">Estimated Hours</label>
+                    <input
+                      type="number"
+                      className="tt-input"
+                      placeholder="e.g. 8"
+                      value={formData.estimatedHours}
+                      onChange={e => setFormData({...formData, estimatedHours: e.target.value})}
+                      min="0"
+                      step="0.5"
+                    />
+                  </div>
+                  {editingTask && (
+                    <div className="tt-field tt-field-span-2">
+                      <label className="tt-field-label">Status</label>
+                      <select
+                        className="tt-input"
+                        value={formData.status}
+                        onChange={e => setFormData({...formData, status: e.target.value})}
+                      >
+                        <option value="todo">To Do</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Task Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Design floor plans"
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  style={styles.input}
-                  required
-                />
               </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Description</label>
-                <textarea
-                  placeholder="Task details..."
-                  value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value})}
-                  style={{...styles.input, minHeight: '60px'}}
-                />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Project *</label>
-                <select
-                  value={formData.projectId}
-                  onChange={e => setFormData({...formData, projectId: e.target.value})}
-                  style={styles.input}
-                  required
-                >
-                  <option value="">Select a project</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Assigned To</label>
-                <select
-                  value={formData.assignedTo}
-                  onChange={e => setFormData({...formData, assignedTo: e.target.value})}
-                  style={styles.input}
-                >
-                  <option value="">Unassigned</option>
-                  {employees.map(e => (
-                    <option key={e.id} value={e.id}>{e.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Priority</label>
-                <select
-                  value={formData.priority}
-                  onChange={e => setFormData({...formData, priority: e.target.value})}
-                  style={styles.input}
-                >
-                  <option value="low">Low Priority</option>
-                  <option value="medium">Medium Priority</option>
-                  <option value="high">High Priority</option>
-                </select>
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Estimated Hours</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 8"
-                  value={formData.estimatedHours}
-                  onChange={e => setFormData({...formData, estimatedHours: e.target.value})}
-                  style={styles.input}
-                  min="0"
-                  step="0.5"
-                />
-              </div>
-              {editingTask && (
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={e => setFormData({...formData, status: e.target.value})}
-                    style={styles.input}
-                  >
-                    <option value="todo">To Do</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </div>
-              )}
-              <div style={styles.formButtons}>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  style={styles.cancelButton}
-                >
-                  Cancel
-                </button>
-                <button type="submit" style={styles.saveButton}>
+              <div className="tt-modal-footer">
+                <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+                <button type="submit" className="tt-btn tt-btn-primary">
                   {editingTask ? 'Update' : 'Create'}
                 </button>
               </div>
@@ -314,27 +317,27 @@ export const Tasks: React.FC = () => {
         <div style={{
           textAlign: 'center' as const,
           padding: '60px 20px',
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          backgroundColor: 'var(--tt-surface)',
+          borderRadius: 'var(--tt-radius)',
+          boxShadow: 'var(--tt-shadow-sm)',
         }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>&#10003;</div>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#2c3e50', margin: '0 0 8px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
             No tasks yet
           </h2>
           {projects.length === 0 ? (
             <>
-              <p style={{ fontSize: '14px', color: '#7f8c8d', margin: '0 0 24px' }}>
+              <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 24px' }}>
                 Create a project first before adding tasks.
               </p>
               <button
                 onClick={() => navigate('/projects')}
                 style={{
                   padding: '12px 32px',
-                  backgroundColor: '#3498db',
+                  backgroundColor: 'var(--tt-teal)',
                   color: '#fff',
                   border: 'none',
-                  borderRadius: '8px',
+                  borderRadius: 'var(--tt-radius-sm)',
                   cursor: 'pointer',
                   fontSize: '15px',
                   fontWeight: 600,
@@ -345,7 +348,7 @@ export const Tasks: React.FC = () => {
             </>
           ) : (
             <>
-              <p style={{ fontSize: '14px', color: '#7f8c8d', margin: '0 0 24px' }}>
+              <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 24px' }}>
                 Break down projects into tasks and assign them to your team.
               </p>
               <button
@@ -356,10 +359,10 @@ export const Tasks: React.FC = () => {
                 }}
                 style={{
                   padding: '12px 32px',
-                  backgroundColor: '#27ae60',
+                  backgroundColor: 'var(--tt-success)',
                   color: '#fff',
                   border: 'none',
-                  borderRadius: '8px',
+                  borderRadius: 'var(--tt-radius-sm)',
                   cursor: 'pointer',
                   fontSize: '15px',
                   fontWeight: 600,
@@ -436,20 +439,20 @@ const errorStyles: { [key: string]: React.CSSProperties } = {
   title: {
     fontSize: '24px',
     fontWeight: 600,
-    color: '#e74c3c',
+    color: 'var(--tt-danger)',
     marginBottom: '8px'
   },
   message: {
     fontSize: '16px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     marginBottom: '24px'
   },
   retryButton: {
     padding: '12px 24px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     fontSize: '16px',
     fontWeight: 500,
     cursor: 'pointer'
@@ -468,11 +471,11 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     textAlign: 'center'
   },
   errorBanner: {
-    backgroundColor: '#fdf2f2',
-    border: '1px solid #fee2e2',
-    color: '#e74c3c',
+    backgroundColor: 'var(--tt-danger-soft)',
+    border: '1px solid rgba(232, 93, 76, 0.25)',
+    color: 'var(--tt-danger)',
     padding: '12px 16px',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     marginBottom: '16px',
     fontWeight: 500
   },
@@ -488,19 +491,21 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     }
   },
   title: {
-    fontSize: '28px',
-    fontWeight: 600,
-    color: '#2c3e50',
+    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
+    fontWeight: 750,
+    fontFamily: 'var(--tt-font-display)',
+    letterSpacing: '-0.02em',
+    color: 'var(--tt-text)',
     '@media (max-width: 768px)': {
       fontSize: '22px'
     }
   },
   addButton: {
     padding: '12px 24px',
-    backgroundColor: '#27ae60',
+    backgroundColor: 'var(--tt-success)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--tt-radius-sm)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: 500,
@@ -522,9 +527,9 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     zIndex: 1000
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '32px',
-    borderRadius: '12px',
+    borderRadius: 'var(--tt-radius)',
     width: '100%',
     maxWidth: '450px',
     '@media (max-width: 768px)': {
@@ -536,7 +541,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   modalTitle: {
     marginBottom: '20px',
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   form: {
     display: 'flex',
@@ -551,7 +556,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   label: {
     fontSize: '13px',
     fontWeight: 500,
-    color: '#555'
+    color: 'var(--tt-text-muted)'
   },
   input: {
     padding: '12px',
@@ -571,7 +576,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   cancelButton: {
     flex: 1,
     padding: '12px',
-    backgroundColor: '#ecf0f1',
+    backgroundColor: 'var(--tt-surface-muted)',
     border: 'none',
     borderRadius: '6px',
     cursor: 'pointer'
@@ -579,7 +584,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   saveButton: {
     flex: 1,
     padding: '12px',
-    backgroundColor: '#27ae60',
+    backgroundColor: 'var(--tt-success)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -596,10 +601,10 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     }
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '20px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    borderRadius: 'var(--tt-radius)',
+    boxShadow: 'var(--tt-shadow-sm)',
     '@media (max-width: 768px)': {
       padding: '16px'
     }
@@ -613,7 +618,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   taskName: {
     fontSize: '16px',
     fontWeight: 600,
-    color: '#2c3e50',
+    color: 'var(--tt-text)',
     margin: 0,
     flex: 1
   },
@@ -644,13 +649,13 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   description: {
     fontSize: '14px',
-    color: '#666',
+    color: 'var(--tt-text-muted)',
     marginBottom: '12px',
     lineHeight: 1.5
   },
   info: {
     fontSize: '13px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     margin: '4px 0'
   },
   cardActions: {
@@ -666,7 +671,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     border: '1px solid #ddd',
     borderRadius: '6px',
     fontSize: '14px',
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     cursor: 'pointer',
     '@media (max-width: 768px)': {
       fontSize: '16px', // Prevent zoom on iOS
@@ -676,7 +681,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   editButton: {
     flex: 1,
     padding: '8px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -690,7 +695,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   deleteButton: {
     flex: 1,
     padding: '8px',
-    backgroundColor: '#e74c3c',
+    backgroundColor: 'var(--tt-danger)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',

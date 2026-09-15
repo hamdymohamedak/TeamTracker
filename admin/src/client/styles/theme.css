@@ -1,0 +1,459 @@
+/* TeamTracker — calm, minimal UI */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+
+:root {
+  --tt-ink: #1a1a1a;
+  --tt-ink-soft: #2a2a2a;
+  --tt-ink-mid: #3a3a3a;
+  --tt-teal: #3a3a3a;
+  --tt-teal-bright: #525252;
+  --tt-teal-glow: rgba(0, 0, 0, 0.06);
+  --tt-amber: #737373;
+  --tt-amber-soft: rgba(0, 0, 0, 0.04);
+  --tt-danger: #b54a3f;
+  --tt-danger-soft: rgba(181, 74, 63, 0.08);
+  --tt-success: #4a7c59;
+  --tt-success-soft: rgba(74, 124, 89, 0.08);
+  --tt-info: #525252;
+  --tt-info-soft: rgba(0, 0, 0, 0.04);
+
+  --tt-canvas: #f5f5f4;
+  --tt-canvas-deep: #f0f0ef;
+  --tt-surface: #ffffff;
+  --tt-surface-muted: #f7f7f6;
+  --tt-border: rgba(0, 0, 0, 0.06);
+  --tt-border-strong: rgba(0, 0, 0, 0.12);
+
+  --tt-text: #1a1a1a;
+  --tt-text-muted: #6b6b6b;
+  --tt-text-faint: #9a9a9a;
+  --tt-text-on-ink: #f5f5f4;
+  --tt-text-on-ink-muted: #a3a3a3;
+
+  --tt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --tt-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --tt-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
+
+  --tt-radius-sm: 8px;
+  --tt-radius: 12px;
+  --tt-radius-lg: 16px;
+  --tt-sidebar-w: 240px;
+  --tt-header-h: 56px;
+
+  --tt-font-display: 'Manrope', system-ui, sans-serif;
+  --tt-font-body: 'Manrope', system-ui, sans-serif;
+  --tt-ease: ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--tt-font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--tt-text);
+  background: var(--tt-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--tt-font-display);
+  letter-spacing: -0.02em;
+  color: var(--tt-text);
+  font-weight: 650;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+a {
+  color: var(--tt-text);
+}
+
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.page-title {
+  margin: 0;
+  font-size: clamp(1.35rem, 2vw, 1.65rem);
+  font-weight: 650;
+}
+
+.page-subtitle {
+  margin: 4px 0 0;
+  color: var(--tt-text-muted);
+  font-size: 0.9rem;
+}
+
+.tt-card {
+  background: var(--tt-surface);
+  border: 1px solid var(--tt-border);
+  border-radius: var(--tt-radius);
+}
+
+.tt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--tt-radius-sm);
+  border: none;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.tt-btn-primary {
+  background: var(--tt-ink);
+  color: #fff;
+}
+
+.tt-btn-primary:hover {
+  background: #333;
+}
+
+.tt-btn-ghost {
+  background: var(--tt-surface);
+  color: var(--tt-text);
+  border: 1px solid var(--tt-border-strong);
+}
+
+.tt-btn-ghost:hover {
+  background: var(--tt-surface-muted);
+}
+
+.tt-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--tt-border-strong);
+  border-radius: var(--tt-radius-sm);
+  background: var(--tt-surface);
+  color: var(--tt-text);
+  font-size: 14px;
+  outline: none;
+}
+
+.tt-input:focus {
+  border-color: var(--tt-ink);
+}
+
+.tt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--tt-surface-muted);
+  color: var(--tt-text-muted);
+}
+
+.tt-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.tt-stat {
+  padding: 18px;
+  background: var(--tt-surface);
+  border: 1px solid var(--tt-border);
+  border-radius: var(--tt-radius);
+}
+
+@keyframes tt-rise {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tt-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes tt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* Auth */
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--tt-canvas);
+}
+
+.auth-panel {
+  width: 100%;
+  max-width: 400px;
+  background: var(--tt-surface);
+  border: 1px solid var(--tt-border);
+  border-radius: var(--tt-radius);
+  overflow: hidden;
+}
+
+.auth-brand {
+  padding: 28px 28px 22px;
+  background: var(--tt-ink);
+  color: var(--tt-text-on-ink);
+}
+
+.auth-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background: #333;
+  font-weight: 700;
+  font-size: 16px;
+  color: #fff;
+}
+
+.auth-brand h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 650;
+  color: #fff;
+}
+
+.auth-brand p {
+  margin: 4px 0 0;
+  color: var(--tt-text-on-ink-muted);
+  font-size: 0.875rem;
+}
+
+.auth-form {
+  padding: 24px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-form h2 {
+  margin: 0 0 2px;
+  font-size: 1.2rem;
+  font-weight: 650;
+}
+
+.auth-error {
+  background: var(--tt-danger-soft);
+  border: 1px solid rgba(181, 74, 63, 0.2);
+  color: var(--tt-danger);
+  padding: 10px 12px;
+  border-radius: var(--tt-radius-sm);
+  font-size: 14px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tt-text-muted);
+}
+
+.auth-footer {
+  text-align: center;
+  font-size: 14px;
+  color: var(--tt-text-muted);
+  margin: 0;
+}
+
+.auth-footer a {
+  color: var(--tt-text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .auth-brand,
+  .auth-form {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* Modals */
+.tt-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.4);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.tt-modal {
+  width: min(640px, 100%);
+  max-height: min(92dvh, 860px);
+  display: flex;
+  flex-direction: column;
+  background: var(--tt-surface);
+  border: 1px solid var(--tt-border);
+  border-radius: var(--tt-radius);
+  box-shadow: var(--tt-shadow-lg);
+  overflow: hidden;
+  margin: auto;
+}
+
+.tt-modal--sm { width: min(440px, 100%); }
+.tt-modal--md { width: min(560px, 100%); }
+.tt-modal--lg { width: min(720px, 100%); }
+
+.tt-modal-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--tt-border);
+}
+
+.tt-modal-header h2,
+.tt-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 650;
+  color: var(--tt-text);
+}
+
+.tt-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tt-text-faint);
+  cursor: pointer;
+  font-size: 18px;
+  display: grid;
+  place-items: center;
+}
+
+.tt-modal-close:hover {
+  background: var(--tt-surface-muted);
+  color: var(--tt-text);
+}
+
+.tt-modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tt-modal-footer {
+  flex-shrink: 0;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-top: 1px solid var(--tt-border);
+}
+
+.tt-modal-footer .tt-btn,
+.tt-modal-footer button {
+  min-width: 100px;
+}
+
+.tt-modal-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.tt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tt-field label,
+.tt-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tt-text-muted);
+}
+
+.tt-field-hint {
+  font-size: 11px;
+  color: var(--tt-text-faint);
+  line-height: 1.4;
+}
+
+.tt-field-span-2 {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 560px) {
+  .tt-modal-form--2col {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+  }
+}
+
+@media (max-width: 559px) {
+  .tt-modal {
+    width: 100%;
+    max-height: min(94dvh, 100%);
+  }
+
+  .tt-modal-footer {
+    flex-direction: column-reverse;
+  }
+
+  .tt-modal-footer .tt-btn,
+  .tt-modal-footer button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@supports not (height: 100dvh) {
+  .tt-modal {
+    max-height: 90vh;
+  }
+}

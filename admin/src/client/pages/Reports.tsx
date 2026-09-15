@@ -100,7 +100,7 @@ export const Reports: React.FC = () => {
         </select>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 500, color: '#555' }}>From:</label>
+          <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--tt-text-muted)' }}>From:</label>
           <input
             type="date"
             value={startDate}
@@ -110,7 +110,7 @@ export const Reports: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 500, color: '#555' }}>To:</label>
+          <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--tt-text-muted)' }}>To:</label>
           <input
             type="date"
             value={endDate}
@@ -157,7 +157,7 @@ export const Reports: React.FC = () => {
             }
           }}
           disabled={!selectedEmployee || !startDate || !endDate}
-          style={{ ...styles.button, backgroundColor: '#27ae60' }}
+          style={{ ...styles.button, backgroundColor: 'var(--tt-success)' }}
           title="Download raw activity rows as CSV (for payroll, invoicing, or external analysis)"
         >
           📥 Export CSV
@@ -168,12 +168,12 @@ export const Reports: React.FC = () => {
         <div style={{
           textAlign: 'center' as const,
           padding: '48px 20px',
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          backgroundColor: 'var(--tt-surface)',
+          borderRadius: 'var(--tt-radius)',
+          boxShadow: 'var(--tt-shadow-sm)',
         }}>
           <div style={{ fontSize: '40px', marginBottom: '16px' }}>📈</div>
-          <p style={{ fontSize: '15px', color: '#7f8c8d', margin: 0, maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.6' }}>
+          <p style={{ fontSize: '15px', color: 'var(--tt-text-muted)', margin: 0, maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.6' }}>
             Select an employee and date range, then click <strong>Generate Report</strong> to see productivity data.
           </p>
         </div>
@@ -214,26 +214,26 @@ export const Reports: React.FC = () => {
             <div style={styles.card}>
               <h3 style={styles.cardTitle}>Total Hours</h3>
               <p style={styles.cardValue}>{formatDurationSeconds(totalSeconds)}</p>
-              <p style={{ fontSize: '11px', color: '#95a5a6', margin: '4px 0 0' }}>
+              <p style={{ fontSize: '11px', color: 'var(--tt-text-faint)', margin: '4px 0 0' }}>
                 productive + idle + other
               </p>
             </div>
             <div style={styles.card}>
               <h3 style={styles.cardTitle}>Productive Hours</h3>
-              <p style={{...styles.cardValue, color: '#27ae60'}}>
+              <p style={{...styles.cardValue, color: 'var(--tt-success)'}}>
                 {formatDurationSeconds(productiveSeconds)}
               </p>
             </div>
             <div style={styles.card}>
               <h3 style={styles.cardTitle}>Unproductive Hours</h3>
-              <p style={{...styles.cardValue, color: '#e74c3c'}}>
+              <p style={{...styles.cardValue, color: 'var(--tt-danger)'}}>
                 {formatDurationSeconds(unproductiveSeconds)}
               </p>
             </div>
             <div style={styles.card}>
               <h3 style={styles.cardTitle}>Productivity Score</h3>
-              <p style={{...styles.cardValue, color: '#3498db'}}>{score}%</p>
-              <p style={{ fontSize: '11px', color: '#95a5a6', margin: '4px 0 0' }}>
+              <p style={{...styles.cardValue, color: 'var(--tt-teal)'}}>{score}%</p>
+              <p style={{ fontSize: '11px', color: 'var(--tt-text-faint)', margin: '4px 0 0' }}>
                 productive ÷ (productive + unproductive)
               </p>
             </div>
@@ -247,22 +247,22 @@ export const Reports: React.FC = () => {
             gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
             gap: '12px'
           }}>
-            <ReconcileCell label="Productive" seconds={productiveSeconds} color="#27ae60" />
-            <ReconcileCell label="Unproductive" seconds={unproductiveSeconds} color="#e74c3c" />
-            <ReconcileCell label="Other (neutral)" seconds={neutralSeconds} color="#bdc3c7" />
-            <ReconcileCell label="Idle / Break" seconds={idleSeconds} color="#95a5a6" />
-            <ReconcileCell label="Total" seconds={totalSeconds} color="#2c3e50" bold />
+            <ReconcileCell label="Productive" seconds={productiveSeconds} color="var(--tt-success)" />
+            <ReconcileCell label="Unproductive" seconds={unproductiveSeconds} color="var(--tt-danger)" />
+            <ReconcileCell label="Other (neutral)" seconds={neutralSeconds} color="var(--tt-text-faint)" />
+            <ReconcileCell label="Idle / Break" seconds={idleSeconds} color="var(--tt-text-faint)" />
+            <ReconcileCell label="Total" seconds={totalSeconds} color="var(--tt-text)" bold />
           </div>
 
           {/* Outside-business-hours card — only when BH are set for this employee. */}
           {report.hasBusinessHours && outsideHoursSeconds > 0 && (
             <div style={{
               ...styles.section,
-              border: '1px dashed #f39c12',
+              border: '1px dashed var(--tt-amber)',
               backgroundColor: '#fffaf0'
             }}>
               <h3 style={styles.sectionTitle}>🕘 Outside Business Hours</h3>
-              <p style={{ fontSize: '14px', color: '#7f8c8d', margin: '0 0 8px' }}>
+              <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 8px' }}>
                 {formatDurationSeconds(outsideHoursSeconds)} was tracked outside of this employee's
                 configured working hours and is <strong>not</strong> counted in their total, productive,
                 or productivity-score numbers above.
@@ -315,14 +315,14 @@ export const Reports: React.FC = () => {
             <h3 style={styles.sectionTitle}>Category Breakdown</h3>
             <div style={styles.categoryList}>
               {orderedCategories.length === 0 && (
-                <div style={{ ...styles.categoryItem, justifyContent: 'center', color: '#95a5a6' }}>
+                <div style={{ ...styles.categoryItem, justifyContent: 'center', color: 'var(--tt-text-faint)' }}>
                   No categorized activity in this range.
                 </div>
               )}
               {orderedCategories.map((id) => {
                 const seconds = rawBreakdown[id] || 0;
                 const pct = totalSeconds > 0 ? Math.round((seconds / totalSeconds) * 100) : 0;
-                const color = CATEGORY_COLORS[id] || '#bdc3c7';
+                const color = CATEGORY_COLORS[id] || 'var(--tt-text-faint)';
                 const label = CATEGORY_DISPLAY_NAMES[id] || id;
                 return (
                   <div key={id} style={styles.categoryItem}>
@@ -343,7 +343,7 @@ export const Reports: React.FC = () => {
                     </span>
                     <span style={styles.categoryValue}>
                       {formatDurationSeconds(seconds)}{' '}
-                      <span style={{ color: '#95a5a6', fontWeight: 400, marginLeft: '6px' }}>
+                      <span style={{ color: 'var(--tt-text-faint)', fontWeight: 400, marginLeft: '6px' }}>
                         {pct}%
                       </span>
                     </span>
@@ -363,14 +363,14 @@ export const Reports: React.FC = () => {
 const ReconcileCell: React.FC<{ label: string; seconds: number; color: string; bold?: boolean }> = ({ label, seconds, color, bold }) => (
   <div style={{
     padding: '10px 12px',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--tt-surface-muted)',
     borderLeft: `3px solid ${color}`,
     borderRadius: '6px'
   }}>
-    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#7f8c8d', letterSpacing: '0.5px' }}>
+    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--tt-text-muted)', letterSpacing: '0.5px' }}>
       {label}
     </div>
-    <div style={{ fontSize: '18px', fontWeight: bold ? 700 : 600, color: '#2c3e50', marginTop: '2px' }}>
+    <div style={{ fontSize: '18px', fontWeight: bold ? 700 : 600, color: 'var(--tt-text)', marginTop: '2px' }}>
       {formatDurationSeconds(seconds)}
     </div>
   </div>
@@ -387,14 +387,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '24px'
   },
   title: {
-    fontSize: '28px',
-    fontWeight: 600,
-    color: '#2c3e50',
+    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
+    fontWeight: 750,
+    fontFamily: 'var(--tt-font-display)',
+    letterSpacing: '-0.02em',
+    color: 'var(--tt-text)',
     margin: 0
   },
   subtitle: {
     fontSize: '14px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     margin: '8px 0 0 0'
   },
   filters: {
@@ -430,7 +432,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   } as React.CSSProperties,
   button: {
     padding: '10px 24px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -453,38 +455,40 @@ const styles: { [key: string]: React.CSSProperties } = {
     }
   } as React.CSSProperties,
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '20px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    borderRadius: 'var(--tt-radius)',
+    boxShadow: 'var(--tt-shadow-sm)',
     '@media (max-width: 768px)': {
       padding: '12px'
     }
   } as React.CSSProperties,
   cardTitle: {
     fontSize: '14px',
-    color: '#7f8c8d',
+    color: 'var(--tt-text-muted)',
     margin: '0 0 8px 0'
   },
   cardValue: {
-    fontSize: '32px',
-    fontWeight: 600,
-    color: '#2c3e50',
+    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
+    fontWeight: 750,
+    fontFamily: 'var(--tt-font-display)',
+    letterSpacing: '-0.02em',
+    color: 'var(--tt-text)',
     margin: 0,
     '@media (max-width: 768px)': {
       fontSize: '24px'
     }
   } as React.CSSProperties,
   section: {
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--tt-surface)',
     padding: '20px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    borderRadius: 'var(--tt-radius)',
+    boxShadow: 'var(--tt-shadow-sm)'
   },
   sectionTitle: {
     fontSize: '18px',
     fontWeight: 600,
-    color: '#2c3e50',
+    color: 'var(--tt-text)',
     margin: '0 0 16px 0'
   },
   activityList: {
@@ -494,28 +498,28 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   suspiciousActivity: {
     padding: '12px',
-    backgroundColor: '#fdf2f2',
-    border: '1px solid #fee2e2',
-    borderRadius: '8px'
+    backgroundColor: 'var(--tt-danger-soft)',
+    border: '1px solid rgba(232, 93, 76, 0.25)',
+    borderRadius: 'var(--tt-radius-sm)'
   },
   activityApp: {
     fontWeight: 600,
-    color: '#2c3e50',
+    color: 'var(--tt-text)',
     margin: '0 0 4px 0'
   },
   activityTitle: {
     fontSize: '14px',
-    color: '#555',
+    color: 'var(--tt-text-muted)',
     margin: '0 0 4px 0'
   },
   activityReason: {
     fontSize: '12px',
-    color: '#e74c3c',
+    color: 'var(--tt-danger)',
     margin: '0 0 4px 0'
   },
   activityTime: {
     fontSize: '12px',
-    color: '#999',
+    color: 'var(--tt-text-faint)',
     margin: 0
   },
   categoryList: {
@@ -527,17 +531,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
     padding: '12px',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--tt-surface-muted)',
     borderRadius: '6px'
   },
   categoryName: {
     fontSize: '14px',
-    color: '#2c3e50'
+    color: 'var(--tt-text)'
   },
   categoryValue: {
     fontSize: '14px',
     fontWeight: 600,
-    color: '#3498db'
+    color: 'var(--tt-teal)'
   },
   pagination: {
     display: 'flex',
@@ -550,7 +554,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   paginationButton: {
     padding: '8px 16px',
-    backgroundColor: '#3498db',
+    backgroundColor: 'var(--tt-teal)',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
@@ -560,7 +564,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   paginationInfo: {
     fontSize: '14px',
-    color: '#666',
+    color: 'var(--tt-text-muted)',
     fontWeight: 500
   }
 };

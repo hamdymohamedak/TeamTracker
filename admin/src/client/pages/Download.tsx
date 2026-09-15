@@ -17,7 +17,6 @@ function detectOS(): DetectedOS {
   if (ua.includes('win') || platform.includes('win')) return 'windows';
   if (ua.includes('linux') || platform.includes('linux')) return 'linux';
   if (ua.includes('mac') || platform.includes('mac')) {
-    // Check for Apple Silicon — WebGL renderer is the most reliable signal
     try {
       const canvas = document.createElement('canvas');
       const gl = canvas.getContext('webgl') as WebGLRenderingContext | null;
@@ -81,101 +80,96 @@ export const Download: React.FC = () => {
     : 'Download for Mac';
 
   return (
-    <div style={styles.wrapper}>
-      <div style={styles.card}>
-        <div style={styles.logoSection}>
-          <div style={styles.logoIcon}>📊</div>
-          <h1 style={styles.title}>TeamTracker</h1>
-          <p style={styles.subtitle}>Desktop Tracker {version}</p>
+    <div className="auth-shell" style={{ alignItems: 'stretch', padding: '40px 20px' }}>
+      <div className="auth-panel" style={{ maxWidth: 560, margin: 'auto' }}>
+        <div className="auth-brand" style={{ textAlign: 'center', paddingBottom: 32 }}>
+          <div className="auth-brand-mark" style={{ margin: '0 auto 14px' }}>T</div>
+          <h1>TeamTracker</h1>
+          <p>Desktop tracker {version}</p>
         </div>
 
-        <p style={styles.description}>
-          Install the TeamTracker desktop tracker on each employee's computer.
-          It runs silently in the background and syncs activity data to your admin dashboard.
-        </p>
+        <div style={{ padding: '28px 32px 32px' }}>
+          <p style={{ textAlign: 'center', color: 'var(--tt-text-muted)', margin: '0 0 24px', lineHeight: 1.65 }}>
+            Install the silent desktop tracker on each employee device. Activity syncs live to your admin dashboard.
+          </p>
 
-        {loading ? (
-          <div style={styles.loading}>Loading latest release...</div>
-        ) : primaryAsset ? (
-          <>
-            <a href={primaryAsset.browser_download_url} style={styles.primaryButton}>
-              {primaryLabel}
-              <span style={styles.size}>{formatSize(primaryAsset.size)}</span>
-            </a>
+          {loading ? (
+            <div style={{ textAlign: 'center', color: 'var(--tt-text-faint)', padding: 20 }}>Loading latest release…</div>
+          ) : primaryAsset ? (
+            <>
+              <a href={primaryAsset.browser_download_url} className="tt-btn tt-btn-primary" style={{ width: '100%', textDecoration: 'none', marginBottom: 18, padding: '16px 20px', flexDirection: 'column', gap: 4 }}>
+                <span>{primaryLabel}</span>
+                <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.85 }}>{formatSize(primaryAsset.size)}</span>
+              </a>
 
-            <div style={styles.otherDownloads}>
-              <p style={styles.otherLabel}>Other platforms:</p>
-              <div style={styles.otherButtons}>
-                {macArmDmg && os !== 'mac-arm' && (
-                  <a href={macArmDmg.browser_download_url} style={styles.secondaryButton}>
-                    Mac (Apple Silicon) <span style={styles.size}>{formatSize(macArmDmg.size)}</span>
-                  </a>
-                )}
-                {macIntelDmg && os !== 'mac-intel' && (
-                  <a href={macIntelDmg.browser_download_url} style={styles.secondaryButton}>
-                    Mac (Intel) <span style={styles.size}>{formatSize(macIntelDmg.size)}</span>
-                  </a>
-                )}
-                {windowsExe && os !== 'windows' && (
-                  <a href={windowsExe.browser_download_url} style={styles.secondaryButton}>
-                    Windows <span style={styles.size}>{formatSize(windowsExe.size)}</span>
-                  </a>
-                )}
-                {linuxAppImage && os !== 'linux' && (
-                  <a href={linuxAppImage.browser_download_url} style={styles.secondaryButton}>
-                    Linux (AppImage) <span style={styles.size}>{formatSize(linuxAppImage.size)}</span>
-                  </a>
-                )}
-                {linuxDeb && os === 'linux' && linuxAppImage && (
-                  <a href={linuxDeb.browser_download_url} style={styles.secondaryButton}>
-                    Linux (.deb) <span style={styles.size}>{formatSize(linuxDeb.size)}</span>
-                  </a>
-                )}
+              <div style={{ marginBottom: 24 }}>
+                <p style={{ fontSize: 13, color: 'var(--tt-text-faint)', textAlign: 'center', marginBottom: 10 }}>Other platforms</p>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {macArmDmg && os !== 'mac-arm' && (
+                    <a href={macArmDmg.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
+                      Mac (Apple Silicon) · {formatSize(macArmDmg.size)}
+                    </a>
+                  )}
+                  {macIntelDmg && os !== 'mac-intel' && (
+                    <a href={macIntelDmg.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
+                      Mac (Intel) · {formatSize(macIntelDmg.size)}
+                    </a>
+                  )}
+                  {windowsExe && os !== 'windows' && (
+                    <a href={windowsExe.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
+                      Windows · {formatSize(windowsExe.size)}
+                    </a>
+                  )}
+                  {linuxAppImage && os !== 'linux' && (
+                    <a href={linuxAppImage.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
+                      Linux · {formatSize(linuxAppImage.size)}
+                    </a>
+                  )}
+                  {linuxDeb && os === 'linux' && linuxAppImage && (
+                    <a href={linuxDeb.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
+                      Linux (.deb) · {formatSize(linuxDeb.size)}
+                    </a>
+                  )}
+                </div>
               </div>
-            </div>
-          </>
-        ) : (
-          <a href={GITHUB_RELEASE_URL} style={styles.primaryButton} target="_blank" rel="noopener noreferrer">
-            View Downloads on GitHub
-          </a>
-        )}
-
-        <div style={styles.steps}>
-          <h3 style={styles.stepsTitle}>Setup Instructions</h3>
-          {os === 'windows' ? (
-            <ol style={styles.stepsList}>
-              <li>Run the installer and follow the wizard</li>
-              <li>If Windows shows a SmartScreen warning, click <strong>More info</strong> then <strong>Run anyway</strong></li>
-              <li>Enter the setup token from your admin (Employees page &rarr; Setup Token)</li>
-              <li>TeamTracker runs silently — no further action needed</li>
-            </ol>
-          ) : os === 'linux' ? (
-            <ol style={styles.stepsList}>
-              <li>Download the <strong>AppImage</strong> (or <code>.deb</code> for Debian/Ubuntu)</li>
-              <li>Make it executable: <code>chmod +x TeamTracker-*.AppImage</code>, then run it</li>
-              <li>
-                For window titles: install <code>xdotool</code> on X11
-                (<code>sudo apt install xdotool</code>). On GNOME Wayland, install the
-                {' '}<strong>Focused Window D-Bus</strong> Shell extension.
-              </li>
-              <li>Enter the setup token from your admin (Employees page &rarr; Setup Token)</li>
-              <li>Optional autostart: <code>./install-autostart-linux.sh /path/to/TeamTracker.AppImage</code></li>
-            </ol>
+            </>
           ) : (
-            <ol style={styles.stepsList}>
-              <li>Open the DMG and drag <strong>TeamTracker</strong> to Applications</li>
-              <li>Right-click TeamTracker in Applications &rarr; <strong>Open</strong> &rarr; <strong>Open Anyway</strong></li>
-              <li>Grant <strong>Screen Recording</strong> and <strong>Accessibility</strong> permissions when prompted</li>
-              <li>Enter the setup token from your admin (Employees page &rarr; Setup Token)</li>
-              <li>TeamTracker runs silently — no further action needed</li>
-            </ol>
+            <a href={GITHUB_RELEASE_URL} className="tt-btn tt-btn-primary" style={{ width: '100%', textDecoration: 'none', marginBottom: 20 }} target="_blank" rel="noopener noreferrer">
+              View downloads on GitHub
+            </a>
           )}
-        </div>
 
-        <div style={styles.footer}>
-          <a href="/login" style={styles.footerLink}>Admin Login</a>
-          <span style={styles.footerDot}>&middot;</span>
-          <a href="https://github.com/hamdymohamedak/TeamTracker" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>GitHub</a>
+          <div className="tt-card" style={{ padding: '18px 20px', marginBottom: 22, background: 'var(--tt-surface-muted)' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Setup instructions</h3>
+            {os === 'windows' ? (
+              <ol style={styles.stepsList}>
+                <li>Run the installer and follow the wizard</li>
+                <li>If Windows shows a SmartScreen warning, click <strong>More info</strong> then <strong>Run anyway</strong></li>
+                <li>Enter the setup token from your admin (Employees → Setup Token)</li>
+                <li>TeamTracker runs silently — no further action needed</li>
+              </ol>
+            ) : os === 'linux' ? (
+              <ol style={styles.stepsList}>
+                <li>Download the <strong>AppImage</strong> (or <code>.deb</code> for Debian/Ubuntu)</li>
+                <li>Make it executable: <code>chmod +x TeamTracker-*.AppImage</code>, then run it</li>
+                <li>For window titles: install <code>xdotool</code> on X11. On GNOME Wayland, install the <strong>Focused Window D-Bus</strong> Shell extension.</li>
+                <li>Enter the setup token from your admin (Employees → Setup Token)</li>
+              </ol>
+            ) : (
+              <ol style={styles.stepsList}>
+                <li>Open the DMG and drag <strong>TeamTracker</strong> to Applications</li>
+                <li>Right-click TeamTracker → <strong>Open</strong> → <strong>Open Anyway</strong></li>
+                <li>Grant <strong>Screen Recording</strong> and <strong>Accessibility</strong> when prompted</li>
+                <li>Enter the setup token from your admin (Employees → Setup Token)</li>
+              </ol>
+            )}
+          </div>
+
+          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--tt-text-muted)' }}>
+            <a href="/login" style={{ fontWeight: 650, textDecoration: 'none' }}>Admin login</a>
+            <span style={{ margin: '0 8px', opacity: 0.4 }}>·</span>
+            <a href="https://github.com/hamdymohamedak/TeamTracker" target="_blank" rel="noopener noreferrer" style={{ fontWeight: 650, textDecoration: 'none' }}>GitHub</a>
+          </div>
         </div>
       </div>
     </div>
@@ -183,125 +177,11 @@ export const Download: React.FC = () => {
 };
 
 const styles: Record<string, React.CSSProperties> = {
-  wrapper: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    padding: '20px',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: '16px',
-    padding: '40px',
-    maxWidth: '520px',
-    width: '100%',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-  },
-  logoSection: {
-    textAlign: 'center' as const,
-    marginBottom: '24px',
-  },
-  logoIcon: {
-    fontSize: '48px',
-    marginBottom: '8px',
-  },
-  title: {
-    fontSize: '28px',
-    fontWeight: 700,
-    color: '#2c3e50',
-    margin: '0 0 4px',
-  },
-  subtitle: {
-    fontSize: '14px',
-    color: '#7f8c8d',
-    margin: 0,
-  },
-  description: {
-    fontSize: '15px',
-    color: '#555',
-    lineHeight: '1.6',
-    textAlign: 'center' as const,
-    marginBottom: '28px',
-  },
-  loading: {
-    textAlign: 'center' as const,
-    color: '#7f8c8d',
-    padding: '20px',
-  },
-  primaryButton: {
-    display: 'block',
-    textAlign: 'center' as const,
-    padding: '16px 24px',
-    backgroundColor: '#3498db',
-    color: '#fff',
-    borderRadius: '10px',
-    textDecoration: 'none',
-    fontSize: '16px',
-    fontWeight: 600,
-    marginBottom: '20px',
-    transition: 'background-color 0.2s',
-  },
-  size: {
-    display: 'block',
-    fontSize: '12px',
-    opacity: 0.8,
-    marginTop: '4px',
-  },
-  otherDownloads: {
-    marginBottom: '28px',
-  },
-  otherLabel: {
-    fontSize: '13px',
-    color: '#7f8c8d',
-    marginBottom: '8px',
-    textAlign: 'center' as const,
-  },
-  otherButtons: {
-    display: 'flex',
-    gap: '8px',
-    justifyContent: 'center',
-    flexWrap: 'wrap' as const,
-  },
-  secondaryButton: {
-    padding: '10px 16px',
-    backgroundColor: '#f0f2f5',
-    color: '#2c3e50',
-    borderRadius: '8px',
-    textDecoration: 'none',
-    fontSize: '13px',
-    fontWeight: 500,
-  },
-  steps: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: '12px',
-    padding: '20px 24px',
-    marginBottom: '24px',
-  },
-  stepsTitle: {
-    fontSize: '15px',
-    fontWeight: 600,
-    color: '#2c3e50',
-    margin: '0 0 12px',
-  },
   stepsList: {
     margin: 0,
-    paddingLeft: '20px',
-    fontSize: '14px',
-    color: '#555',
-    lineHeight: '1.8',
-  },
-  footer: {
-    textAlign: 'center' as const,
-    fontSize: '13px',
-  },
-  footerLink: {
-    color: '#3498db',
-    textDecoration: 'none',
-  },
-  footerDot: {
-    margin: '0 8px',
-    color: '#ccc',
+    paddingLeft: 20,
+    fontSize: 14,
+    color: 'var(--tt-text-muted)',
+    lineHeight: 1.8,
   },
 };

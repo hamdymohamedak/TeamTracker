@@ -108,7 +108,7 @@ export const Screenshots: React.FC = () => {
             <option key={e.id} value={e.id}>{e.name}</option>
           ))}
         </select>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#555' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--tt-text-muted)' }}>
           Date:
           <input
             type="date"
@@ -129,8 +129,8 @@ export const Screenshots: React.FC = () => {
       {!loading && shots.length === 0 && (
         <div style={styles.empty}>
           <div style={{ fontSize: '40px' }}>📷</div>
-          <h3 style={{ margin: '12px 0 4px', color: '#2c3e50' }}>No screenshots yet</h3>
-          <p style={{ color: '#7f8c8d', fontSize: '14px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.5 }}>
+          <h3 style={{ margin: '12px 0 4px', color: 'var(--tt-text)' }}>No screenshots yet</h3>
+          <p style={{ color: 'var(--tt-text-muted)', fontSize: '14px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.5 }}>
             Turn on <strong>Periodic Screenshots</strong> in Organization Settings, then make sure your employees
             are running the latest desktop tracker. Captures appear here every few minutes.
           </p>
@@ -150,14 +150,14 @@ export const Screenshots: React.FC = () => {
                 <img src={s.fileUrl} alt="" style={styles.thumb} loading="lazy" />
               </button>
               <div style={styles.cardBody}>
-                <div style={{ fontWeight: 600, fontSize: '13px', color: '#2c3e50' }}>
+                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--tt-text)' }}>
                   {emp?.name || s.employeeId.slice(0, 8)}
                 </div>
-                <div style={{ fontSize: '11px', color: '#7f8c8d' }}>
+                <div style={{ fontSize: '11px', color: 'var(--tt-text-muted)' }}>
                   {fmtTime(s.timestamp)} · {fmtSize(s.fileSizeBytes)}
                 </div>
                 {s.appName && (
-                  <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '2px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--tt-text-faint)', marginTop: '2px' }}>
                     {s.appName}
                   </div>
                 )}
@@ -198,21 +198,21 @@ export const Screenshots: React.FC = () => {
 const styles: { [key: string]: React.CSSProperties } = {
   container: { padding: '32px' },
   header: { marginBottom: '20px' },
-  title: { fontSize: '28px', fontWeight: 600, color: '#2c3e50', margin: 0 },
-  subtitle: { fontSize: '14px', color: '#7f8c8d', margin: '4px 0 0 0' },
+  title: { fontSize: '28px', fontWeight: 600, color: 'var(--tt-text)', margin: 0 },
+  subtitle: { fontSize: '14px', color: 'var(--tt-text-muted)', margin: '4px 0 0 0' },
   controls: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' as const },
   select: { padding: '9px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', minWidth: '200px' },
   dateInput: { padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' },
-  btnPrimary: { padding: '9px 18px', backgroundColor: '#3498db', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 },
-  errorBanner: { backgroundColor: '#fdf2f2', border: '1px solid #fee2e2', color: '#e74c3c', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px' },
-  empty: { textAlign: 'center', padding: '60px 20px', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' },
+  btnPrimary: { padding: '9px 18px', backgroundColor: 'var(--tt-teal)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 },
+  errorBanner: { backgroundColor: 'var(--tt-danger-soft)', border: '1px solid rgba(232, 93, 76, 0.25)', color: 'var(--tt-danger)', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px' },
+  empty: { textAlign: 'center', padding: '60px 20px', backgroundColor: 'var(--tt-surface)', borderRadius: 'var(--tt-radius)', boxShadow: 'var(--tt-shadow-sm)' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' },
-  card: { backgroundColor: '#fff', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+  card: { backgroundColor: 'var(--tt-surface)', borderRadius: '10px', boxShadow: 'var(--tt-shadow-sm)', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
   thumbBtn: { padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', display: 'block' },
-  thumb: { width: '100%', height: '140px', objectFit: 'cover', display: 'block', backgroundColor: '#f8f9fa' },
+  thumb: { width: '100%', height: '140px', objectFit: 'cover', display: 'block', backgroundColor: 'var(--tt-surface-muted)' },
   cardBody: { padding: '10px 12px', borderTop: '1px solid #f1f3f5' },
-  deleteBtn: { marginTop: '8px', padding: '6px 10px', fontSize: '11px', backgroundColor: '#fdf2f2', color: '#e74c3c', border: '1px solid #fee2e2', borderRadius: '4px', cursor: 'pointer', width: '100%' },
+  deleteBtn: { marginTop: '8px', padding: '6px 10px', fontSize: '11px', backgroundColor: 'var(--tt-danger-soft)', color: 'var(--tt-danger)', border: '1px solid rgba(232, 93, 76, 0.25)', borderRadius: '4px', cursor: 'pointer', width: '100%' },
   lightbox: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' },
-  lightboxImg: { maxWidth: '95%', maxHeight: '85%', borderRadius: '8px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' },
+  lightboxImg: { maxWidth: '95%', maxHeight: '85%', borderRadius: 'var(--tt-radius-sm)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' },
   lightboxMeta: { color: '#fff', fontSize: '12px', marginTop: '12px', opacity: 0.8 }
 };

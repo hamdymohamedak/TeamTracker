@@ -41,7 +41,7 @@ interface OrgSummary {
 }
 
 const scoreColor = (n: number) =>
-  n >= 80 ? '#27ae60' : n >= 60 ? '#f39c12' : '#e74c3c';
+  n >= 80 ? 'var(--tt-success)' : n >= 60 ? 'var(--tt-amber)' : 'var(--tt-danger)';
 
 export const DailySummary: React.FC = () => {
   const { org } = useAuth();
@@ -98,7 +98,7 @@ export const DailySummary: React.FC = () => {
       </header>
 
       <div style={styles.controls}>
-        <label style={{ fontSize: '13px', color: '#555', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <label style={{ fontSize: '13px', color: 'var(--tt-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           Date:
           <input
             type="date"
@@ -114,7 +114,7 @@ export const DailySummary: React.FC = () => {
           {sending ? 'Sending…' : 'Email this summary now'}
         </button>
         {sendResult && (
-          <span style={{ fontSize: '12px', color: sendResult.startsWith('✅') ? '#27ae60' : '#e67e22' }}>
+          <span style={{ fontSize: '12px', color: sendResult.startsWith('✅') ? 'var(--tt-success)' : 'var(--tt-amber)' }}>
             {sendResult}
           </span>
         )}
@@ -128,9 +128,9 @@ export const DailySummary: React.FC = () => {
         <>
           <div style={styles.headerStats}>
             <Stat label="Team Productivity" value={`${summary.teamProductivityScore}%`} color={scoreColor(summary.teamProductivityScore)} />
-            <Stat label="Total Tracked" value={formatDurationSeconds(summary.teamTotalSeconds)} color="#2c3e50" />
-            <Stat label="Productive Time" value={formatDurationSeconds(summary.teamProductiveSeconds)} color="#27ae60" />
-            <Stat label="Employees" value={`${summary.employees.length}`} color="#3498db" />
+            <Stat label="Total Tracked" value={formatDurationSeconds(summary.teamTotalSeconds)} color="var(--tt-text)" />
+            <Stat label="Productive Time" value={formatDurationSeconds(summary.teamProductiveSeconds)} color="var(--tt-success)" />
+            <Stat label="Employees" value={`${summary.employees.length}`} color="var(--tt-teal)" />
           </div>
 
           <div style={styles.tableWrap}>
@@ -143,21 +143,21 @@ export const DailySummary: React.FC = () => {
               <div style={{ flex: 3 }}>Top Apps</div>
             </div>
             {summary.employees.length === 0 && (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#7f8c8d' }}>
+              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tt-text-muted)' }}>
                 No employees yet. Add one from the Employees page.
               </div>
             )}
             {summary.employees.map(e => (
               <div key={e.employeeId} style={styles.tableRow}>
                 <div style={{ flex: 2 }}>
-                  <div style={{ fontWeight: 600, color: '#2c3e50' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--tt-text)' }}>
                     {e.employeeName}
                     {e.suspiciousCount > 0 && (
                       <span style={styles.suspiciousBadge}>⚠️ {e.suspiciousCount}</span>
                     )}
                   </div>
                   {e.outsideHoursSeconds > 0 && (
-                    <div style={{ fontSize: '11px', color: '#f39c12' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--tt-amber)' }}>
                       {formatDurationSeconds(e.outsideHoursSeconds)} outside business hours (excluded)
                     </div>
                   )}
@@ -167,22 +167,22 @@ export const DailySummary: React.FC = () => {
                     {e.productivityScore}%
                   </span>
                 </div>
-                <div style={{ width: '110px', textAlign: 'right', color: '#2c3e50' }}>
+                <div style={{ width: '110px', textAlign: 'right', color: 'var(--tt-text)' }}>
                   {formatDurationSeconds(e.totalSeconds)}
                 </div>
-                <div style={{ width: '110px', textAlign: 'right', color: '#27ae60' }}>
+                <div style={{ width: '110px', textAlign: 'right', color: 'var(--tt-success)' }}>
                   {formatDurationSeconds(e.productiveSeconds)}
                 </div>
-                <div style={{ width: '90px', textAlign: 'right', color: '#95a5a6' }}>
+                <div style={{ width: '90px', textAlign: 'right', color: 'var(--tt-text-faint)' }}>
                   {formatDurationSeconds(e.idleSeconds)}
                 </div>
-                <div style={{ flex: 3, fontSize: '12px', color: '#555' }}>
+                <div style={{ flex: 3, fontSize: '12px', color: 'var(--tt-text-muted)' }}>
                   {e.topApps.length === 0
-                    ? <span style={{ color: '#bdc3c7' }}>No tracked apps</span>
+                    ? <span style={{ color: 'var(--tt-text-faint)' }}>No tracked apps</span>
                     : e.topApps.map(a => (
                         <div key={a.app}>
                           <strong>{a.app}</strong>{' '}
-                          <span style={{ color: '#7f8c8d' }}>
+                          <span style={{ color: 'var(--tt-text-muted)' }}>
                             ({a.categoryName} · {formatDurationSeconds(a.seconds)})
                           </span>
                         </div>
@@ -193,7 +193,7 @@ export const DailySummary: React.FC = () => {
             ))}
           </div>
 
-          <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '12px', textAlign: 'center' as const }}>
+          <div style={{ fontSize: '11px', color: 'var(--tt-text-faint)', marginTop: '12px', textAlign: 'center' as const }}>
             Generated for {summary.orgName} on {summary.date} ({summary.timezone}). Score formula: productive ÷ (productive + unproductive).
           </div>
         </>
@@ -204,7 +204,7 @@ export const DailySummary: React.FC = () => {
 
 const Stat: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
   <div style={styles.statCard}>
-    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#95a5a6', letterSpacing: '0.5px' }}>{label}</div>
+    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--tt-text-faint)', letterSpacing: '0.5px' }}>{label}</div>
     <div style={{ fontSize: '28px', fontWeight: 700, color, marginTop: '4px' }}>{value}</div>
   </div>
 );
@@ -212,17 +212,17 @@ const Stat: React.FC<{ label: string; value: string; color: string }> = ({ label
 const styles: { [key: string]: React.CSSProperties } = {
   container: { padding: '32px' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', gap: '16px' },
-  title: { fontSize: '28px', fontWeight: 600, color: '#2c3e50', margin: 0 },
-  subtitle: { fontSize: '14px', color: '#7f8c8d', margin: '4px 0 0 0' },
+  title: { fontSize: '28px', fontWeight: 600, color: 'var(--tt-text)', margin: 0 },
+  subtitle: { fontSize: '14px', color: 'var(--tt-text-muted)', margin: '4px 0 0 0' },
   controls: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' as const },
   dateInput: { padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' },
-  btnPrimary: { padding: '9px 18px', backgroundColor: '#3498db', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 },
-  btnGhost: { padding: '9px 18px', backgroundColor: '#ecf0f1', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
-  errorBanner: { backgroundColor: '#fdf2f2', border: '1px solid #fee2e2', color: '#e74c3c', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px' },
+  btnPrimary: { padding: '9px 18px', backgroundColor: 'var(--tt-teal)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 },
+  btnGhost: { padding: '9px 18px', backgroundColor: 'var(--tt-surface-muted)', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
+  errorBanner: { backgroundColor: 'var(--tt-danger-soft)', border: '1px solid rgba(232, 93, 76, 0.25)', color: 'var(--tt-danger)', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px' },
   headerStats: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '20px' },
-  statCard: { backgroundColor: '#fff', padding: '18px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' },
-  tableWrap: { backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)', overflow: 'hidden' },
-  tableHeader: { display: 'flex', alignItems: 'center', padding: '12px 16px', gap: '12px', backgroundColor: '#fafbfc', fontSize: '11px', textTransform: 'uppercase' as const, letterSpacing: '0.5px', color: '#7f8c8d', borderBottom: '1px solid #eef' },
+  statCard: { backgroundColor: 'var(--tt-surface)', padding: '18px', borderRadius: 'var(--tt-radius)', boxShadow: 'var(--tt-shadow-sm)' },
+  tableWrap: { backgroundColor: 'var(--tt-surface)', borderRadius: 'var(--tt-radius)', boxShadow: 'var(--tt-shadow-sm)', overflow: 'hidden' },
+  tableHeader: { display: 'flex', alignItems: 'center', padding: '12px 16px', gap: '12px', backgroundColor: '#fafbfc', fontSize: '11px', textTransform: 'uppercase' as const, letterSpacing: '0.5px', color: 'var(--tt-text-muted)', borderBottom: '1px solid #eef' },
   tableRow: { display: 'flex', alignItems: 'flex-start', padding: '14px 16px', gap: '12px', borderBottom: '1px solid #f1f3f5', fontSize: '13px' },
-  suspiciousBadge: { display: 'inline-block', marginLeft: '8px', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#fee2e2', color: '#e74c3c', fontSize: '10px', fontWeight: 600 }
+  suspiciousBadge: { display: 'inline-block', marginLeft: '8px', padding: '2px 8px', borderRadius: '10px', backgroundColor: 'rgba(232, 93, 76, 0.25)', color: 'var(--tt-danger)', fontSize: '10px', fontWeight: 600 }
 };

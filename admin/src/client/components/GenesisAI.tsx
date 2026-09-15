@@ -45,7 +45,7 @@ function formatMarkdown(text: string): string {
 function formatInline(text: string): string {
   return text
     // Links: [text](url) → <a>
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#3498db;text-decoration:underline;">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--tt-teal);text-decoration:underline;">$1</a>')
     // Bold: **text** → <strong>
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     // Italic: *text* → <em>

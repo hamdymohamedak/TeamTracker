@@ -1,5 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  Users,
+  FolderKanban,
+  CheckSquare,
+  BarChart3,
+  Mail,
+  Camera,
+  Tags,
+  Shield,
+  Settings,
+  HelpCircle,
+  LogOut,
+  Menu,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { Dashboard } from './pages/Dashboard';
 import { Employees } from './pages/Employees';
 import { Projects } from './pages/Projects';
@@ -28,25 +45,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
   if (isLoading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f0f2f5',
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '4px solid #e0e0e0',
-            borderTop: '4px solid #3498db',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            margin: '0 auto 16px',
-          }} />
-          <p style={{ color: '#666', fontSize: '14px' }}>Loading...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="app-loading">
+        <div className="app-loading-inner">
+          <div className="app-spinner" />
+          <p>Loading workspace…</p>
         </div>
       </div>
     );
@@ -71,6 +73,47 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+const BrandBlock: React.FC<{
+  compact?: boolean;
+  onOpenSettings: () => void;
+}> = ({ compact, onOpenSettings }) => {
+  const { org } = useAuth();
+  const name = org?.name || 'TeamTracker';
+
+  return (
+    <div
+      className={compact ? 'mobile-logo' : 'logo'}
+      onClick={onOpenSettings}
+      role="button"
+      tabIndex={0}
+      aria-label="Open organization settings"
+      title="Organization settings"
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') onOpenSettings();
+      }}
+    >
+      <div className="logo-row">
+        {org?.logoUrl ? (
+          <img
+            className="logo-img"
+            src={org.logoUrl}
+            alt={name}
+            onError={e => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="logo-mark">T</div>
+        )}
+        <div>
+          <h1>{name}</h1>
+          <div className="logo-meta">{compact ? 'Admin' : 'Admin console'}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AppContent: React.FC = () => {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('loading');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -78,9 +121,8 @@ const AppContent: React.FC = () => {
   const [showOrgSettings, setShowOrgSettings] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, org, user } = useAuth();
+  const { logout, user } = useAuth();
 
-  // Get current page from URL
   const getCurrentPage = (): Page => {
     const path = location.pathname.slice(1) || 'dashboard';
     return (path as Page) || 'dashboard';
@@ -88,27 +130,19 @@ const AppContent: React.FC = () => {
 
   const currentPage = getCurrentPage();
 
-  // Handle window resize
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
-      if (window.innerWidth >= 768) {
-        setIsMobileMenuOpen(false);
-      }
+      if (window.innerWidth >= 768) setIsMobileMenuOpen(false);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Check API health with retry
   const checkHealth = useCallback(async () => {
     try {
       const response = await fetch('/api/health');
-      if (response.ok) {
-        setConnectionStatus('connected');
-      } else {
-        setConnectionStatus('disconnected');
-      }
+      setConnectionStatus(response.ok ? 'connected' : 'disconnected');
     } catch {
       setConnectionStatus('disconnected');
     }
@@ -125,248 +159,80 @@ const AppContent: React.FC = () => {
     setIsMobileMenuOpen(false);
   };
 
+  const openSettings = () => setShowOrgSettings(true);
+
   return (
     <div className="app-container">
-      {/* Mobile Header */}
       {isMobile && (
         <header className="mobile-header">
-          <div
-            className="mobile-logo"
-            onClick={() => setShowOrgSettings(true)}
-            role="button"
-            tabIndex={0}
-            aria-label="Open organization settings"
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') setShowOrgSettings(true);
-            }}
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
-          >
-            {org?.logoUrl ? (
-              <>
-                <img
-                  src={org.logoUrl}
-                  alt={org.name || 'Organization logo'}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '6px',
-                    objectFit: 'contain',
-                    backgroundColor: 'rgba(255,255,255,0.08)'
-                  }}
-                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                />
-                <div style={{ lineHeight: 1.1 }}>
-                  <h1 style={{ margin: 0, fontSize: '16px' }}>{org.name || 'TeamTracker'}</h1>
-                  <span style={{ fontSize: '10px', color: '#94a3b8' }}>Admin</span>
-                </div>
-              </>
-            ) : (
-              <>
-                <h1>TeamTracker</h1>
-                <span>Admin</span>
-              </>
-            )}
-          </div>
+          <BrandBlock compact onOpenSettings={openSettings} />
           <button
             className="mobile-menu-btn"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Toggle menu"
           >
-            {isMobileMenuOpen ? '✕' : '☰'}
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </header>
       )}
 
-      {/* Sidebar */}
       <aside className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'open' : ''}`}>
-        {!isMobile && (
-          <div
-            className="logo"
-            onClick={() => setShowOrgSettings(true)}
-            role="button"
-            tabIndex={0}
-            aria-label="Open organization settings"
-            title="Click to edit organization settings"
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') setShowOrgSettings(true);
-            }}
-            style={{ cursor: 'pointer' }}
-          >
-            {org?.logoUrl ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px'
-              }}>
-                <img
-                  src={org.logoUrl}
-                  alt={org.name || 'Organization logo'}
-                  style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '8px',
-                    objectFit: 'contain',
-                    backgroundColor: 'rgba(255,255,255,0.08)'
-                  }}
-                  onError={e => {
-                    // If the image 404s (e.g. file was manually deleted on the
-                    // server), fall back to the text logo gracefully.
-                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-                <div>
-                  <h1 style={{ margin: 0 }}>{org.name || 'TeamTracker'}</h1>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Admin</span>
-                </div>
-              </div>
-            ) : (
-              <>
-                <h1>TeamTracker</h1>
-                <span>Admin</span>
-                {org?.name && (
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', fontWeight: 400 }}>
-                    {org.name}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        {!isMobile && <BrandBlock onOpenSettings={openSettings} />}
 
         <nav className="nav">
-          <NavItem
-            label="Dashboard"
-            icon="📊"
-            active={currentPage === 'dashboard'}
-            onClick={() => handleNavClick('dashboard')}
-          />
-          <NavItem
-            label="Employees"
-            icon="👥"
-            active={currentPage === 'employees'}
-            onClick={() => handleNavClick('employees')}
-          />
-          <NavItem
-            label="Projects"
-            icon="📁"
-            active={currentPage === 'projects'}
-            onClick={() => handleNavClick('projects')}
-          />
-          <NavItem
-            label="Tasks"
-            icon="✓"
-            active={currentPage === 'tasks'}
-            onClick={() => handleNavClick('tasks')}
-          />
-          <NavItem
-            label="Reports"
-            icon="📈"
-            active={currentPage === 'reports'}
-            onClick={() => handleNavClick('reports')}
-          />
-          <NavItem
-            label="Daily Summary"
-            icon="📧"
-            active={currentPage === 'summary'}
-            onClick={() => handleNavClick('summary')}
-          />
-          <NavItem
-            label="Screenshots"
-            icon="📷"
-            active={currentPage === 'screenshots'}
-            onClick={() => handleNavClick('screenshots')}
-          />
-          <NavItem
-            label="Overrides"
-            icon="🏷️"
-            active={currentPage === 'overrides'}
-            onClick={() => handleNavClick('overrides')}
-          />
-          <NavItem
-            label="Team"
-            icon="🛡️"
-            active={currentPage === 'team'}
-            onClick={() => handleNavClick('team')}
-          />
+          <div className="nav-section-label">Overview</div>
+          <NavItem icon={LayoutDashboard} label="Dashboard" active={currentPage === 'dashboard'} onClick={() => handleNavClick('dashboard')} />
+          <NavItem icon={Users} label="Employees" active={currentPage === 'employees'} onClick={() => handleNavClick('employees')} />
+          <NavItem icon={FolderKanban} label="Projects" active={currentPage === 'projects'} onClick={() => handleNavClick('projects')} />
+          <NavItem icon={CheckSquare} label="Tasks" active={currentPage === 'tasks'} onClick={() => handleNavClick('tasks')} />
+
+          <div className="nav-section-label">Insights</div>
+          <NavItem icon={BarChart3} label="Reports" active={currentPage === 'reports'} onClick={() => handleNavClick('reports')} />
+          <NavItem icon={Mail} label="Daily Summary" active={currentPage === 'summary'} onClick={() => handleNavClick('summary')} />
+          <NavItem icon={Camera} label="Screenshots" active={currentPage === 'screenshots'} onClick={() => handleNavClick('screenshots')} />
+
+          <div className="nav-section-label">Workspace</div>
+          <NavItem icon={Tags} label="Overrides" active={currentPage === 'overrides'} onClick={() => handleNavClick('overrides')} />
+          <NavItem icon={Shield} label="Team" active={currentPage === 'team'} onClick={() => handleNavClick('team')} />
           {isMobile && (
             <NavItem
+              icon={Settings}
               label="Settings"
-              icon="⚙️"
               active={false}
               onClick={() => {
-                setShowOrgSettings(true);
+                openSettings();
                 setIsMobileMenuOpen(false);
               }}
             />
           )}
         </nav>
 
-        <div style={{ marginTop: 'auto', padding: '16px' }}>
+        <div className="sidebar-footer">
           <a
+            className="sidebar-help"
             href="https://github.com/hamdymohamedak/TeamTracker"
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '10px',
-              backgroundColor: 'rgba(52,152,219,0.08)',
-              color: '#3498db',
-              border: '1px solid rgba(52,152,219,0.2)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: 500,
-              textAlign: 'center' as const,
-              textDecoration: 'none',
-              marginBottom: '8px',
-              boxSizing: 'border-box' as const,
-            }}
           >
-            Help
+            <HelpCircle size={15} />
+            Help & docs
           </a>
-          {user?.name && (
-            <div style={{
-              fontSize: '12px',
-              color: '#94a3b8',
-              textAlign: 'center' as const,
-              marginBottom: '8px',
-            }}>
-              {user.name}
-            </div>
-          )}
-          <button
-            onClick={logout}
-            style={{
-              width: '100%',
-              padding: '10px',
-              backgroundColor: 'rgba(231,76,60,0.1)',
-              color: '#e74c3c',
-              border: '1px solid rgba(231,76,60,0.2)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: 500,
-            }}
-          >
-            Sign Out
+          {user?.name && <div className="sidebar-user">{user.name}</div>}
+          <button className="sidebar-signout" onClick={logout} type="button">
+            <LogOut size={15} />
+            Sign out
           </button>
-        </div>
-
-        <div className="connection-status">
-          <span className={`status-dot ${connectionStatus}`} />
-          {connectionStatus === 'loading' && 'Connecting...'}
-          {connectionStatus === 'connected' && 'Connected'}
-          {connectionStatus === 'disconnected' && 'Disconnected'}
+          <div className="connection-status">
+            <span className={`status-dot ${connectionStatus}`} />
+            {connectionStatus === 'loading' && 'Connecting…'}
+            {connectionStatus === 'connected' && 'Live'}
+            {connectionStatus === 'disconnected' && 'Offline'}
+          </div>
         </div>
       </aside>
 
-      {/* Mobile Overlay */}
       {isMobile && isMobileMenuOpen && (
-        <div
-          className="mobile-overlay"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
+        <div className="mobile-overlay" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
       <main className="main-content">
@@ -384,26 +250,23 @@ const AppContent: React.FC = () => {
         </Routes>
       </main>
 
-      {showOrgSettings && (
-        <OrgSettingsModal onClose={() => setShowOrgSettings(false)} />
-      )}
+      {showOrgSettings && <OrgSettingsModal onClose={() => setShowOrgSettings(false)} />}
     </div>
   );
 };
 
 interface NavItemProps {
   label: string;
-  icon: string;
+  icon: LucideIcon;
   active: boolean;
   onClick: () => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ label, icon, active, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`nav-item ${active ? 'active' : ''}`}
-  >
-    <span className="nav-icon">{icon}</span>
+const NavItem: React.FC<NavItemProps> = ({ label, icon: Icon, active, onClick }) => (
+  <button type="button" onClick={onClick} className={`nav-item ${active ? 'active' : ''}`}>
+    <span className="nav-icon">
+      <Icon size={16} strokeWidth={2.1} />
+    </span>
     <span className="nav-label">{label}</span>
   </button>
 );
@@ -413,42 +276,11 @@ const App: React.FC = () => (
     <WebSocketProvider>
       <BrowserRouter>
         <Routes>
-          <Route
-            path="/login"
-            element={
-              <PublicRoute>
-                <Login />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/signup"
-            element={
-              <PublicRoute>
-                <Signup />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/forgot-password"
-            element={
-              <PublicRoute>
-                <ForgotPassword />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/reset-password"
-            element={
-              <PublicRoute>
-                <ResetPassword />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/download"
-            element={<Download />}
-          />
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+          <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+          <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+          <Route path="/download" element={<Download />} />
           <Route
             path="/*"
             element={
