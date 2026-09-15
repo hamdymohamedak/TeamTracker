@@ -1013,4 +1013,99 @@ export function setupRoutes(app: Express): void {
       res.status(500).json({ success: false, error: String(error) });
     }
   });
+
+  // Capture privacy blocks — skip screenshots / live view when the foreground
+  // app or window title matches a pattern (org-wide or per-employee).
+  app.get('/api/privacy-blocks', requireAuth, async (req, res) => {
+    try {
+      const db = getDatabase();
+      const rows = await db.all(
+        `SELECT id, org_id, employee_id, app_pattern, block_screenshots, block_live_view, created_at
+         FROM capture_privacy_blocks WHERE org_id = ? ORDER BY created_at DESC`,
+        [req.orgId!]
+      );
+      res.json({ success: true, data: rows });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  app.post('/api/privacy-blocks', requireAuth, async (req, res) => {
+    try {
+      const {
+        employeeId,
+        appPattern,
+        blockScreenshots = true,
+        blockLiveView = true,
+      } = req.body || {};
+
+      if (!appPattern || typeof appPattern !== 'string' || !appPattern.trim()) {
+        return res.status(400).json({ success: false, error: 'appPattern is required' });
+      }
+      if (!blockScreenshots && !blockLiveView) {
+        return res.status(400).json({ success: false, error: 'At least one of blockScreenshots or blockLiveView must be enabled' });
+      }
+
+      if (employeeId) {
+        const empCheck = await getDatabase().get(
+          'SELECT id FROM employees WHERE id = ? AND org_id = ?',
+          [employeeId, req.orgId!]
+        );
+        if (!empCheck) {
+          return res.status(400).json({ success: false, error: 'Employee not found in your organization' });
+        }
+      }
+
+      const db = getDatabase();
+      const id = uuidv4();
+      const now = new Date().toISOString();
+      const pattern = appPattern.trim();
+
+      await db.run(
+        `INSERT INTO capture_privacy_blocks
+          (id, org_id, employee_id, app_pattern, block_screenshots, block_live_view, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          req.orgId!,
+          employeeId || null,
+          pattern,
+          blockScreenshots ? 1 : 0,
+          blockLiveView ? 1 : 0,
+          now,
+        ]
+      );
+
+      res.json({
+        success: true,
+        data: {
+          id,
+          orgId: req.orgId,
+          employeeId: employeeId || null,
+          appPattern: pattern,
+          blockScreenshots: !!blockScreenshots,
+          blockLiveView: !!blockLiveView,
+          createdAt: now,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  app.delete('/api/privacy-blocks/:id', requireAuth, async (req, res) => {
+    try {
+      const db = getDatabase();
+      const result: any = await db.run(
+        'DELETE FROM capture_privacy_blocks WHERE id = ? AND org_id = ?',
+        [req.params.id, req.orgId!]
+      );
+      if (result?.changes === 0) {
+        return res.status(404).json({ success: false, error: 'Privacy block not found' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
 }

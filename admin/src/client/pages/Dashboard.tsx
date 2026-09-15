@@ -5,6 +5,7 @@ import {
   BarChart3,
   Camera,
   Clock3,
+  EyeOff,
   Focus,
   Maximize2,
   Minimize2,
@@ -271,6 +272,8 @@ export const Dashboard: React.FC = () => {
   const [liveFrameAt, setLiveFrameAt] = useState<string | null>(null);
   const [liveFullscreen, setLiveFullscreen] = useState(false);
   const [liveSnapMsg, setLiveSnapMsg] = useState<string | null>(null);
+  const [livePrivacyBlocked, setLivePrivacyBlocked] = useState(false);
+  const [livePrivacyApp, setLivePrivacyApp] = useState<string | null>(null);
   const [httpOnlineIds, setHttpOnlineIds] = useState<Set<string>>(new Set());
   const liveImgRef = useRef<HTMLImageElement | null>(null);
   const liveStageRef = useRef<HTMLDivElement | null>(null);
@@ -278,6 +281,9 @@ export const Dashboard: React.FC = () => {
   const liveEmployeeIdRef = useRef(liveEmployeeId);
   const liveCaptionAtRef = useRef(0);
   const liveSnapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveResumeRef = useRef(false);
+  const liveWasOfflineRef = useRef(false);
   liveEmployeeIdRef.current = liveEmployeeId;
   const { onlineEmployees, lastMessage, sendMessage, subscribeLiveFrames, isConnected } = useWebSocket();
   const { org } = useAuth();
@@ -312,12 +318,18 @@ export const Dashboard: React.FC = () => {
   }, []);
 
   const stopLiveStream = useCallback((notifyServer = true) => {
+    if (liveStartTimerRef.current) {
+      clearTimeout(liveStartTimerRef.current);
+      liveStartTimerRef.current = null;
+    }
     if (notifyServer) sendMessage({ type: 'admin:live-view-stop' });
     liveSessionRef.current = null;
     setLiveStreaming(false);
     setLiveStarting(false);
     setLiveFrameAt(null);
     setLiveSnapMsg(null);
+    setLivePrivacyBlocked(false);
+    setLivePrivacyApp(null);
     if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
     if (document.fullscreenElement === liveStageRef.current) {
       void document.exitFullscreen().catch(() => {});
@@ -329,10 +341,21 @@ export const Dashboard: React.FC = () => {
     setLiveError(null);
     setLiveStarting(true);
     setLiveStreaming(false);
+    setLivePrivacyBlocked(false);
     setLiveFrameAt(null);
+    liveResumeRef.current = true;
     if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
+    if (liveStartTimerRef.current) clearTimeout(liveStartTimerRef.current);
+    liveStartTimerRef.current = setTimeout(() => {
+      setLiveStarting(prev => {
+        if (!prev) return prev;
+        setLiveError(t('live.startTimeout'));
+        return false;
+      });
+    }, 10000);
     const ok = sendMessage({ type: 'admin:live-view-start', employeeId });
     if (!ok) {
+      if (liveStartTimerRef.current) clearTimeout(liveStartTimerRef.current);
       setLiveStarting(false);
       setLiveError(t('live.wsRequired'));
     }
@@ -402,8 +425,14 @@ export const Dashboard: React.FC = () => {
           liveSessionRef.current = null;
           setLiveStreaming(false);
           setLiveStarting(false);
+          if (liveStartTimerRef.current) {
+            clearTimeout(liveStartTimerRef.current);
+            liveStartTimerRef.current = null;
+          }
           const reason = message.data?.reason;
-          if (reason && reason !== 'admin-stop' && reason !== 'switched') {
+          if (reason === 'device-disconnect' || reason === 'ws-disconnect') {
+            setLiveError(t('live.deviceReconnecting'));
+          } else if (reason && reason !== 'admin-stop' && reason !== 'switched') {
             setLiveError(t('live.ended'));
           }
         }
@@ -413,14 +442,31 @@ export const Dashboard: React.FC = () => {
       const empId = liveEmployeeIdRef.current;
       if (!empId || message.data?.employeeId !== empId) return;
       if (liveSessionRef.current && message.data?.sessionId && message.data.sessionId !== liveSessionRef.current) return;
+
+      if (message.data?.privacyBlocked) {
+        setLivePrivacyBlocked(true);
+        setLivePrivacyApp(message.data.appName || message.data.windowTitle || null);
+        setLiveStreaming(prev => (prev ? prev : true));
+        setLiveStarting(prev => (prev ? false : prev));
+        if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
+        if (message.data?.sessionId) liveSessionRef.current = message.data.sessionId;
+        return;
+      }
+
       const b64 = message.data?.dataBase64;
       if (!b64) return;
       const mime = message.data?.mimeType || 'image/jpeg';
       const src = `data:${mime};base64,${b64}`;
       if (liveImgRef.current) liveImgRef.current.src = src;
       if (message.data?.sessionId) liveSessionRef.current = message.data.sessionId;
+      setLivePrivacyBlocked(false);
+      setLivePrivacyApp(null);
       setLiveStreaming(prev => (prev ? prev : true));
       setLiveStarting(prev => (prev ? false : prev));
+      if (liveStartTimerRef.current) {
+        clearTimeout(liveStartTimerRef.current);
+        liveStartTimerRef.current = null;
+      }
       const now = Date.now();
       if (now - liveCaptionAtRef.current > 1000) {
         liveCaptionAtRef.current = now;
@@ -446,13 +492,60 @@ export const Dashboard: React.FC = () => {
 
   // Stop stream when switching employee (nothing streams until Start again).
   useEffect(() => {
+    liveResumeRef.current = false;
     stopLiveStream(true);
     setLiveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveEmployeeId]);
 
+  // If the employee drops offline mid-view, clear the stuck "connecting" UI.
+  // When they come back after an offline gap and we still want to watch, resume once.
   useEffect(() => {
-    return () => { stopLiveStream(true); };
+    if (!liveEmployeeId) return;
+    const online = onlineEmployees.has(liveEmployeeId) || httpOnlineIds.has(liveEmployeeId);
+    if (!online) {
+      if (liveStreaming || liveStarting || liveResumeRef.current) {
+        liveWasOfflineRef.current = true;
+        setLiveStreaming(false);
+        setLiveStarting(false);
+        if (liveStartTimerRef.current) {
+          clearTimeout(liveStartTimerRef.current);
+          liveStartTimerRef.current = null;
+        }
+        if (liveResumeRef.current) setLiveError(t('live.deviceReconnecting'));
+      }
+      return;
+    }
+    if (
+      liveWasOfflineRef.current &&
+      liveResumeRef.current &&
+      !liveStreaming &&
+      !liveStarting &&
+      isConnected
+    ) {
+      liveWasOfflineRef.current = false;
+      const timer = setTimeout(() => {
+        if (!liveResumeRef.current) return;
+        startLiveStream(liveEmployeeId);
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, [
+    liveEmployeeId,
+    onlineEmployees,
+    httpOnlineIds,
+    liveStreaming,
+    liveStarting,
+    isConnected,
+    startLiveStream,
+    t,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      liveResumeRef.current = false;
+      stopLiveStream(true);
+    };
   }, [stopLiveStream]);
 
   const loadData = async () => {
@@ -688,44 +781,49 @@ export const Dashboard: React.FC = () => {
                       <div style={{ minWidth: 0 }}>
                         <div style={styles.liveScreenTitle}>{selected.name}</div>
                         <div style={styles.liveScreenSub}>
-                          {liveStreaming
-                            ? t('live.streaming')
-                            : liveStarting
-                              ? t('live.connecting')
-                              : empActivity?.currentActivity
-                                ? `${empActivity.currentActivity}${empActivity.currentCategory ? ` · ${empActivity.currentCategory}` : ''}`
-                                : online
-                                  ? t('live.ready')
-                                  : t('live.trackerOffline')}
+                          {liveStreaming && livePrivacyBlocked
+                            ? t('live.privacyBlocked')
+                            : liveStreaming
+                              ? t('live.streaming')
+                              : liveStarting
+                                ? t('live.connecting')
+                                : empActivity?.currentActivity
+                                  ? `${empActivity.currentActivity}${empActivity.currentCategory ? ` · ${empActivity.currentCategory}` : ''}`
+                                  : online
+                                    ? t('live.ready')
+                                    : t('live.trackerOffline')}
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                        {liveStreaming && !livePrivacyBlocked && (
+                          <button
+                            type="button"
+                            onClick={() => captureLiveSnapshot(selected.name)}
+                            style={styles.liveGhostBtn}
+                            title={t('live.snapTitle')}
+                          >
+                            <Camera size={14} />
+                            {t('live.snap')}
+                          </button>
+                        )}
                         {liveStreaming && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => captureLiveSnapshot(selected.name)}
-                              style={styles.liveGhostBtn}
-                              title={t('live.snapTitle')}
-                            >
-                              <Camera size={14} />
-                              {t('live.snap')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void toggleLiveFullscreen()}
-                              style={styles.liveGhostBtn}
-                              title={liveFullscreen ? t('live.exitFullscreen') : t('live.fullscreenTitle')}
-                            >
-                              {liveFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                              {liveFullscreen ? t('live.exitFullscreen') : t('live.fullscreen')}
-                            </button>
-                          </>
+                          <button
+                            type="button"
+                            onClick={() => void toggleLiveFullscreen()}
+                            style={styles.liveGhostBtn}
+                            title={liveFullscreen ? t('live.exitFullscreen') : t('live.fullscreenTitle')}
+                          >
+                            {liveFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                            {liveFullscreen ? t('live.exitFullscreen') : t('live.fullscreen')}
+                          </button>
                         )}
                         {liveStreaming || liveStarting ? (
                           <button
                             type="button"
-                            onClick={() => stopLiveStream(true)}
+                            onClick={() => {
+                              liveResumeRef.current = false;
+                              stopLiveStream(true);
+                            }}
                             style={styles.liveGhostBtn}
                             title={t('live.stopTitle')}
                           >
@@ -773,9 +871,18 @@ export const Dashboard: React.FC = () => {
                         style={{
                           ...styles.liveScreenImage,
                           ...(liveFullscreen ? styles.liveScreenImageFullscreen : null),
-                          display: liveStreaming ? 'block' : 'none',
+                          display: liveStreaming && !livePrivacyBlocked ? 'block' : 'none',
                         }}
                       />
+                      {liveStreaming && livePrivacyBlocked && (
+                        <div style={styles.liveEmptyScreen}>
+                          <EyeOff size={36} color="var(--tt-text-faint)" />
+                          <p style={{ margin: '12px 0 4px', fontWeight: 600 }}>{t('live.privacyBlocked')}</p>
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--tt-text-muted)', maxWidth: 400, textAlign: 'center' }}>
+                            {t('live.privacyBlockedHint', { app: livePrivacyApp || '—' })}
+                          </p>
+                        </div>
+                      )}
                       {!liveStreaming && (
                         <div style={styles.liveEmptyScreen}>
                           <Monitor size={36} color="var(--tt-text-faint)" />
@@ -798,14 +905,16 @@ export const Dashboard: React.FC = () => {
                             {liveFrameAt ? ` · ${new Date(liveFrameAt).toLocaleTimeString()}` : ''}
                           </span>
                           <span style={{ display: 'flex', gap: 8 }}>
-                            <button
-                              type="button"
-                              onClick={() => captureLiveSnapshot(selected.name)}
-                              style={styles.liveOverlayBtn}
-                              title={t('live.snapTitle')}
-                            >
-                              <Camera size={16} />
-                            </button>
+                            {!livePrivacyBlocked && (
+                              <button
+                                type="button"
+                                onClick={() => captureLiveSnapshot(selected.name)}
+                                style={styles.liveOverlayBtn}
+                                title={t('live.snapTitle')}
+                              >
+                                <Camera size={16} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => void toggleLiveFullscreen()}

@@ -143,6 +143,28 @@ export const Screenshots: React.FC = () => {
   }, [lastMessage, employeeId, load]);
 
   useEffect(() => {
+    if (!lastMessage || lastMessage.type !== 'screenshot:privacy-blocked') return;
+    const data = lastMessage.data || {};
+    if (employeeId && data.employeeId && data.employeeId !== employeeId) return;
+    if (
+      pendingRequestRef.current?.requestId &&
+      data.requestId &&
+      data.requestId !== pendingRequestRef.current.requestId
+    ) {
+      return;
+    }
+    pendingRequestRef.current = null;
+    setTaking(false);
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    setFlash(t('screenshots.privacyBlocked', {
+      app: data.appName || data.pattern || '—',
+    }));
+  }, [lastMessage, employeeId, t]);
+
+  useEffect(() => {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };

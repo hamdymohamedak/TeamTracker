@@ -253,6 +253,28 @@ export async function runMigrations(db: DB): Promise<void> {
         `);
         console.log('  Migration 4: Employee email is now optional, job_type column added');
       }
+    },
+    {
+      version: 5,
+      name: 'capture privacy blocks — skip screenshots/live for matched apps',
+      up: async (db: DB) => {
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS capture_privacy_blocks (
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            employee_id TEXT,
+            app_pattern TEXT NOT NULL,
+            block_screenshots INTEGER NOT NULL DEFAULT 1,
+            block_live_view INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (org_id) REFERENCES organizations(id),
+            FOREIGN KEY (employee_id) REFERENCES employees(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_privacy_blocks_org ON capture_privacy_blocks(org_id);
+          CREATE INDEX IF NOT EXISTS idx_privacy_blocks_employee ON capture_privacy_blocks(employee_id);
+        `);
+        console.log('  Migration 5: capture_privacy_blocks table created');
+      }
     }
   ];
 

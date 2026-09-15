@@ -54,6 +54,19 @@ export function setupOrgRoutes(app: Express): void {
         [req.orgId!]
       );
       if (!row) return res.status(404).json({ success: false, error: 'Organization not found' });
+
+      // Device JWTs get only org-wide + their own blocks; admins get the full list.
+      const blockParams: string[] = [req.orgId!];
+      let blockSql =
+        `SELECT id, app_pattern, employee_id, block_screenshots, block_live_view
+         FROM capture_privacy_blocks WHERE org_id = ?`;
+      if (req.tokenType === 'device' && req.employeeId) {
+        blockSql += ` AND (employee_id IS NULL OR employee_id = ?)`;
+        blockParams.push(req.employeeId);
+      }
+      blockSql += ` ORDER BY created_at DESC`;
+      const blockRows = await db.all(blockSql, blockParams).catch(() => []);
+
       res.json({
         success: true,
         data: {
@@ -70,6 +83,13 @@ export function setupOrgRoutes(app: Express): void {
           screenshotsEnabled: row.screenshots_enabled === 1,
           screenshotIntervalMinutes: typeof row.screenshot_interval_minutes === 'number' ? row.screenshot_interval_minutes : 10,
           screenshotRetentionDays: typeof row.screenshot_retention_days === 'number' ? row.screenshot_retention_days : 7,
+          capturePrivacyBlocks: (blockRows || []).map((b: any) => ({
+            id: b.id,
+            appPattern: b.app_pattern,
+            employeeId: b.employee_id || null,
+            blockScreenshots: b.block_screenshots !== 0,
+            blockLiveView: b.block_live_view !== 0,
+          })),
           createdAt: row.created_at,
           updatedAt: row.updated_at
         }

@@ -319,8 +319,11 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
       const session = liveByEmployee.get(client.employeeId);
       if (!session || session.orgId !== client.orgId) break;
       if (message.data?.sessionId && message.data.sessionId !== session.sessionId) break;
+      const privacyBlocked = !!message.data?.privacyBlocked;
       const dataBase64 = typeof message.data?.dataBase64 === 'string' ? message.data.dataBase64 : '';
-      if (!dataBase64 || dataBase64.length > MAX_LIVE_FRAME_CHARS) break;
+      if (!privacyBlocked) {
+        if (!dataBase64 || dataBase64.length > MAX_LIVE_FRAME_CHARS) break;
+      }
       if (session.adminWs.readyState !== WebSocket.OPEN) {
         endLiveViewSession(session, 'viewer-gone');
         break;
@@ -331,10 +334,30 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
           sessionId: session.sessionId,
           employeeId: client.employeeId,
           mimeType: message.data?.mimeType || 'image/jpeg',
-          dataBase64,
+          dataBase64: privacyBlocked ? '' : dataBase64,
           capturedAt: message.data?.capturedAt || new Date().toISOString(),
+          privacyBlocked,
+          appName: message.data?.appName || null,
+          windowTitle: message.data?.windowTitle || null,
         },
       }));
+      break;
+    }
+
+    case 'screenshot:privacy-blocked': {
+      if (client.isAdmin || !client.employeeId || !client.orgId) break;
+      broadcastToAdmins(client.orgId, {
+        type: 'screenshot:privacy-blocked',
+        data: {
+          employeeId: client.employeeId,
+          employeeName: client.employeeName,
+          requestId: message.data?.requestId || null,
+          appName: message.data?.appName || null,
+          windowTitle: message.data?.windowTitle || null,
+          pattern: message.data?.pattern || null,
+          timestamp: new Date().toISOString(),
+        },
+      });
       break;
     }
 

@@ -31,6 +31,35 @@ export interface ActiveWindowInfo {
 let activeWinFn: (() => Promise<any>) | null = null;
 let activeWinLoadAttempted = false;
 let linuxBackendLogged = false;
+let lastWindow: ActiveWindowInfo | null = null;
+let inFlightLookup: Promise<ActiveWindowInfo | null> | null = null;
+let lastErrorLogAt = 0;
+const LOOKUP_TIMEOUT_MS = 450;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve(null);
+    }, ms);
+    promise.then(
+      (value) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(null);
+      }
+    );
+  });
+}
 
 async function loadActiveWin(): Promise<(() => Promise<any>) | null> {
   if (activeWinLoadAttempted) return activeWinFn;
@@ -305,34 +334,49 @@ function normalizeActiveWin(raw: any): ActiveWindowInfo | null {
 }
 
 /**
- * Resolve the currently focused window. Safe to call every 10s from the
- * tracker loop — failures return null instead of throwing.
+ * Resolve the currently focused window. Safe to call frequently —
+ * concurrent callers share one in-flight lookup, results are cached briefly,
+ * and slow/failing backends time out instead of hanging the live stream.
  */
 export async function getActiveWindow(): Promise<ActiveWindowInfo | null> {
-  const fn = await loadActiveWin();
-  if (fn) {
+  if (inFlightLookup) return inFlightLookup;
+
+  inFlightLookup = (async () => {
     try {
-      const raw = await fn();
-      const normalized = normalizeActiveWin(raw);
-      // On Linux/X11 active-win usually works. If it returns nothing (common
-      // on Wayland), fall through to CLI backends.
-      if (normalized && (normalized.title || normalized.owner.name !== 'Unknown')) {
-        return normalized;
+      const fn = await loadActiveWin();
+      if (fn) {
+        try {
+          const raw = await withTimeout(Promise.resolve().then(() => fn()), LOOKUP_TIMEOUT_MS);
+          const normalized = normalizeActiveWin(raw);
+          if (normalized && (normalized.title || normalized.owner.name !== 'Unknown')) {
+            lastWindow = normalized;
+            return normalized;
+          }
+        } catch (err) {
+          const now = Date.now();
+          if (!isLinux() && now - lastErrorLogAt > 10_000) {
+            lastErrorLogAt = now;
+            console.warn('[active-window] active-win error:', (err as Error).message);
+          }
+          if (!isLinux()) return lastWindow;
+        }
       }
-    } catch (err) {
-      if (!isLinux()) {
-        console.error('[active-window] active-win error:', (err as Error).message);
-        return null;
+
+      if (isLinux()) {
+        const linux = await withTimeout(fromLinuxFallbacks(), LOOKUP_TIMEOUT_MS);
+        if (linux) {
+          lastWindow = linux;
+          return linux;
+        }
       }
-      // Linux: try CLI fallbacks below.
+
+      return lastWindow;
+    } finally {
+      inFlightLookup = null;
     }
-  }
+  })();
 
-  if (isLinux()) {
-    return fromLinuxFallbacks();
-  }
-
-  return null;
+  return inFlightLookup;
 }
 
 /** Whether the active-win native module loaded (useful for status logs). */

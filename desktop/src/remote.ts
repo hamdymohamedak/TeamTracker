@@ -3,7 +3,7 @@
 
 import WebSocket from 'ws';
 import { getServerUrl } from './config.js';
-import { captureNow } from './screenshot.js';
+import { captureNow, refreshOrgCapturePolicy } from './screenshot.js';
 import {
   configureLiveViewSender,
   startLiveViewSession,
@@ -41,12 +41,24 @@ async function handleScreenshotCommand(requestId: string): Promise<void> {
   if (!requestId || inFlightRequests.has(requestId)) return;
   inFlightRequests.add(requestId);
   try {
+    void refreshOrgCapturePolicy();
     console.log(`[remote] capturing screenshot for request ${requestId}`);
     const result = await captureNow(getTokenFn, () => ({
       appName: getContextFn().appName,
       windowTitle: getContextFn().windowTitle,
     }), { requestId, trigger: 'on_demand' });
-    if (!result.ok) {
+    if (result.privacyBlocked) {
+      console.log(`[remote] screenshot blocked by privacy rule "${result.privacyPattern}"`);
+      sendMessage({
+        type: 'screenshot:privacy-blocked',
+        data: {
+          requestId,
+          appName: result.appName || null,
+          windowTitle: result.windowTitle || null,
+          pattern: result.privacyPattern || null,
+        },
+      });
+    } else if (!result.ok) {
       console.warn(`[remote] screenshot request ${requestId} failed:`, result.error);
     } else {
       console.log(`[remote] screenshot uploaded for request ${requestId}:`, result.id);
@@ -63,6 +75,8 @@ function handleMessage(raw: WebSocket.RawData): void {
       void handleScreenshotCommand(String(message.data.requestId));
     }
     if (message?.type === 'command:live-view-start' && message?.data?.sessionId) {
+      // Start streaming immediately — privacy policy refresh must not delay first frames.
+      void refreshOrgCapturePolicy();
       startLiveViewSession(String(message.data.sessionId));
     }
     if (message?.type === 'command:live-view-stop') {
@@ -102,8 +116,10 @@ async function pollCommands(): Promise<void> {
 function scheduleReconnect(): void {
   if (intentionalClose) return;
   if (reconnectTimer) clearTimeout(reconnectTimer);
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000);
+  // Fast first reconnects after refresh (300ms → 5s cap), not 30s.
+  const delay = Math.min(300 * Math.pow(2, reconnectAttempt), 5000);
   reconnectAttempt += 1;
+  console.log(`[remote] reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
   reconnectTimer = setTimeout(() => connectSocket(), delay);
 }
 
@@ -115,7 +131,12 @@ function connectSocket(): void {
   }
 
   if (ws) {
-    try { ws.removeAllListeners(); ws.close(); } catch { /* ignore */ }
+    try {
+      ws.removeAllListeners();
+      // Avoid close→scheduleReconnect loop while we are intentionally replacing.
+      ws.on('close', () => {});
+      ws.close();
+    } catch { /* ignore */ }
     ws = null;
   }
 
@@ -137,6 +158,8 @@ function connectSocket(): void {
     });
     console.log('[remote] WebSocket connected');
     void pollCommands();
+    // Pull privacy rules in the background — don't block live/screenshot.
+    void refreshOrgCapturePolicy();
   });
 
   ws.on('message', handleMessage);
@@ -166,7 +189,7 @@ export function startRemoteCommandClient(
   getContextFn = getCurrentContext;
   intentionalClose = false;
   reconnectAttempt = 0;
-  configureLiveViewSender(sendMessage);
+  configureLiveViewSender(sendMessage, getCurrentContext);
   connectSocket();
 
   if (pollTimer) clearInterval(pollTimer);

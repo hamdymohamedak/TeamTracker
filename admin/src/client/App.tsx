@@ -10,6 +10,7 @@ import {
   Camera,
   Tags,
   Shield,
+  EyeOff,
   Settings,
   HelpCircle,
   LogOut,
@@ -25,6 +26,7 @@ import { Reports } from './pages/Reports';
 import { DailySummary } from './pages/DailySummary';
 import { Screenshots } from './pages/Screenshots';
 import { Overrides } from './pages/Overrides';
+import { PrivacyBlocks } from './pages/PrivacyBlocks';
 import { Team } from './pages/Team';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
@@ -40,7 +42,7 @@ import type { TranslationKey } from './i18n/translations';
 import './App.css';
 
 type ConnectionStatus = 'loading' | 'connected' | 'disconnected';
-type Page = 'dashboard' | 'employees' | 'projects' | 'tasks' | 'reports' | 'summary' | 'screenshots' | 'overrides' | 'team';
+type Page = 'dashboard' | 'employees' | 'projects' | 'tasks' | 'reports' | 'summary' | 'screenshots' | 'overrides' | 'privacy' | 'team';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -208,6 +210,7 @@ const AppContent: React.FC = () => {
 
           <div className="nav-section-label">{t('shell.workspace')}</div>
           {nav('shell.overrides', 'overrides', Tags)}
+          {nav('shell.privacy', 'privacy', EyeOff)}
           {nav('shell.team', 'team', Shield)}
           {isMobile && (
             <NavItem
@@ -261,6 +264,7 @@ const AppContent: React.FC = () => {
           <Route path="/summary" element={<DailySummary />} />
           <Route path="/screenshots" element={<Screenshots />} />
           <Route path="/overrides" element={<Overrides />} />
+          <Route path="/privacy" element={<PrivacyBlocks />} />
           <Route path="/team" element={<Team />} />
           <Route path="*" element={<Dashboard />} />
         </Routes>

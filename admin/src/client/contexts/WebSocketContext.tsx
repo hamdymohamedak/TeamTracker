@@ -12,6 +12,9 @@ type LiveFrameHandler = (message: {
     dataBase64?: string;
     capturedAt?: string;
     reason?: string;
+    privacyBlocked?: boolean;
+    appName?: string;
+    windowTitle?: string;
   };
 }) => void;
 
