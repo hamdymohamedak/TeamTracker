@@ -17,7 +17,7 @@ import { getServerUrl } from './config.js';
 import { getActiveWindow } from './active-window.js';
 import {
   setCapturePrivacyBlocks,
-  shouldBlockScreenshot,
+  shouldBlockScreenshotAsync,
   type CapturePrivacyBlock,
 } from './privacy-blocks.js';
 
@@ -74,9 +74,12 @@ export async function captureNow(
       }
     } catch { /* use tracker context */ }
 
-    const blocked = shouldBlockScreenshot(appName, windowTitle);
+    const blocked = await shouldBlockScreenshotAsync({ appName, windowTitle });
     if (blocked) {
-      console.log(`[screenshot] skipped — privacy block "${blocked.pattern}" (${appName || '?'})`);
+      console.log(
+        `[screenshot] skipped — privacy "${blocked.pattern}" via "${blocked.matchedVia}" ` +
+        `(${appName || '?'} | ${windowTitle || '?'})`
+      );
       return {
         ok: false,
         error: 'privacy_blocked',

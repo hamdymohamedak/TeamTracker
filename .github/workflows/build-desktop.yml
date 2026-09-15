@@ -1,13 +1,30 @@
-name: Build Desktop Tracker
+name: Build Desktop Apps
+
+# Employee tracker + Admin desktop shell.
+# - Push to main → build & upload artifacts
+# - Tag v* → build, upload, and publish a GitHub Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
 
 jobs:
   build-mac:
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app_dir: desktop
+            artifact_name: employee-mac
+            codesign_id: com.teamtracker.tracker
+            app_bundle: TeamTracker.app
+          - app_dir: desktop-admin
+            artifact_name: admin-mac
+            codesign_id: com.teamtracker.admin
+            app_bundle: TeamTracker Admin.app
     steps:
       - uses: actions/checkout@v4
 
@@ -17,50 +34,61 @@ jobs:
 
       - name: Prepare standalone build dir
         run: |
-          mkdir -p "$RUNNER_TEMP/teamtracker-build"
-          cp -R desktop/. "$RUNNER_TEMP/teamtracker-build/"
-          rm -rf "$RUNNER_TEMP/teamtracker-build/node_modules" "$RUNNER_TEMP/teamtracker-build/release"
+          mkdir -p "$RUNNER_TEMP/tt-build"
+          cp -R "${{ matrix.app_dir }}/." "$RUNNER_TEMP/tt-build/"
+          rm -rf "$RUNNER_TEMP/tt-build/node_modules" "$RUNNER_TEMP/tt-build/release"
 
       - name: Install deps and build
-        working-directory: ${{ runner.temp }}/teamtracker-build
+        working-directory: ${{ runner.temp }}/tt-build
         run: |
           npm install
           npm run build
 
       - name: Package Mac app
-        working-directory: ${{ runner.temp }}/teamtracker-build
+        working-directory: ${{ runner.temp }}/tt-build
         run: npm run dist:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Re-sign with correct identifier
-        working-directory: ${{ runner.temp }}/teamtracker-build
+      - name: Ad-hoc re-sign
+        working-directory: ${{ runner.temp }}/tt-build
         run: |
-          for dir in release/mac-arm64/TeamTracker.app release/mac/TeamTracker.app; do
+          for dir in "release/mac-arm64/${{ matrix.app_bundle }}" "release/mac/${{ matrix.app_bundle }}"; do
             if [ -d "$dir" ]; then
               find "$dir" -type f -perm +111 -path "*/Frameworks/*" -exec codesign --force --sign - {} \; 2>/dev/null || true
               find "$dir/Contents/Frameworks" -name "*.dylib" -exec codesign --force --sign - {} \; 2>/dev/null || true
               find "$dir/Contents/Frameworks" -name "*.framework" -exec codesign --force --sign - {} \; 2>/dev/null || true
               find "$dir/Contents/Frameworks" -name "*.app" -exec codesign --force --sign - {} \; 2>/dev/null || true
-              codesign --force --sign - --identifier com.teamtracker.tracker "$dir"
+              codesign --force --sign - --identifier "${{ matrix.codesign_id }}" "$dir"
             fi
           done
 
-      - name: Copy artifacts to workspace
+      - name: Collect artifacts
         run: |
-          mkdir -p release
-          cp "$RUNNER_TEMP"/teamtracker-build/release/TeamTracker-*.dmg release/ 2>/dev/null || true
-          cp "$RUNNER_TEMP"/teamtracker-build/release/TeamTracker-*-mac.zip release/ 2>/dev/null || true
-          ls -lh release/
+          mkdir -p release-out
+          shopt -s nullglob
+          for f in $RUNNER_TEMP/tt-build/release/*.dmg $RUNNER_TEMP/tt-build/release/*-mac.zip; do
+            cp "$f" release-out/
+          done
+          ls -lh release-out/ || true
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mac-builds
-          path: release/
+          name: ${{ matrix.artifact_name }}
+          path: release-out/
+          if-no-files-found: error
 
   build-windows:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app_dir: desktop
+            artifact_name: employee-windows
+          - app_dir: desktop-admin
+            artifact_name: admin-windows
     steps:
       - uses: actions/checkout@v4
 
@@ -71,32 +99,41 @@ jobs:
       - name: Prepare standalone build dir
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/teamtracker-build"
-          cp -R desktop/. "$RUNNER_TEMP/teamtracker-build/"
-          rm -rf "$RUNNER_TEMP/teamtracker-build/node_modules" "$RUNNER_TEMP/teamtracker-build/release"
+          mkdir -p "$RUNNER_TEMP/tt-build"
+          cp -R "${{ matrix.app_dir }}/." "$RUNNER_TEMP/tt-build/"
+          rm -rf "$RUNNER_TEMP/tt-build/node_modules" "$RUNNER_TEMP/tt-build/release"
 
-      - name: Install deps, build, and package
+      - name: Install, build, package
         shell: bash
-        working-directory: ${{ runner.temp }}/teamtracker-build
+        working-directory: ${{ runner.temp }}/tt-build
         run: |
           npm install
           npm run dist:win
 
-      - name: Copy artifacts to workspace
+      - name: Collect artifacts
         shell: bash
         run: |
-          mkdir -p release
-          cp "$RUNNER_TEMP"/teamtracker-build/release/TeamTracker*.exe release/ 2>/dev/null || true
-          ls -lh release/
+          mkdir -p release-out
+          cp "$RUNNER_TEMP"/tt-build/release/*.exe release-out/ 2>/dev/null || true
+          ls -lh release-out/
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-builds
-          path: release/
+          name: ${{ matrix.artifact_name }}
+          path: release-out/
+          if-no-files-found: error
 
   build-linux:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app_dir: desktop
+            artifact_name: employee-linux
+          - app_dir: desktop-admin
+            artifact_name: admin-linux
     steps:
       - uses: actions/checkout@v4
 
@@ -111,30 +148,32 @@ jobs:
 
       - name: Prepare standalone build dir
         run: |
-          mkdir -p "$RUNNER_TEMP/teamtracker-build"
-          cp -R desktop/. "$RUNNER_TEMP/teamtracker-build/"
-          rm -rf "$RUNNER_TEMP/teamtracker-build/node_modules" "$RUNNER_TEMP/teamtracker-build/release"
+          mkdir -p "$RUNNER_TEMP/tt-build"
+          cp -R "${{ matrix.app_dir }}/." "$RUNNER_TEMP/tt-build/"
+          rm -rf "$RUNNER_TEMP/tt-build/node_modules" "$RUNNER_TEMP/tt-build/release"
 
-      - name: Install deps, build, and package
-        working-directory: ${{ runner.temp }}/teamtracker-build
+      - name: Install, build, package
+        working-directory: ${{ runner.temp }}/tt-build
         run: |
           npm install
           npm run dist:linux
 
-      - name: Copy artifacts to workspace
+      - name: Collect artifacts
         run: |
-          mkdir -p release
-          cp "$RUNNER_TEMP"/teamtracker-build/release/*.AppImage release/ 2>/dev/null || true
-          cp "$RUNNER_TEMP"/teamtracker-build/release/*.deb release/ 2>/dev/null || true
-          ls -lh release/
+          mkdir -p release-out
+          cp "$RUNNER_TEMP"/tt-build/release/*.AppImage release-out/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/tt-build/release/*.deb release-out/ 2>/dev/null || true
+          ls -lh release-out/
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-builds
-          path: release/
+          name: ${{ matrix.artifact_name }}
+          path: release-out/
+          if-no-files-found: error
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-mac, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
@@ -148,6 +187,9 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            mac-builds/*
-            windows-builds/*
-            linux-builds/*
+            employee-mac/*
+            admin-mac/*
+            employee-windows/*
+            admin-windows/*
+            employee-linux/*
+            admin-linux/*

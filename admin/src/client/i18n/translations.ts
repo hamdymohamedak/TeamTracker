@@ -206,7 +206,7 @@ export const en = {
   'privacy.colScope': 'Scope',
   'privacy.colTargets': 'Blocks',
   'privacy.colCreated': 'Created',
-  'privacy.note': 'Use the app or site name (WhatsApp), not only a long URL. URLs are OK — we also match the domain/brand (whatsapp). Enforcement runs on the employee device before upload. Side-by-side windows may still appear if another app is focused.',
+  'privacy.note': 'Blocks when a matching app/site is open anywhere on the desktop (not only the focused window), because captures are full-screen. Prefer “WhatsApp” or a URL like https://web.whatsapp.com/ — we also match the brand name. Side-by-side private windows will pause capture.',
 
   // Employees
   'employees.title': 'Employees',
@@ -504,7 +504,7 @@ export const ar: Record<TranslationKey, string> = {
   'privacy.colScope': 'النطاق',
   'privacy.colTargets': 'يحظر',
   'privacy.colCreated': 'تاريخ الإنشاء',
-  'privacy.note': 'يفضّل اسم التطبيق أو الموقع (WhatsApp) وليس الرابط الطويل فقط. الروابط مقبولة — نطابق أيضاً النطاق/الاسم (whatsapp). يُطبَّق الحظر على جهاز الموظف قبل الرفع. النوافذ جنب بعضها قد تظهر إذا كان تطبيق آخر هو النشط.',
+  'privacy.note': 'يُحظر التصوير إذا كان تطبيق/موقع مطابق مفتوحاً في أي مكان على سطح المكتب (وليس النافذة النشطة فقط)، لأن اللقطات للشاشة كاملة. يفضّل «WhatsApp» أو رابط مثل https://web.whatsapp.com/ — نطابق أيضاً اسم العلامة. النوافذ الخاصة جنب العمل توقف التصوير.',
 
   'employees.title': 'الموظفون',
   'employees.add': '+ إضافة موظف',

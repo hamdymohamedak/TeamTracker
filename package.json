@@ -6,14 +6,17 @@
   "workspaces": [
     "admin",
     "desktop",
+    "desktop-admin",
     "shared"
   ],
   "scripts": {
     "dev:admin": "cd admin && npm run dev",
     "dev:desktop": "cd desktop && npm run dev",
+    "dev:desktop-admin": "cd desktop-admin && npm run dev",
     "build:admin": "cd admin && npm run build",
     "build:desktop": "cd desktop && npm run build",
-    "install:all": "npm install && cd admin && npm install && cd ../desktop && npm install"
+    "build:desktop-admin": "cd desktop-admin && npm run build",
+    "install:all": "npm install && cd admin && npm install && cd ../desktop && npm install && cd ../desktop-admin && npm install"
   },
   "devDependencies": {
     "typescript": "^5.3.0"
