@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useI18n } from '../contexts/I18nContext';
 import { AuthLayout, AuthFooterLink } from '../components/AuthLayout';
 
 export const ResetPassword: React.FC = () => {
@@ -11,6 +12,7 @@ export const ResetPassword: React.FC = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { t } = useI18n();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +24,7 @@ export const ResetPassword: React.FC = () => {
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+      setError(t('auth.passwordHint'));
       return;
     }
 
@@ -40,20 +42,20 @@ export const ResetPassword: React.FC = () => {
 
   if (!token) {
     return (
-      <AuthLayout title="Invalid link" subtitle="This reset link is missing a token.">
-        <div className="auth-error">Invalid reset link. No token provided.</div>
-        <AuthFooterLink to="/forgot-password">Request a new reset link</AuthFooterLink>
+      <AuthLayout title={t('auth.invalidLink')} subtitle={t('auth.invalidLinkSub')}>
+        <div className="auth-error">{t('auth.invalidLinkSub')}</div>
+        <AuthFooterLink to="/forgot-password">{t('auth.requestNewLink')}</AuthFooterLink>
       </AuthLayout>
     );
   }
 
   return (
-    <AuthLayout title="Set new password" subtitle="Choose something strong and memorable.">
+    <AuthLayout title={t('auth.setNewPassword')} subtitle={t('auth.setNewPasswordSubtitle')}>
       {message ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{
             background: 'var(--tt-success-soft)',
-            border: '1px solid rgba(31,169,113,0.25)',
+            border: '1px solid rgba(74,124,89,0.25)',
             color: 'var(--tt-success)',
             padding: '12px 14px',
             borderRadius: 'var(--tt-radius-sm)',
@@ -61,28 +63,28 @@ export const ResetPassword: React.FC = () => {
           }}>
             {message}
           </div>
-          <AuthFooterLink to="/login">Sign in with your new password</AuthFooterLink>
+          <AuthFooterLink to="/login">{t('auth.signInNewPassword')}</AuthFooterLink>
         </div>
       ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {error && <div className="auth-error">{error}</div>}
 
           <div className="auth-field">
-            <label htmlFor="reset-password">New password</label>
-            <input id="reset-password" className="tt-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" required />
+            <label htmlFor="reset-password">{t('auth.newPassword')}</label>
+            <input id="reset-password" className="tt-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
 
           <div className="auth-field">
-            <label htmlFor="reset-confirm">Confirm password</label>
-            <input id="reset-confirm" className="tt-input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" required />
+            <label htmlFor="reset-confirm">{t('auth.confirmPassword')}</label>
+            <input id="reset-confirm" className="tt-input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
           </div>
 
           <button type="submit" className="tt-btn tt-btn-primary" disabled={isSubmitting} style={{ width: '100%', opacity: isSubmitting ? 0.75 : 1 }}>
-            {isSubmitting ? 'Saving…' : 'Update password'}
+            {isSubmitting ? t('auth.saving') : t('auth.updatePassword')}
           </button>
 
           <p className="auth-footer">
-            <Link to="/login">Back to sign in</Link>
+            <Link to="/login">{t('auth.backToSignIn')}</Link>
           </p>
         </form>
       )}

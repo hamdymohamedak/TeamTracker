@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../contexts/I18nContext';
+import { HelpTip } from '../components/HelpTip';
 
 // Multi-admin team management page.
 //
@@ -20,6 +22,7 @@ interface TeamUser {
 }
 
 export const Team: React.FC = () => {
+  const { t } = useI18n();
   const { user } = useAuth();
   const [users, setUsers] = useState<TeamUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,18 +94,21 @@ export const Team: React.FC = () => {
     }
   };
 
-  if (loading) return <div style={styles.container}><p>Loading team…</p></div>;
+  if (loading) return <div style={styles.container}><p>{t('team.loading')}</p></div>;
 
   return (
     <div style={styles.container}>
       <header style={styles.header}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <h1 style={styles.title}>Team</h1>
-            <p style={styles.subtitle}>Manage owner + admin dashboard access for your organization.</p>
+            <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {t('team.title')}
+              <HelpTip text={t('help.team')} />
+            </h1>
+            <p style={styles.subtitle}>{t('team.subtitle')}</p>
           </div>
           <button onClick={() => setShowInvite(!showInvite)} style={styles.primaryBtn}>
-            {showInvite ? 'Cancel' : '+ Invite admin'}
+            {showInvite ? t('common.cancel') : t('team.invite')}
           </button>
         </div>
       </header>
@@ -112,7 +118,7 @@ export const Team: React.FC = () => {
 
       {showInvite && (
         <section style={styles.card}>
-          <h2 style={styles.cardTitle}>Invite a new admin</h2>
+          <h2 style={styles.cardTitle}>{t('team.inviteTitle')}</h2>
           <form onSubmit={submit} style={styles.form}>
             <div style={styles.row}>
               <label style={styles.label}>

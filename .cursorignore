@@ -1,0 +1,49 @@
+# Dependencies (largest token cost)
+**/node_modules/
+
+# Build / compile outputs
+**/dist/
+**/build/
+**/out/
+**/dist-electron/
+**/*.tsbuildinfo
+**/*.js.map
+**/*.d.ts.map
+
+# Lockfiles (large, low value for coding context)
+**/package-lock.json
+**/pnpm-lock.yaml
+**/yarn.lock
+**/bun.lockb
+
+# Local data, DBs, uploads
+**/data/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/uploads/
+
+# Logs & caches
+**/logs/
+**/*.log
+**/.cache/
+**/coverage/
+**/.turbo/
+**/.vite/
+
+# Env / secrets (not needed in context)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Git / IDE / OS
+.git/
+**/.DS_Store
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+
+# Binary / media assets (icons, installers)
+**/assets/
+**/*.{png,jpg,jpeg,gif,ico,icns,webp,mp4,mov,dmg,exe,zip,tar,gz,woff,woff2,ttf,eot}

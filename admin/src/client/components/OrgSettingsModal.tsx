@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { SUPPORTED_CURRENCIES } from '../../../shared-types';
+import { useI18n } from '../contexts/I18nContext';
 
 // Small IANA timezone picker — mirrors the list in Employees.tsx.
 const COMMON_TIMEZONES = [
@@ -43,6 +44,7 @@ const MAX_LOGO_BYTES = 1_000_000;
 const ALLOWED_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
 
 export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
+  const { t } = useI18n();
   const { org, updateOrg } = useAuth();
   const [name, setName] = useState(org?.name || '');
   const [timezone, setTimezone] = useState(org?.timezone || 'UTC');
@@ -204,8 +206,8 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
         onClick={e => e.stopPropagation()}
       >
         <div className="tt-modal-header">
-          <h2 className="tt-modal-title">Organization Settings</h2>
-          <button type="button" className="tt-modal-close" onClick={closeModal} aria-label="Close">✕</button>
+          <h2 className="tt-modal-title">{t('org.title')}</h2>
+          <button type="button" className="tt-modal-close" onClick={closeModal} aria-label={t('common.close')}>✕</button>
         </div>
 
         <div className="tt-modal-body">
@@ -446,14 +448,14 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
         </div>
 
         <div className="tt-modal-footer">
-          <button type="button" className="tt-btn tt-btn-ghost" onClick={closeModal}>Cancel</button>
+          <button type="button" className="tt-btn tt-btn-ghost" onClick={closeModal}>{t('common.cancel')}</button>
           <button
             type="button"
             className="tt-btn tt-btn-primary"
             onClick={handleSaveSettings}
             disabled={saving}
           >
-            {saving ? 'Saving…' : 'Save Settings'}
+            {saving ? t('org.saving') : t('org.save')}
           </button>
         </div>
       </div>
@@ -468,15 +470,6 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase',
   letterSpacing: '0.5px',
   marginBottom: '6px'
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 12px',
-  border: '1px solid #ddd',
-  borderRadius: '6px',
-  fontSize: '14px',
-  boxSizing: 'border-box'
 };
 
 const primaryBtn: React.CSSProperties = {

@@ -7,6 +7,8 @@ import {
   CATEGORY_COLORS,
   CANONICAL_CATEGORY_ORDER
 } from '../../../shared-types';
+import { useI18n } from '../contexts/I18nContext';
+import { HelpTip } from '../components/HelpTip';
 
 function getBrowserTz(): string {
   try {
@@ -19,6 +21,7 @@ function getBrowserTz(): string {
 const SUSPICIOUS_ACTIVITIES_PER_PAGE = 10;
 
 export const Reports: React.FC = () => {
+  const { t } = useI18n();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
@@ -81,8 +84,11 @@ export const Reports: React.FC = () => {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>Reports</h1>
-        <p style={styles.subtitle}>Generate productivity and activity reports</p>
+        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {t('reports.title')}
+          <HelpTip text={t('help.reports')} />
+        </h1>
+        <p style={styles.subtitle}>{t('reports.subtitle')}</p>
       </header>
 
       <div style={styles.filters}>

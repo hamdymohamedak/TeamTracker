@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
-import { useAuth } from '../contexts/AuthContext';
 import { formatDurationSeconds } from '../../../shared-types';
+import { useI18n } from '../contexts/I18nContext';
+import { HelpTip } from '../components/HelpTip';
 
 // Browser-tz-aware "today" so the date picker defaults match what the user
 // sees on the Dashboard. The summary itself is computed in the org's
@@ -44,7 +45,7 @@ const scoreColor = (n: number) =>
   n >= 80 ? 'var(--tt-success)' : n >= 60 ? 'var(--tt-amber)' : 'var(--tt-danger)';
 
 export const DailySummary: React.FC = () => {
-  const { org } = useAuth();
+  const { t } = useI18n();
   const [date, setDate] = useState<string>(todayLocal());
   const [summary, setSummary] = useState<OrgSummary | null>(null);
   const [loading, setLoading] = useState(false);
@@ -90,16 +91,17 @@ export const DailySummary: React.FC = () => {
     <div style={styles.container}>
       <header style={styles.header}>
         <div>
-          <h1 style={styles.title}>Daily Summary</h1>
-          <p style={styles.subtitle}>
-            Per-employee productivity rollup for a single day. The same payload is sent as the daily email.
-          </p>
+          <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {t('summary.title')}
+            <HelpTip text={t('help.summary')} />
+          </h1>
+          <p style={styles.subtitle}>{t('summary.subtitle')}</p>
         </div>
       </header>
 
       <div style={styles.controls}>
         <label style={{ fontSize: '13px', color: 'var(--tt-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          Date:
+          {t('common.date')}:
           <input
             type="date"
             value={date}
@@ -108,10 +110,10 @@ export const DailySummary: React.FC = () => {
           />
         </label>
         <button onClick={load} disabled={loading} style={styles.btnPrimary}>
-          {loading ? 'Loading…' : 'Refresh'}
+          {loading ? t('common.loading') : t('common.refresh')}
         </button>
         <button onClick={handleSendNow} disabled={sending} style={styles.btnGhost}>
-          {sending ? 'Sending…' : 'Email this summary now'}
+          {sending ? t('summary.sending') : t('summary.emailNow')}
         </button>
         {sendResult && (
           <span style={{ fontSize: '12px', color: sendResult.startsWith('✅') ? 'var(--tt-success)' : 'var(--tt-amber)' }}>

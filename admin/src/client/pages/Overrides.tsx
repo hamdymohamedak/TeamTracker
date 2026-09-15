@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import type { Employee } from '../../../shared-types';
+import { useI18n } from '../contexts/I18nContext';
+import { HelpTip } from '../components/HelpTip';
 
 // Per-org / per-employee classification overrides admin page.
 //
@@ -38,6 +40,7 @@ const CATEGORY_OPTIONS: Array<{ value: string; label: string; defaultScore: numb
 ];
 
 export const Overrides: React.FC = () => {
+  const { t } = useI18n();
   const [overrides, setOverrides] = useState<Override[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,14 +135,11 @@ export const Overrides: React.FC = () => {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>Classification Overrides</h1>
-        <p style={styles.subtitle}>
-          Tell TeamTracker how to classify apps and window titles that the global
-          classifier doesn't recognize. Pattern matches are case-insensitive
-          substring matches against the app name OR window title. Example:
-          <code style={styles.code}>Overflow Plumbing</code> matches any window
-          containing that text.
-        </p>
+        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {t('overrides.title')}
+          <HelpTip text={t('help.overrides')} />
+        </h1>
+        <p style={styles.subtitle}>{t('overrides.subtitle')}</p>
       </header>
 
       {flash && <div style={styles.flash}>✅ {flash}</div>}

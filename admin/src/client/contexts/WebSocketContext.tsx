@@ -1,4 +1,19 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
+
+const TOKEN_KEY = 'teamtracker_token';
+
+type LiveFrameHandler = (message: {
+  type: string;
+  data: {
+    sessionId?: string;
+    employeeId?: string;
+    mimeType?: string;
+    dataBase64?: string;
+    capturedAt?: string;
+    reason?: string;
+  };
+}) => void;
 
 interface WebSocketContextType {
   isConnected: boolean;
@@ -12,6 +27,9 @@ interface WebSocketContextType {
     timestamp: string;
   }>;
   reconnect: () => void;
+  sendMessage: (message: Record<string, unknown>) => boolean;
+  /** High-frequency live frames — do not go through React state. */
+  subscribeLiveFrames: (handler: LiveFrameHandler) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType>({
@@ -20,7 +38,9 @@ const WebSocketContext = createContext<WebSocketContextType>({
   lastMessage: null,
   onlineEmployees: new Map(),
   recentActivity: [],
-  reconnect: () => {}
+  reconnect: () => {},
+  sendMessage: () => false,
+  subscribeLiveFrames: () => () => {},
 });
 
 export const useWebSocket = () => useContext(WebSocketContext);
@@ -30,37 +50,144 @@ interface WebSocketProviderProps {
 }
 
 export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [lastMessage, setLastMessage] = useState<any>(null);
   const [onlineEmployees, setOnlineEmployees] = useState<Map<string, any>>(new Map());
   const [recentActivity, setRecentActivity] = useState<Array<any>>([]);
-  const [reconnectAttempt, setReconnectAttempt] = useState(0);
-  const wsRef = React.useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  const isMountedRef = React.useRef(true);
 
-  const connect = useCallback(() => {
-    // Don't connect if component is unmounted
-    if (!isMountedRef.current) return null;
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const isMountedRef = useRef(true);
+  const intentionalCloseRef = useRef(false);
+  const liveFrameHandlersRef = useRef(new Set<LiveFrameHandler>());
 
-    // Close existing connection
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+  const addActivity = useCallback((type: string, employeeName: string, message: string, timestamp: string) => {
+    if (!isMountedRef.current) return;
+    setRecentActivity(prev => [
+      { type, employeeName, message, timestamp },
+      ...prev.slice(0, 49)
+    ]);
+  }, []);
+
+  const handleMessage = useCallback((message: any) => {
+    const timestamp = new Date().toISOString();
+
+    // Hot path — skip React state for frames.
+    if (message.type === 'live-view:frame' || message.type === 'live-view:ended') {
+      liveFrameHandlersRef.current.forEach(fn => {
+        try { fn(message); } catch { /* ignore */ }
+      });
+      if (message.type === 'live-view:ended') {
+        setLastMessage(message);
+      }
+      return;
     }
 
-    // Clear any pending reconnect timeout
+    switch (message.type) {
+      case 'employee:online':
+        setOnlineEmployees(prev => {
+          const next = new Map(prev);
+          next.set(message.data.employeeId, {
+            name: message.data.employeeName,
+            lastSeen: message.data.timestamp || timestamp
+          });
+          return next;
+        });
+        addActivity('online', message.data.employeeName, 'came online', timestamp);
+        break;
+
+      case 'presence:snapshot': {
+        const list = Array.isArray(message.data?.employees) ? message.data.employees : [];
+        const next = new Map<string, { name: string; lastSeen: string }>();
+        for (const emp of list) {
+          if (!emp?.employeeId) continue;
+          next.set(emp.employeeId, {
+            name: emp.employeeName || 'Employee',
+            lastSeen: emp.timestamp || timestamp,
+          });
+        }
+        setOnlineEmployees(next);
+        break;
+      }
+
+      case 'employee:offline':
+        setOnlineEmployees(prev => {
+          const next = new Map(prev);
+          next.delete(message.data.employeeId);
+          return next;
+        });
+        addActivity('offline', message.data.employeeName, 'went offline', timestamp);
+        break;
+
+      case 'time-entry:started':
+        setOnlineEmployees(prev => {
+          const next = new Map(prev);
+          const emp = next.get(message.data.employeeId);
+          if (emp) {
+            emp.currentTask = message.data.entry?.description || 'Working';
+            next.set(message.data.employeeId, emp);
+          }
+          return next;
+        });
+        addActivity('tracking', message.data.employeeName, `started tracking: ${message.data.entry?.description || 'New task'}`, timestamp);
+        break;
+
+      case 'time-entry:stopped': {
+        const duration = message.data.entry?.duration
+          ? `${Math.round(message.data.entry.duration / 60)} min`
+          : 'some time';
+        addActivity('stopped', message.data.employeeName, `stopped tracking (${duration})`, timestamp);
+        break;
+      }
+
+      case 'sync:completed':
+        addActivity('sync', message.data.employeeName, `synced ${message.data.count} entries`, timestamp);
+        break;
+
+      case 'screenshot:new':
+        addActivity(
+          'screenshot',
+          message.data.employeeName || message.data.employeeId || 'Employee',
+          message.data.trigger === 'on_demand' ? 'sent an on-demand screenshot' : 'sent a screenshot',
+          timestamp
+        );
+        break;
+
+      case 'admin:live-view-status':
+        setLastMessage(message);
+        break;
+    }
+  }, [addActivity]);
+
+  const connect = useCallback(() => {
+    if (!isMountedRef.current) return;
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
+    if (wsRef.current) {
+      intentionalCloseRef.current = true;
+      try { wsRef.current.close(); } catch { /* ignore */ }
+      wsRef.current = null;
+      intentionalCloseRef.current = false;
+    }
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      setConnectionStatus('disconnected');
+      setIsConnected(false);
+      return;
+    }
+
     setConnectionStatus('connecting');
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-
+    const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -69,17 +196,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         ws.close();
         return;
       }
-      console.log('WebSocket connected');
       setIsConnected(true);
       setConnectionStatus('connected');
-      setReconnectAttempt(0);
+      reconnectAttemptRef.current = 0;
 
-      // Register as admin
       ws.send(JSON.stringify({
         type: 'register',
-        employeeId: 'admin',
         employeeName: 'Administrator',
-        isAdmin: true
       }));
     };
 
@@ -87,110 +210,62 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       if (!isMountedRef.current) return;
       try {
         const message = JSON.parse(event.data);
-        setLastMessage(message);
+        if (message.type !== 'live-view:frame') {
+          setLastMessage(message);
+        }
         handleMessage(message);
       } catch (err) {
         console.error('Error parsing WebSocket message:', err);
       }
     };
 
-    ws.onclose = (event) => {
-      console.log('WebSocket disconnected', event.code, event.reason);
+    ws.onclose = () => {
       if (!isMountedRef.current) return;
+      if (wsRef.current === ws) wsRef.current = null;
 
       setIsConnected(false);
       setConnectionStatus('disconnected');
 
-      // Only reconnect if this is still the current WebSocket and component is mounted
-      if (wsRef.current === ws && isMountedRef.current) {
-        wsRef.current = null;
+      if (intentionalCloseRef.current) return;
 
-        // Auto-reconnect with exponential backoff (max 10 attempts)
-        const currentAttempt = reconnectAttempt;
-        if (currentAttempt < 10) {
-          const delay = Math.min(1000 * Math.pow(2, currentAttempt), 30000);
-          console.log(`Reconnecting in ${delay}ms (attempt ${currentAttempt + 1})`);
+      const attempt = reconnectAttemptRef.current;
+      if (attempt >= 10) return;
 
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (isMountedRef.current) {
-              setReconnectAttempt(prev => prev + 1);
-            }
-          }, delay);
-        }
-      }
+      const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+      reconnectAttemptRef.current = attempt + 1;
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) connect();
+      }, delay);
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      if (!isMountedRef.current) return;
-      setIsConnected(false);
-      setConnectionStatus('disconnected');
+    ws.onerror = () => {
+      // onclose will handle reconnect
     };
-
-    const handleMessage = (message: any) => {
-      const timestamp = new Date().toISOString();
-
-      switch (message.type) {
-        case 'employee:online':
-          setOnlineEmployees(prev => {
-            const next = new Map(prev);
-            next.set(message.data.employeeId, {
-              name: message.data.employeeName,
-              lastSeen: message.data.timestamp || timestamp
-            });
-            return next;
-          });
-          addActivity('online', message.data.employeeName, 'came online', timestamp);
-          break;
-
-        case 'employee:offline':
-          setOnlineEmployees(prev => {
-            const next = new Map(prev);
-            next.delete(message.data.employeeId);
-            return next;
-          });
-          addActivity('offline', message.data.employeeName, 'went offline', timestamp);
-          break;
-
-        case 'time-entry:started':
-          setOnlineEmployees(prev => {
-            const next = new Map(prev);
-            const emp = next.get(message.data.employeeId);
-            if (emp) {
-              emp.currentTask = message.data.entry?.description || 'Working';
-              next.set(message.data.employeeId, emp);
-            }
-            return next;
-          });
-          addActivity('tracking', message.data.employeeName, `started tracking: ${message.data.entry?.description || 'New task'}`, timestamp);
-          break;
-
-        case 'time-entry:stopped':
-          const duration = message.data.entry?.duration
-            ? `${Math.round(message.data.entry.duration / 60)} min`
-            : 'some time';
-          addActivity('stopped', message.data.employeeName, `stopped tracking (${duration})`, timestamp);
-          break;
-
-        case 'sync:completed':
-          addActivity('sync', message.data.employeeName, `synced ${message.data.count} entries`, timestamp);
-          break;
-      }
-    };
-
-    const addActivity = (type: string, employeeName: string, message: string, timestamp: string) => {
-      if (!isMountedRef.current) return;
-      setRecentActivity(prev => [
-        { type, employeeName, message, timestamp },
-        ...prev.slice(0, 49) // Keep last 50 activities
-      ]);
-    };
-
-    return ws;
-  }, [reconnectAttempt]);
+  }, [handleMessage]);
 
   useEffect(() => {
     isMountedRef.current = true;
+
+    if (isLoading) return;
+
+    if (!isAuthenticated) {
+      intentionalCloseRef.current = true;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch { /* ignore */ }
+        wsRef.current = null;
+      }
+      setIsConnected(false);
+      setConnectionStatus('disconnected');
+      setOnlineEmployees(new Map());
+      intentionalCloseRef.current = false;
+      return;
+    }
+
+    reconnectAttemptRef.current = 0;
     connect();
 
     return () => {
@@ -200,24 +275,46 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         reconnectTimeoutRef.current = null;
       }
       if (wsRef.current) {
-        wsRef.current.close();
+        intentionalCloseRef.current = true;
+        try { wsRef.current.close(); } catch { /* ignore */ }
         wsRef.current = null;
       }
     };
-  }, [connect]);
+  }, [isAuthenticated, isLoading, connect]);
 
   const reconnect = useCallback(() => {
-    setReconnectAttempt(0);
+    reconnectAttemptRef.current = 0;
+    connect();
+  }, [connect]);
+
+  const sendMessage = useCallback((message: Record<string, unknown>) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      ws.send(JSON.stringify(message));
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const subscribeLiveFrames = useCallback((handler: LiveFrameHandler) => {
+    liveFrameHandlersRef.current.add(handler);
+    return () => {
+      liveFrameHandlersRef.current.delete(handler);
+    };
   }, []);
 
   return (
-    <WebSocketContext.Provider value={{ 
-      isConnected, 
+    <WebSocketContext.Provider value={{
+      isConnected,
       connectionStatus,
-      lastMessage, 
-      onlineEmployees, 
+      lastMessage,
+      onlineEmployees,
       recentActivity,
-      reconnect 
+      reconnect,
+      sendMessage,
+      subscribeLiveFrames,
     }}>
       {children}
     </WebSocketContext.Provider>

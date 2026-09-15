@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import type { Task, Project, Employee } from '../../../shared-types';
+import { useI18n } from '../contexts/I18nContext';
+import { HelpTip } from '../components/HelpTip';
 
 export const Tasks: React.FC = () => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -65,8 +68,6 @@ export const Tasks: React.FC = () => {
       ? `/api/tasks/${editingTask.id}`
       : '/api/tasks';
 
-    const method = editingTask ? 'PUT' : 'POST';
-
     try {
       const payload = {
         ...formData,
@@ -109,7 +110,7 @@ export const Tasks: React.FC = () => {
     try {
       const data = await api.put(`/api/tasks/${task.id}`, { status: newStatus });
       if (data.success) {
-        setTasks(tasks.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
+        setTasks(tasks.map(t => t.id === task.id ? { ...t, status: newStatus as Task['status'] } : t));
       }
     } catch (err) {
       console.error('Error updating status:', err);
@@ -178,7 +179,10 @@ export const Tasks: React.FC = () => {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>Tasks</h1>
+        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {t('tasks.title')}
+          <HelpTip text={t('help.tasks')} />
+        </h1>
         <button
           style={styles.addButton}
           onClick={() => {
@@ -187,7 +191,7 @@ export const Tasks: React.FC = () => {
             setShowForm(true);
           }}
         >
-          + Add Task
+          {t('tasks.add')}
         </button>
       </header>
 
@@ -202,7 +206,7 @@ export const Tasks: React.FC = () => {
           <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
             <div className="tt-modal-header">
               <h2 id="modal-title" className="tt-modal-title">
-                {editingTask ? 'Edit Task' : 'Add Task'}
+                {editingTask ? t('tasks.edit') : t('tasks.addTitle')}
               </h2>
               <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
             </div>

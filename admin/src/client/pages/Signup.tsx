@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../contexts/I18nContext';
 import { AuthLayout, AuthFooterLink } from '../components/AuthLayout';
 
 export const Signup: React.FC = () => {
@@ -12,6 +13,7 @@ export const Signup: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signup } = useAuth();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +24,7 @@ export const Signup: React.FC = () => {
       await signup(email, password, name, orgName);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Signup failed');
+      setError(err.message || t('auth.signupFailed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -30,39 +32,39 @@ export const Signup: React.FC = () => {
 
   return (
     <AuthLayout
-      title="Create account"
-      subtitle="Spin up your org console in under a minute."
-      brandSub="Start tracking with clarity"
+      title={t('auth.createAccount')}
+      subtitle={t('auth.createAccountSubtitle')}
+      brandSub={t('auth.brandStart')}
     >
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {error && <div className="auth-error">{error}</div>}
 
         <div className="auth-field">
-          <label htmlFor="signup-org">Organization name</label>
-          <input id="signup-org" className="tt-input" type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Your Company" required />
+          <label htmlFor="signup-org">{t('auth.orgName')}</label>
+          <input id="signup-org" className="tt-input" type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
         </div>
 
         <div className="auth-field">
-          <label htmlFor="signup-name">Your name</label>
-          <input id="signup-name" className="tt-input" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Smith" required />
+          <label htmlFor="signup-name">{t('auth.yourName')}</label>
+          <input id="signup-name" className="tt-input" type="text" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
 
         <div className="auth-field">
-          <label htmlFor="signup-email">Email</label>
-          <input id="signup-email" className="tt-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required autoComplete="email" />
+          <label htmlFor="signup-email">{t('auth.email')}</label>
+          <input id="signup-email" className="tt-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
         </div>
 
         <div className="auth-field">
-          <label htmlFor="signup-password">Password</label>
-          <input id="signup-password" className="tt-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Choose a password" required minLength={6} autoComplete="new-password" />
-          <span style={{ fontSize: 12, color: 'var(--tt-text-faint)' }}>Minimum 6 characters</span>
+          <label htmlFor="signup-password">{t('auth.password')}</label>
+          <input id="signup-password" className="tt-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" />
+          <span style={{ fontSize: 12, color: 'var(--tt-text-faint)' }}>{t('auth.passwordHint')}</span>
         </div>
 
         <button type="submit" className="tt-btn tt-btn-primary" disabled={isSubmitting} style={{ width: '100%', opacity: isSubmitting ? 0.75 : 1, marginTop: 4 }}>
-          {isSubmitting ? 'Creating account…' : 'Create account'}
+          {isSubmitting ? t('auth.creating') : t('auth.createAccount')}
         </button>
 
-        <AuthFooterLink to="/login" preface="Already have an account?">Sign in</AuthFooterLink>
+        <AuthFooterLink to="/login" preface={t('auth.hasAccount')}>{t('auth.signIn')}</AuthFooterLink>
       </form>
     </AuthLayout>
   );

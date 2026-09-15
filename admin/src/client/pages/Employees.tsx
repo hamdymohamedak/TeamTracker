@@ -3,6 +3,8 @@ import type { Employee } from '../../../shared-types';
 import { SUPPORTED_CURRENCIES, formatCurrency, JOB_ROLES } from '../../../shared-types';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../contexts/I18nContext';
+import { HelpTip } from '../components/HelpTip';
 
 // Common IANA timezones offered in the per-employee timezone dropdown.
 // Covers North America + Europe + APAC + Middle East — admins can leave it
@@ -79,6 +81,7 @@ const emptyFormData = (defaultCurrency: string): EmployeeFormData => ({
 });
 
 export const Employees: React.FC = () => {
+  const { t } = useI18n();
   const { org } = useAuth();
   const defaultCurrency = org?.defaultCurrency || 'USD';
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -319,7 +322,10 @@ export const Employees: React.FC = () => {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>Employees</h1>
+        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {t('employees.title')}
+          <HelpTip text={t('help.employees')} />
+        </h1>
         <button
           style={styles.addButton}
           onClick={() => {
@@ -328,7 +334,7 @@ export const Employees: React.FC = () => {
             setShowForm(true);
           }}
         >
-          + Add Employee
+          {t('employees.add')}
         </button>
       </header>
 
@@ -343,7 +349,7 @@ export const Employees: React.FC = () => {
           <div className="tt-modal tt-modal--lg" onClick={e => e.stopPropagation()}>
             <div className="tt-modal-header">
               <h2 id="modal-title" className="tt-modal-title">
-                {editingEmployee ? 'Edit Employee' : 'Add Employee'}
+                {editingEmployee ? t('employees.edit') : t('employees.addTitle')}
               </h2>
               <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
             </div>
@@ -533,10 +539,10 @@ export const Employees: React.FC = () => {
               </div>
               <div className="tt-modal-footer">
                 <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setShowForm(false)}>
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button type="submit" className="tt-btn tt-btn-primary">
-                  {editingEmployee ? 'Update' : 'Create'}
+                  {editingEmployee ? t('common.update') : t('common.create')}
                 </button>
               </div>
             </form>
@@ -607,13 +613,13 @@ export const Employees: React.FC = () => {
               </div>
             </div>
             <div className="tt-modal-footer">
-              <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setSetupToken(null)}>Close</button>
+              <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setSetupToken(null)}>{t('common.close')}</button>
               <button
                 type="button"
                 className="tt-btn tt-btn-primary"
                 onClick={() => navigator.clipboard.writeText(setupToken.token)}
               >
-                Copy Token
+                {t('employees.copyToken')}
               </button>
             </div>
           </div>
@@ -630,7 +636,7 @@ export const Employees: React.FC = () => {
         >
           <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
             <div className="tt-modal-header">
-              <h2 className="tt-modal-title">Install on this Device</h2>
+              <h2 className="tt-modal-title">{t('employees.installDevice')}</h2>
               <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setInstallPrompt(null)}>✕</button>
             </div>
             <div className="tt-modal-body">
@@ -655,7 +661,7 @@ export const Employees: React.FC = () => {
               </div>
             </div>
             <div className="tt-modal-footer">
-              <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setInstallPrompt(null)}>Close</button>
+              <button type="button" className="tt-btn tt-btn-ghost" onClick={() => setInstallPrompt(null)}>{t('common.close')}</button>
               <a href="/download" target="_blank" rel="noopener noreferrer" className="tt-btn tt-btn-primary" style={{ textDecoration: 'none' }}>
                 Download Installer
               </a>
@@ -674,10 +680,10 @@ export const Employees: React.FC = () => {
         }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>👥</div>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
-            No employees yet
+            {t('employees.empty')}
           </h2>
           <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 24px' }}>
-            Add your first team member to start tracking.
+            {t('employees.emptyHint')}
           </p>
           <button
             onClick={() => {
@@ -696,7 +702,7 @@ export const Employees: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            + Add Employee
+            {t('employees.add')}
           </button>
         </div>
       )}
@@ -737,10 +743,10 @@ export const Employees: React.FC = () => {
                 style={styles.installButton}
                 title="Use this when you're sitting at this employee's laptop. Downloads an activation file and the tracker will auto-connect on first launch."
               >
-                Install on this Device
+                {t('employees.installDevice')}
               </button>
               <button onClick={() => handleGenerateSetupToken(employee)} style={styles.setupButton}>
-                Setup Token
+                {t('employees.setupToken')}
               </button>
               <button onClick={() => handleDelete(employee.id)} style={styles.deleteButton}>
                 Delete

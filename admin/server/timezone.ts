@@ -50,15 +50,14 @@ export function toLocalDateString(date: Date, tz: string): string {
  */
 export function localMidnightUtc(localYmd: string, tz: string): Date {
   const zone = resolveTimezone(tz);
-  // Start with an approximate UTC guess (midnight UTC on that date), then
-  // iteratively correct for the tz offset. Two iterations is enough even
-  // for the strangest historical offsets because we only correct whole
-  // minutes. Minute precision is plenty — our activity windows are 10s+.
-  let guess = new Date(`${localYmd}T00:00:00Z`);
-  for (let i = 0; i < 2; i++) {
-    const localYmdOfGuess = toLocalDateString(guess, zone);
-    if (localYmdOfGuess === localYmd) break;
-    // Compute the tz offset of the guess in minutes.
+  // Treat the YMD as a civil date in `zone`, then find the UTC instant
+  // where that zone reads 00:00:00. Always apply the offset correction —
+  // do NOT bail early when UTC midnight already falls on the same YMD
+  // (that bug made Africa/Cairo and other UTC+ zones use UTC midnight).
+  const desiredAsUtcMs = Date.parse(`${localYmd}T00:00:00.000Z`);
+  let guess = new Date(desiredAsUtcMs);
+
+  for (let i = 0; i < 3; i++) {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: zone,
       hour12: false,
@@ -67,19 +66,22 @@ export function localMidnightUtc(localYmd: string, tz: string): Date {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     }).formatToParts(guess);
-    const get = (t: string) => parts.find(p => p.type === t)?.value || '0';
-    const asUtc = Date.UTC(
-      Number(get('year')),
-      Number(get('month')) - 1,
-      Number(get('day')),
-      Number(get('hour')) % 24,
-      Number(get('minute')),
-      Number(get('second'))
+    const get = (t: string) => Number(parts.find(p => p.type === t)?.value || '0');
+    // Some engines emit hour "24" for midnight — normalize.
+    let hour = get('hour');
+    if (hour === 24) hour = 0;
+    const localAsUtcMs = Date.UTC(
+      get('year'),
+      get('month') - 1,
+      get('day'),
+      hour,
+      get('minute'),
+      get('second')
     );
-    const offsetMs = asUtc - guess.getTime();
-    guess = new Date(new Date(`${localYmd}T00:00:00Z`).getTime() - offsetMs);
+    const offsetMs = localAsUtcMs - guess.getTime();
+    guess = new Date(desiredAsUtcMs - offsetMs);
   }
   return guess;
 }

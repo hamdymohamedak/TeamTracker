@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TeamTracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f4;
+      color: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .header {
+      padding: 24px 24px 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    .header h1 { font-size: 1.25rem; font-weight: 650; }
+    .header p { margin-top: 6px; font-size: 0.875rem; color: #a3a3a3; }
+    .body { padding: 24px; }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #6b6b6b;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 14px;
+    }
+    input:focus { outline: none; border-color: #1a1a1a; }
+    button {
+      width: 100%;
+      padding: 11px;
+      border: none;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .hint { font-size: 12px; color: #9a9a9a; line-height: 1.5; margin-bottom: 16px; }
+    .error {
+      background: rgba(181, 74, 63, 0.08);
+      border: 1px solid rgba(181, 74, 63, 0.2);
+      color: #b54a3f;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      font-size: 14px;
+    }
+    .status-row:last-child { border-bottom: none; }
+    .status-label { color: #6b6b6b; }
+    .status-value { font-weight: 600; text-align: right; max-width: 60%; word-break: break-word; }
+    .online { color: #4a7c59; }
+    .offline { color: #b54a3f; }
+    .footer-note {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #9a9a9a;
+      text-align: center;
+      line-height: 1.5;
+    }
+    #setup-view, #status-view { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>TeamTracker</h1>
+      <p id="subtitle">Employee activity tracker</p>
+    </div>
+    <div class="body">
+      <div id="setup-view">
+        <p class="hint">Enter the setup token from your admin (Employees → Setup Token). The tracker runs quietly after setup.</p>
+        <div id="error" class="error"></div>
+        <label for="server">Admin server URL</label>
+        <input id="server" type="url" placeholder="http://localhost:3001" />
+        <label for="token">Setup token</label>
+        <input id="token" type="text" placeholder="Paste your setup token" autocomplete="off" />
+        <button id="connect-btn" type="button">Connect</button>
+      </div>
+      <div id="status-view">
+        <div class="status-row"><span class="status-label">Employee</span><span class="status-value" id="emp-name">—</span></div>
+        <div class="status-row"><span class="status-label">Server</span><span class="status-value" id="emp-server">—</span></div>
+        <div class="status-row"><span class="status-label">Connection</span><span class="status-value" id="emp-online">—</span></div>
+        <div class="status-row"><span class="status-label">Activities today</span><span class="status-value" id="emp-activities">—</span></div>
+        <div class="status-row"><span class="status-label">Queued</span><span class="status-value" id="emp-queued">—</span></div>
+        <p class="footer-note">Tracking runs in the background. You can close this window — TeamTracker stays in your menu bar.</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    const setupView = document.getElementById('setup-view');
+    const statusView = document.getElementById('status-view');
+    const errorEl = document.getElementById('error');
+    const serverInput = document.getElementById('server');
+    const tokenInput = document.getElementById('token');
+    const connectBtn = document.getElementById('connect-btn');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = msg ? 'block' : 'none';
+    }
+
+    function renderStatus(data) {
+      const cfg = data.config || {};
+      const enrolled = !!cfg.deviceToken;
+      if (!enrolled) {
+        setupView.style.display = 'block';
+        statusView.style.display = 'none';
+        document.getElementById('subtitle').textContent = 'Connect with your setup token';
+        if (cfg.serverUrl) serverInput.value = cfg.serverUrl;
+        return;
+      }
+      setupView.style.display = 'none';
+      statusView.style.display = 'block';
+      document.getElementById('subtitle').textContent = 'Connected and tracking';
+      document.getElementById('emp-name').textContent = cfg.employeeName || cfg.employeeId || '—';
+      document.getElementById('emp-server').textContent = cfg.serverUrl || '—';
+      const onlineEl = document.getElementById('emp-online');
+      onlineEl.textContent = data.isOnline ? 'Online' : 'Offline';
+      onlineEl.className = 'status-value ' + (data.isOnline ? 'online' : 'offline');
+      document.getElementById('emp-activities').textContent = String(data.activitiesCount ?? 0);
+      document.getElementById('emp-queued').textContent = String(data.queuedCount ?? 0);
+    }
+
+    async function refresh() {
+      try {
+        const data = await window.teamtracker.getStatus();
+        renderStatus(data);
+      } catch (e) {
+        showError('Could not load status.');
+      }
+    }
+
+    connectBtn.addEventListener('click', async () => {
+      showError('');
+      const token = tokenInput.value.trim();
+      const serverUrl = serverInput.value.trim();
+      if (!token) {
+        showError('Please enter a setup token.');
+        return;
+      }
+      if (!serverUrl) {
+        showError('Please enter the admin server URL.');
+        return;
+      }
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Connecting…';
+      try {
+        const result = await window.teamtracker.enroll(token, serverUrl);
+        if (!result.success) {
+          showError(result.error || 'Connection failed.');
+          return;
+        }
+        tokenInput.value = '';
+        await refresh();
+      } catch (e) {
+        showError('Connection failed. Check the server URL and token.');
+      } finally {
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect';
+      }
+    });
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>

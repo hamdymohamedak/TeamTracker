@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../contexts/I18nContext';
 import { AuthLayout, AuthFooterLink } from '../components/AuthLayout';
 
 export const Login: React.FC = () => {
@@ -10,6 +11,7 @@ export const Login: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,19 +22,19 @@ export const Login: React.FC = () => {
       await login(email, password);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.message || t('auth.loginFailed'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <AuthLayout title="Sign in" subtitle="Access your team’s live productivity signal.">
+    <AuthLayout title={t('auth.signIn')} subtitle={t('auth.signInSubtitle')}>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {error && <div className="auth-error">{error}</div>}
 
         <div className="auth-field">
-          <label htmlFor="login-email">Email</label>
+          <label htmlFor="login-email">{t('auth.email')}</label>
           <input
             id="login-email"
             className="tt-input"
@@ -46,18 +48,18 @@ export const Login: React.FC = () => {
         </div>
 
         <div className="auth-field">
-          <label htmlFor="login-password">Password</label>
+          <label htmlFor="login-password">{t('auth.password')}</label>
           <input
             id="login-password"
             className="tt-input"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
+            placeholder="••••••••"
             required
             autoComplete="current-password"
           />
-          <span style={{ fontSize: 12, color: 'var(--tt-text-faint)' }}>Minimum 6 characters</span>
+          <span style={{ fontSize: 12, color: 'var(--tt-text-faint)' }}>{t('auth.passwordHint')}</span>
         </div>
 
         <button
@@ -66,11 +68,11 @@ export const Login: React.FC = () => {
           disabled={isSubmitting}
           style={{ width: '100%', opacity: isSubmitting ? 0.75 : 1, marginTop: 4 }}
         >
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
+          {isSubmitting ? t('auth.signingIn') : t('auth.signIn')}
         </button>
 
-        <AuthFooterLink to="/forgot-password">Forgot password?</AuthFooterLink>
-        <AuthFooterLink to="/signup" preface="Don't have an account?">Create one</AuthFooterLink>
+        <AuthFooterLink to="/forgot-password">{t('auth.forgotPassword')}</AuthFooterLink>
+        <AuthFooterLink to="/signup" preface={t('auth.noAccount')}>{t('auth.createOne')}</AuthFooterLink>
       </form>
     </AuthLayout>
   );

@@ -13,6 +13,7 @@ import {
   SUSPICIOUS_THRESHOLDS
 } from './classifier.js';
 import { startScreenshotService } from './screenshot.js';
+import { startRemoteCommandClient } from './remote.js';
 import { getActiveWindow, hasActiveWinModule } from './active-window.js';
 
 interface RawActivity {
@@ -119,6 +120,16 @@ export async function startTracking(): Promise<void> {
     () => ({
       appName: lastActivity?.appName,
       windowTitle: lastActivity?.windowTitle
+    })
+  );
+
+  // Live presence + on-demand screenshot commands from the admin dashboard.
+  startRemoteCommandClient(
+    () => config.deviceToken || '',
+    () => ({
+      appName: lastActivity?.appName,
+      windowTitle: lastActivity?.windowTitle,
+      employeeName: config.employeeName,
     })
   );
 
@@ -658,6 +669,50 @@ function saveOfflineQueue(): void {
   }
 }
 
+export async function enrollWithSetupToken(
+  setupToken: string,
+  serverUrl?: string
+): Promise<{ success: boolean; error?: string }> {
+  const url = (serverUrl || config.serverUrl || getServerUrl()).replace(/\/+$/, '');
+  if (!setupToken?.trim()) {
+    return { success: false, error: 'Setup token is required' };
+  }
+  if (!url) {
+    return { success: false, error: 'Server URL is required' };
+  }
+
+  try {
+    const resp = await fetch(`${url}/api/auth/enroll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setupToken: setupToken.trim() })
+    });
+    const data: any = await resp.json().catch(() => ({}));
+
+    if (!resp.ok || !data?.success || !data?.data?.accessToken) {
+      return { success: false, error: data?.error || `Enrollment failed (HTTP ${resp.status})` };
+    }
+
+    config.deviceToken = data.data.accessToken;
+    config.employeeId = data.data.employeeId;
+    config.employeeName = data.data.employeeName;
+    config.serverUrl = url;
+    saveConfig();
+
+    console.log(`[enroll] ✓ connected as ${data.data.employeeName} (${data.data.employeeId})`);
+    isOnline = true;
+    // Flush anything queued while offline / before auth.
+    Promise.resolve().then(() => syncToServer()).catch(() => { /* ignore */ });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: (err as Error).message || 'Network error' };
+  }
+}
+
+export function isEnrolled(): boolean {
+  return !!config.deviceToken;
+}
+
 export function setupIpcHandlers(): void {
   ipcMain.handle('tracker:getStatus', () => {
     return {
@@ -665,8 +720,12 @@ export function setupIpcHandlers(): void {
       activitiesCount: activities.length,
       queuedCount: offlineQueue.length,
       lastActivity,
-      config
+      config: { ...config, deviceToken: config.deviceToken ? '***' : '' }
     };
+  });
+
+  ipcMain.handle('tracker:enroll', async (_, setupToken: string, serverUrl?: string) => {
+    return enrollWithSetupToken(setupToken, serverUrl);
   });
 
   ipcMain.handle('tracker:getStats', () => {

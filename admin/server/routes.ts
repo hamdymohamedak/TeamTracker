@@ -38,6 +38,7 @@ import {
   ROLE_PROFILES
 } from './role-detector.js';
 import { requireAuth, requireDeviceAuth, requireAnyAuth } from './auth.js';
+import { getConnectedEmployees } from './websocket.js';
 import { fixActivityClassification } from './server-classifier-fixer.js';
 
 export function setupRoutes(app: Express): void {
@@ -65,6 +66,20 @@ export function setupRoutes(app: Express): void {
     try {
       const employees = await getAllEmployees(req.orgId!);
       res.json({ success: true, data: employees });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Live tracker presence (WebSocket-connected devices). Must be registered
+  // before /api/employees/:id so "online" is not parsed as an id.
+  app.get('/api/employees/online', requireAuth, async (req, res) => {
+    try {
+      const online = getConnectedEmployees(req.orgId!).map(e => ({
+        employeeId: e.employeeId,
+        employeeName: e.employeeName,
+      }));
+      res.json({ success: true, data: online });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
@@ -465,31 +480,35 @@ export function setupRoutes(app: Express): void {
         'loginwindow', 'lockscreen', 'screensaver', 'window server', 'idle',
         'usernotificationcenter', 'controlcenter', 'dock', 'notificationcenter'
       ];
-      const sysExclusion = SYSTEM_APPS.map(() => 'LOWER(app_name) != ?').join(' AND ');
+      const sysExclusion = SYSTEM_APPS.map(() => 'LOWER(a.app_name) != ?').join(' AND ');
 
-      const where: string[] = ['org_id = ?'];
+      const where: string[] = ['a.org_id = ?'];
       const params: any[] = [req.orgId!];
       if (employeeIdFilter) {
-        where.push('employee_id = ?');
+        where.push('a.employee_id = ?');
         params.push(employeeIdFilter);
       }
       if (categoryFilter) {
-        where.push('category = ?');
+        where.push('a.category = ?');
         params.push(categoryFilter);
       }
       where.push(sysExclusion);
       params.push(...SYSTEM_APPS);
 
+      const whereSql = where.join(' AND ');
+
       const rows = await db.all(
-        `SELECT * FROM activities
-          WHERE ${where.join(' AND ')}
-          ORDER BY timestamp DESC, created_at DESC
+        `SELECT a.*, e.name AS employee_name
+           FROM activities a
+           LEFT JOIN employees e ON e.id = a.employee_id AND e.org_id = a.org_id
+          WHERE ${whereSql}
+          ORDER BY a.timestamp DESC, a.created_at DESC
           LIMIT ? OFFSET ?`,
         [...params, limit, offset]
       );
 
       const countRow: any = await db.get(
-        `SELECT COUNT(*) as c FROM activities WHERE ${where.join(' AND ')}`,
+        `SELECT COUNT(*) as c FROM activities a WHERE ${whereSql}`,
         params
       );
 
@@ -497,6 +516,7 @@ export function setupRoutes(app: Express): void {
       const activities = (rows as any[]).map((r: any) => ({
         id: r.id,
         employeeId: r.employee_id,
+        employeeName: r.employee_name || null,
         timestamp: r.timestamp,
         appName: r.app_name,
         windowTitle: r.window_title,

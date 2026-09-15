@@ -3,8 +3,11 @@ import { api } from '../lib/api';
 import type { Project } from '../../../shared-types';
 import { SUPPORTED_CURRENCIES, formatCurrency } from '../../../shared-types';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../contexts/I18nContext';
+import { HelpTip } from '../components/HelpTip';
 
 export const Projects: React.FC = () => {
+  const { t } = useI18n();
   const { org } = useAuth();
   const defaultCurrency = org?.defaultCurrency || 'USD';
   const currencySymbol = SUPPORTED_CURRENCIES.find(c => c.code === defaultCurrency)?.symbol || '$';
@@ -55,8 +58,6 @@ export const Projects: React.FC = () => {
     const url = editingProject
       ? `/api/projects/${editingProject.id}`
       : '/api/projects';
-
-    const method = editingProject ? 'PUT' : 'POST';
 
     try {
       const payload = {
@@ -137,7 +138,10 @@ export const Projects: React.FC = () => {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>Projects</h1>
+        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {t('projects.title')}
+          <HelpTip text={t('help.projects')} />
+        </h1>
         <button
           style={styles.addButton}
           onClick={() => {
@@ -146,7 +150,7 @@ export const Projects: React.FC = () => {
             setShowForm(true);
           }}
         >
-          + Add Project
+          {t('projects.add')}
         </button>
       </header>
 
@@ -161,7 +165,7 @@ export const Projects: React.FC = () => {
           <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
             <div className="tt-modal-header">
               <h2 id="modal-title" className="tt-modal-title">
-                {editingProject ? 'Edit Project' : 'Add Project'}
+                {editingProject ? t('projects.edit') : t('projects.addTitle')}
               </h2>
               <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
             </div>

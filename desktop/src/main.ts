@@ -1,6 +1,11 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerSaveBlocker, powerMonitor } from 'electron';
 import Store from 'electron-store';
-import { startTracking, getTrackingStatus, setupIpcHandlers, onSystemResume } from './tracker.js';
+import * as path from 'path';
+import { startTracking, getTrackingStatus, setupIpcHandlers, onSystemResume, isEnrolled } from './tracker.js';
+
+function assetPath(...parts: string[]): string {
+  return path.join(app.getAppPath(), 'dist', ...parts);
+}
 import { TEAMTRACKER_CONFIG, getServerUrl } from './config.js';
 
 const store = new Store({
@@ -38,6 +43,7 @@ let powerSaveBlockerId: number | null = null;
 // the event loop running. `backgroundThrottling: false` additionally
 // disables Chromium's own throttling of background renderers.
 let keepAliveWindow: BrowserWindow | null = null;
+let employeeWindow: BrowserWindow | null = null;
 
 app.whenReady().then(async () => {
   // Block App Nap and idle suspension on macOS. Safe no-op on Windows/Linux.
@@ -74,6 +80,10 @@ app.whenReady().then(async () => {
 
   setupIpcHandlers();
   await startTracking();
+
+  if (!STEALTH_MODE) {
+    createEmployeeWindow();
+  }
 
   // macOS App Nap can freeze the JS event loop for hours or days after a
   // sleep/wake cycle even with powerSaveBlocker on, leaving setInterval
@@ -153,6 +163,39 @@ function createKeepAliveWindow(): void {
   }
 }
 
+function createEmployeeWindow(): void {
+  if (employeeWindow && !employeeWindow.isDestroyed()) {
+    employeeWindow.show();
+    employeeWindow.focus();
+    return;
+  }
+
+  employeeWindow = new BrowserWindow({
+    width: 440,
+    height: 520,
+    minWidth: 360,
+    minHeight: 420,
+    title: 'TeamTracker',
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: assetPath('preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  employeeWindow.loadFile(assetPath('ui', 'index.html'));
+  employeeWindow.once('ready-to-show', () => {
+    employeeWindow?.show();
+    employeeWindow?.focus();
+  });
+  employeeWindow.on('closed', () => {
+    employeeWindow = null;
+  });
+}
+
 function createTray(): void {
   // Simple colored square icon (green for active)
   const icon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABWSURBVDiNY2RgYPgPBAzUAIY1QLwKiP9D+Tg1oCkY1gDxw/8pDIOJ41SDa4ZRM7E0w2wYdTMxDcE0o+smhGFG3UxsM8xuRt1MbDOsbsI1jFE3E9sMtxsZ1QAAtg4Xy4eo4TkAAAAASUVORK5CYII=');
@@ -160,6 +203,7 @@ function createTray(): void {
   tray = new Tray(icon);
   tray.setToolTip('TeamTracker - Activity Tracker');
 
+  tray.on('click', () => createEmployeeWindow());
   updateTrayMenu();
 
   // Update menu every 5 seconds to show current status
@@ -180,6 +224,7 @@ function updateTrayMenu(): void {
     { label: `Queued: ${status.queuedCount}`, enabled: false },
     { label: `Status: ${status.isOnline ? '🟢 Online' : '🔴 Offline'}`, enabled: false },
     { type: 'separator' },
+    { label: isEnrolled() ? 'Show Window' : 'Setup…', click: () => createEmployeeWindow() },
     { label: 'Quit', click: () => app.quit() }
   ]);
 

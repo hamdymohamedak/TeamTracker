@@ -20,8 +20,10 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireDeviceAuth } from '../auth.js';
-import { getDatabase } from '../database.js';
+import { getDatabase, getEmployeeById } from '../database.js';
 import { buildDailySummary, renderDailySummaryHtml, sendDailySummaryEmail } from '../daily-summary.js';
+import { consumeCommand, listCommandsForEmployee } from '../remote-commands.js';
+import { broadcastScreenshotNew, requestScreenshotCommand } from '../websocket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,22 +89,93 @@ export function setupSummaryScreenshotRoutes(app: Express): void {
 
   // ----- Screenshots -------------------------------------------------------
 
+  // Admin: request an on-demand screenshot from a live employee tracker.
+  app.post('/api/screenshots/request', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const employeeId = typeof req.body?.employeeId === 'string' ? req.body.employeeId.trim() : '';
+      if (!employeeId) {
+        return res.status(400).json({ success: false, error: 'employeeId is required' });
+      }
+
+      const employee = await getEmployeeById(req.orgId!, employeeId);
+      if (!employee) {
+        return res.status(404).json({ success: false, error: 'Employee not found' });
+      }
+
+      const result = requestScreenshotCommand({
+        orgId: req.orgId!,
+        employeeId,
+        requestedBy: req.userId || 'admin',
+      });
+
+      if (!result.online) {
+        return res.status(409).json({
+          success: false,
+          error: 'Employee tracker is offline. Ask them to open the desktop app, then try again.',
+          data: result,
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          ...result,
+          employeeId,
+          employeeName: employee.name,
+          message: result.delivered
+            ? 'Screenshot requested. Waiting for the device to capture…'
+            : 'Employee is online but the command could not be delivered. Retrying via poll…',
+        },
+      });
+    } catch (e) {
+      res.status(500).json({ success: false, error: String(e) });
+    }
+  });
+
+  // Device: poll pending remote commands (fallback when WS is reconnecting).
+  app.get('/api/screenshots/commands', requireDeviceAuth, async (req: Request, res: Response) => {
+    try {
+      const commands = listCommandsForEmployee(req.orgId!, req.employeeId!).map(cmd => ({
+        requestId: cmd.id,
+        type: cmd.type,
+        expiresAt: new Date(cmd.expiresAt).toISOString(),
+      }));
+      res.json({ success: true, data: commands });
+    } catch (e) {
+      res.status(500).json({ success: false, error: String(e) });
+    }
+  });
+
   // Tracker uploads screenshots via device JWT auth. Body shape:
-  //   { mimeType, dataBase64, capturedAt?, appName?, windowTitle?, width?, height? }
-  // Server enforces the org-level screenshots_enabled flag. If disabled, the
-  // upload is rejected with 403 so the tracker stops asking.
+  //   { mimeType, dataBase64, capturedAt?, appName?, windowTitle?, width?, height?, requestId?, trigger? }
+  // Periodic uploads require screenshots_enabled. On-demand uploads are allowed
+  // when they present a valid pending requestId from an admin command.
   app.post('/api/screenshots', requireDeviceAuth, async (req: Request, res: Response) => {
     try {
       const db = getDatabase();
-      const orgRow = await db.get(
-        `SELECT screenshots_enabled FROM organizations WHERE id = ?`,
-        [req.orgId!]
-      );
-      if (!orgRow?.screenshots_enabled) {
-        return res.status(403).json({ success: false, error: 'screenshots disabled for this organization' });
-      }
+      const { mimeType, dataBase64, capturedAt, appName, windowTitle, width, height, requestId, trigger } = req.body || {};
 
-      const { mimeType, dataBase64, capturedAt, appName, windowTitle, width, height } = req.body || {};
+      const isOnDemand = trigger === 'on_demand' || typeof requestId === 'string';
+      let consumedRequestId: string | null = null;
+
+      if (isOnDemand && typeof requestId === 'string') {
+        const cmd = consumeCommand(requestId, req.orgId!, req.employeeId!);
+        if (!cmd || cmd.type !== 'screenshot') {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid or expired screenshot request. Ask the admin to request again.',
+          });
+        }
+        consumedRequestId = cmd.id;
+      } else {
+        const orgRow = await db.get(
+          `SELECT screenshots_enabled FROM organizations WHERE id = ?`,
+          [req.orgId!]
+        );
+        if (!orgRow?.screenshots_enabled) {
+          return res.status(403).json({ success: false, error: 'screenshots disabled for this organization' });
+        }
+      }
       if (typeof mimeType !== 'string' || !ALLOWED_SCREENSHOT_MIME.has(mimeType)) {
         return res.status(400).json({
           success: false,
@@ -192,7 +265,22 @@ export function setupSummaryScreenshotRoutes(app: Express): void {
         console.warn('Screenshot retention cleanup failed:', cleanupErr);
       }
 
-      res.json({ success: true, data: { id, fileUrl: relativePath } });
+      res.json({ success: true, data: { id, fileUrl: relativePath, requestId: consumedRequestId } });
+
+      try {
+        broadcastScreenshotNew(req.orgId!, {
+          id,
+          employeeId: req.employeeId!,
+          fileUrl: relativePath,
+          timestamp: ts.toISOString(),
+          appName: typeof appName === 'string' ? appName : null,
+          windowTitle: typeof windowTitle === 'string' ? windowTitle : null,
+          requestId: consumedRequestId,
+          trigger: consumedRequestId ? 'on_demand' : 'periodic',
+        });
+      } catch (broadcastErr) {
+        console.warn('screenshot:new broadcast failed:', broadcastErr);
+      }
     } catch (e) {
       console.error('Screenshot upload failed:', e);
       res.status(500).json({ success: false, error: String(e) });

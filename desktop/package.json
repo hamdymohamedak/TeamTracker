@@ -8,8 +8,8 @@
   "scripts": {
     "postinstall": "node scripts/ensure-electron.mjs",
     "ensure-electron": "node scripts/ensure-electron.mjs",
-    "dev": "node scripts/ensure-electron.mjs && tsc && vite build && electron .",
-    "build": "tsc && vite build",
+    "dev": "node scripts/ensure-electron.mjs && tsc && vite build && node scripts/copy-assets.mjs && electron .",
+    "build": "tsc && vite build && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac --publish never",

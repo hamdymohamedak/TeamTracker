@@ -35,6 +35,8 @@ import { GenesisAI } from './components/GenesisAI';
 import { OrgSettingsModal } from './components/OrgSettingsModal';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { I18nProvider, LanguageSwitcher, useI18n } from './contexts/I18nContext';
+import type { TranslationKey } from './i18n/translations';
 import './App.css';
 
 type ConnectionStatus = 'loading' | 'connected' | 'disconnected';
@@ -42,13 +44,14 @@ type Page = 'dashboard' | 'employees' | 'projects' | 'tasks' | 'reports' | 'summ
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
+  const { t } = useI18n();
 
   if (isLoading) {
     return (
       <div className="app-loading">
         <div className="app-loading-inner">
           <div className="app-spinner" />
-          <p>Loading workspace…</p>
+          <p>{t('shell.loadingWorkspace')}</p>
         </div>
       </div>
     );
@@ -78,6 +81,7 @@ const BrandBlock: React.FC<{
   onOpenSettings: () => void;
 }> = ({ compact, onOpenSettings }) => {
   const { org } = useAuth();
+  const { t } = useI18n();
   const name = org?.name || 'TeamTracker';
 
   return (
@@ -86,8 +90,8 @@ const BrandBlock: React.FC<{
       onClick={onOpenSettings}
       role="button"
       tabIndex={0}
-      aria-label="Open organization settings"
-      title="Organization settings"
+      aria-label={t('shell.orgSettings')}
+      title={t('shell.orgSettings')}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') onOpenSettings();
       }}
@@ -107,7 +111,7 @@ const BrandBlock: React.FC<{
         )}
         <div>
           <h1>{name}</h1>
-          <div className="logo-meta">{compact ? 'Admin' : 'Admin console'}</div>
+          <div className="logo-meta">{compact ? t('shell.admin') : t('shell.adminConsole')}</div>
         </div>
       </div>
     </div>
@@ -122,6 +126,7 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const { t } = useI18n();
 
   const getCurrentPage = (): Page => {
     const path = location.pathname.slice(1) || 'dashboard';
@@ -161,6 +166,16 @@ const AppContent: React.FC = () => {
 
   const openSettings = () => setShowOrgSettings(true);
 
+  const nav = (key: TranslationKey, page: Page, icon: LucideIcon) => (
+    <NavItem
+      key={page}
+      icon={icon}
+      label={t(key)}
+      active={currentPage === page}
+      onClick={() => handleNavClick(page)}
+    />
+  );
+
   return (
     <div className="app-container">
       {isMobile && (
@@ -180,24 +195,24 @@ const AppContent: React.FC = () => {
         {!isMobile && <BrandBlock onOpenSettings={openSettings} />}
 
         <nav className="nav">
-          <div className="nav-section-label">Overview</div>
-          <NavItem icon={LayoutDashboard} label="Dashboard" active={currentPage === 'dashboard'} onClick={() => handleNavClick('dashboard')} />
-          <NavItem icon={Users} label="Employees" active={currentPage === 'employees'} onClick={() => handleNavClick('employees')} />
-          <NavItem icon={FolderKanban} label="Projects" active={currentPage === 'projects'} onClick={() => handleNavClick('projects')} />
-          <NavItem icon={CheckSquare} label="Tasks" active={currentPage === 'tasks'} onClick={() => handleNavClick('tasks')} />
+          <div className="nav-section-label">{t('shell.overview')}</div>
+          {nav('shell.dashboard', 'dashboard', LayoutDashboard)}
+          {nav('shell.employees', 'employees', Users)}
+          {nav('shell.projects', 'projects', FolderKanban)}
+          {nav('shell.tasks', 'tasks', CheckSquare)}
 
-          <div className="nav-section-label">Insights</div>
-          <NavItem icon={BarChart3} label="Reports" active={currentPage === 'reports'} onClick={() => handleNavClick('reports')} />
-          <NavItem icon={Mail} label="Daily Summary" active={currentPage === 'summary'} onClick={() => handleNavClick('summary')} />
-          <NavItem icon={Camera} label="Screenshots" active={currentPage === 'screenshots'} onClick={() => handleNavClick('screenshots')} />
+          <div className="nav-section-label">{t('shell.insights')}</div>
+          {nav('shell.reports', 'reports', BarChart3)}
+          {nav('shell.summary', 'summary', Mail)}
+          {nav('shell.screenshots', 'screenshots', Camera)}
 
-          <div className="nav-section-label">Workspace</div>
-          <NavItem icon={Tags} label="Overrides" active={currentPage === 'overrides'} onClick={() => handleNavClick('overrides')} />
-          <NavItem icon={Shield} label="Team" active={currentPage === 'team'} onClick={() => handleNavClick('team')} />
+          <div className="nav-section-label">{t('shell.workspace')}</div>
+          {nav('shell.overrides', 'overrides', Tags)}
+          {nav('shell.team', 'team', Shield)}
           {isMobile && (
             <NavItem
               icon={Settings}
-              label="Settings"
+              label={t('shell.settings')}
               active={false}
               onClick={() => {
                 openSettings();
@@ -208,6 +223,7 @@ const AppContent: React.FC = () => {
         </nav>
 
         <div className="sidebar-footer">
+          <LanguageSwitcher variant="sidebar" />
           <a
             className="sidebar-help"
             href="https://github.com/hamdymohamedak/TeamTracker"
@@ -215,18 +231,18 @@ const AppContent: React.FC = () => {
             rel="noopener noreferrer"
           >
             <HelpCircle size={15} />
-            Help & docs
+            {t('shell.help')}
           </a>
           {user?.name && <div className="sidebar-user">{user.name}</div>}
           <button className="sidebar-signout" onClick={logout} type="button">
             <LogOut size={15} />
-            Sign out
+            {t('shell.signOut')}
           </button>
           <div className="connection-status">
             <span className={`status-dot ${connectionStatus}`} />
-            {connectionStatus === 'loading' && 'Connecting…'}
-            {connectionStatus === 'connected' && 'Live'}
-            {connectionStatus === 'disconnected' && 'Offline'}
+            {connectionStatus === 'loading' && t('shell.connecting')}
+            {connectionStatus === 'connected' && t('shell.live')}
+            {connectionStatus === 'disconnected' && t('shell.offline')}
           </div>
         </div>
       </aside>
@@ -272,28 +288,30 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon: Icon, active, onClick })
 );
 
 const App: React.FC = () => (
-  <AuthProvider>
-    <WebSocketProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-          <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
-          <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-          <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
-          <Route path="/download" element={<Download />} />
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <AppContent />
-                <GenesisAI />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </WebSocketProvider>
-  </AuthProvider>
+  <I18nProvider>
+    <AuthProvider>
+      <WebSocketProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+            <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+            <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+            <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+            <Route path="/download" element={<Download />} />
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <AppContent />
+                  <GenesisAI />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </WebSocketProvider>
+    </AuthProvider>
+  </I18nProvider>
 );
 
 export default App;

@@ -373,3 +373,60 @@
   opacity: 1;
   visibility: visible;
 }
+
+/* Live Activity employee + screen panel */
+@media (max-width: 900px) {
+  .dashboard-live-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+.lang-switcher {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.lang-switcher--sidebar {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 4px;
+}
+
+.lang-switcher--auth .lang-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #a3a3a3;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.lang-switcher--auth .lang-btn.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.lang-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--tt-text-on-ink-muted);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  min-height: 32px;
+}
+
+.lang-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.lang-btn:hover {
+  color: #fff;
+}
