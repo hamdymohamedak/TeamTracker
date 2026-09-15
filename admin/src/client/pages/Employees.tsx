@@ -258,7 +258,7 @@ export const Employees: React.FC = () => {
   /**
    * Zero-friction install flow for non-technical admins: clicked while the
    * admin is physically at the employee's laptop. Generates a setup token,
-   * then drops an `archtrack-activate-<ts>.json` into the admin's Downloads
+   * then drops an `teamtracker-activate-<ts>.json` into the admin's Downloads
    * folder. When the tracker first runs on that machine it auto-detects the
    * file, redeems the token against /api/auth/enroll, and starts tracking
    * as this employee — no copy-pasting required.
@@ -283,7 +283,7 @@ export const Employees: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `archtrack-activate-${Date.now()}.json`;
+      a.download = `teamtracker-activate-${Date.now()}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -435,7 +435,7 @@ export const Employees: React.FC = () => {
                   ))}
                 </select>
                 <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
-                  "Auto-detect" lets ArchTrack pick based on app usage. Override here if it's wrong.
+                  "Auto-detect" lets TeamTracker pick based on app usage. Override here if it's wrong.
                 </div>
               </div>
 
@@ -637,7 +637,7 @@ export const Employees: React.FC = () => {
                 ⬇ Download Tracker App
               </a>
               <a
-                href="https://github.com/maximizeGPT/Archtrack#3-install-the-desktop-tracker"
+                href="https://github.com/hamdymohamedak/TeamTracker#3-install-the-desktop-tracker"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -682,7 +682,7 @@ export const Employees: React.FC = () => {
             }}>
               <div style={{ fontWeight: 600, marginBottom: '6px' }}>Next steps on this laptop:</div>
               <ol style={{ margin: 0, paddingLeft: '18px' }}>
-                <li>Click the button below to download the ArchTrack installer</li>
+                <li>Click the button below to download the TeamTracker installer</li>
                 <li>Run the installer</li>
                 <li>That's it — the tracker will auto-connect as <strong>{installPrompt.employeeName}</strong> on first launch</li>
               </ol>

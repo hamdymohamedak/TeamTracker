@@ -1,10 +1,12 @@
-# ArchTrack — Employee Time Tracking for Small Businesses
+# TeamTracker — Employee Time Tracking for Small Businesses
 
-**Live demo: [archtrack.live](https://archtrack.live)**
+**Repo: [github.com/hamdymohamedak/TeamTracker](https://github.com/hamdymohamedak/TeamTracker)**
 
 **Know where your team's time goes. Without the enterprise price tag.**
 
-ArchTrack is an open-source employee tracking SaaS. See who's working, what they're working on, and where time gets wasted — all in real-time from any device.
+TeamTracker is an open-source employee tracking SaaS. See who's working, what they're working on, and where time gets wasted — all in real-time from any device.
+
+> Replace `YOUR_DOMAIN` below with your VPS domain (e.g. `https://track.yourcompany.com`) after you deploy.
 
 ---
 
@@ -16,7 +18,7 @@ ArchTrack is an open-source employee tracking SaaS. See who's working, what they
 - **Smart role detection** — auto-detects if someone is a developer, designer, manager, etc. and adjusts scoring (admins can override)
 - **Business hours** — set per-employee working hours; activity outside hours is shown separately, not counted against productivity
 - **Multi-currency** — pick from 15+ currencies for each employee's hourly rate (USD, EUR, GBP, INR, AED, and more)
-- **Company branding** — upload your own logo to replace the ArchTrack wordmark in the sidebar
+- **Company branding** — upload your own logo to replace the TeamTracker wordmark in the sidebar
 - **Multi-tenant** — multiple businesses on one server, completely isolated data
 - **Mobile friendly** — check your dashboard from your phone
 
@@ -26,7 +28,7 @@ ArchTrack is an open-source employee tracking SaaS. See who's working, what they
 
 ### 1. Sign Up
 
-Go to **[archtrack.live/signup](https://archtrack.live/signup)**. Enter your company name, your name, email, and a password. You're in.
+Go to **[YOUR_DOMAIN/signup](https://YOUR_DOMAIN/signup)**. Enter your company name, your name, email, and a password. You're in.
 
 ### 2. Add Employees
 
@@ -38,23 +40,39 @@ For each employee, click the **Setup Token** button next to their name. This gen
 
 #### Option A: Download the pre-built app (recommended for employees)
 
-Download the latest DMG (Mac) or EXE installer (Windows) from [GitHub Releases](https://github.com/maximizeGPT/Archtrack/releases).
+Download the latest DMG (Mac), EXE (Windows), or AppImage/`.deb` (Linux) from [GitHub Releases](https://github.com/hamdymohamedak/TeamTracker/releases).
 
 **macOS:**
-1. Open the `.dmg`, drag **ArchTrack** to Applications
+1. Open the `.dmg`, drag **TeamTracker** to Applications
 2. Right-click → **Open** → **Open Anyway** (required once for unsigned apps)
 3. macOS will prompt for **Screen Recording** and **Accessibility** — grant both
-4. ArchTrack runs silently in the background (no Dock icon, no menu bar)
+4. TeamTracker runs silently in the background (no Dock icon, no menu bar)
 
 **Windows:**
 1. Run the `.exe` installer, follow the wizard
-2. ArchTrack starts automatically — no permission prompts needed
+2. TeamTracker starts automatically — no permission prompts needed
 3. SmartScreen may show "Windows protected your PC" on first run — click **More info → Run anyway**
+
+**Linux:**
+1. Download the `.AppImage` (or `.deb` for Debian/Ubuntu) from [GitHub Releases](https://github.com/hamdymohamedak/TeamTracker/releases)
+2. Make it executable and launch:
+   ```bash
+   chmod +x TeamTracker-*-x86_64.AppImage
+   ./TeamTracker-*-x86_64.AppImage
+   ```
+3. Install a window-title backend (see [Linux](#linux) below) so activity isn't stuck on "Unknown"
+4. Optional autostart + KeepAlive:
+   ```bash
+   cd TeamTracker/desktop
+   ./install-autostart-linux.sh /path/to/TeamTracker-*-x86_64.AppImage
+   # or with stealth (no tray):
+   ./install-autostart-linux.sh --stealth /path/to/TeamTracker-*-x86_64.AppImage
+   ```
 
 Enroll the tracker with the setup token from the dashboard:
 ```bash
 # Get the device token (replace SETUP_TOKEN with the code from the dashboard)
-curl -X POST https://archtrack.live/api/auth/enroll \
+curl -X POST https://YOUR_DOMAIN/api/auth/enroll \
   -H "Content-Type: application/json" \
   -d '{"setupToken":"PASTE_SETUP_TOKEN_HERE"}'
 ```
@@ -62,11 +80,15 @@ curl -X POST https://archtrack.live/api/auth/enroll \
 Save the returned `accessToken` to the config file:
 ```bash
 # macOS
-mkdir -p ~/Library/Application\ Support/@archtrack/desktop
-echo '{"deviceToken":"PASTE_ACCESS_TOKEN_HERE","serverUrl":"https://archtrack.live"}' > ~/Library/Application\ Support/@archtrack/desktop/config.json
+mkdir -p ~/Library/Application\ Support/@teamtracker/desktop
+echo '{"deviceToken":"PASTE_ACCESS_TOKEN_HERE","serverUrl":"https://YOUR_DOMAIN"}' > ~/Library/Application\ Support/@teamtracker/desktop/config.json
+
+# Linux (Electron userData for package name @teamtracker/desktop)
+mkdir -p ~/.config/@teamtracker/desktop
+echo '{"deviceToken":"PASTE_ACCESS_TOKEN_HERE","serverUrl":"https://YOUR_DOMAIN"}' > ~/.config/@teamtracker/desktop/config.json
 ```
 
-ArchTrack auto-starts on login. To verify it's running, check the dashboard — you should see the employee appear within 60 seconds.
+TeamTracker auto-starts on login. To verify it's running, check the dashboard — you should see the employee appear within 60 seconds.
 
 > See **[Desktop Tracker Permissions](#desktop-tracker-permissions)** below for details on what each OS needs.
 
@@ -75,8 +97,8 @@ ArchTrack auto-starts on login. To verify it's running, check the dashboard — 
 If you want to build the tracker yourself or make changes:
 
 ```bash
-git clone https://github.com/maximizeGPT/Archtrack.git
-cd Archtrack/desktop
+git clone https://github.com/hamdymohamedak/TeamTracker.git
+cd TeamTracker/desktop
 npm install
 ```
 
@@ -89,7 +111,8 @@ npx electron .
 ```bash
 npm run dist:mac    # builds DMG + ZIP for macOS (arm64 + x64)
 npm run dist:win    # builds Windows installer (x64)
-npm run dist:all    # both platforms
+npm run dist:linux  # builds AppImage + .deb for Linux (x64)
+npm run dist:all    # macOS + Windows + Linux
 ```
 
 Build output goes to `desktop/release/`.
@@ -102,19 +125,25 @@ Build output goes to `desktop/release/`.
 After building, re-sign the macOS app so Accessibility/Screen Recording permissions persist across restarts:
 ```bash
 # Sign all nested frameworks, then the main app
-find release/mac-arm64/ArchTrack.app/Contents/Frameworks -name "*.framework" -exec codesign --force --sign - {} \;
-find release/mac-arm64/ArchTrack.app/Contents/Frameworks -name "*.app" -exec codesign --force --sign - {} \;
-codesign --force --sign - --identifier live.archtrack.tracker release/mac-arm64/ArchTrack.app
+find release/mac-arm64/TeamTracker.app/Contents/Frameworks -name "*.framework" -exec codesign --force --sign - {} \;
+find release/mac-arm64/TeamTracker.app/Contents/Frameworks -name "*.app" -exec codesign --force --sign - {} \;
+codesign --force --sign - --identifier com.teamtracker.tracker release/mac-arm64/TeamTracker.app
 ```
 
 #### Auto-start on login
 
-**macOS:** ArchTrack.app registers as a Login Item automatically. You can also add it manually: System Settings → General → Login Items → add ArchTrack.
+**macOS:** TeamTracker.app registers as a Login Item automatically. You can also add it manually: System Settings → General → Login Items → add TeamTracker.
 
-**Windows:** The NSIS installer creates a Start Menu shortcut. To add auto-start, the installer places a Scheduled Task or you can add ArchTrack to Startup:
+**Windows:** The NSIS installer creates a Start Menu shortcut. To add auto-start, the installer places a Scheduled Task or you can add TeamTracker to Startup:
 ```powershell
-cd Archtrack\desktop
+cd TeamTracker\desktop
 powershell -ExecutionPolicy Bypass -File install-autostart-windows.ps1
+```
+
+**Linux:** Use the XDG Autostart + systemd helper:
+```bash
+cd TeamTracker/desktop
+./install-autostart-linux.sh /path/to/TeamTracker.AppImage
 ```
 
 Symptoms that you're running an old tracker build: missing screenshots
@@ -123,16 +152,16 @@ stealth mode, or browser tabs misclassified as social media.
 
 ### 4. Watch It Work
 
-Go back to your dashboard at [archtrack.live](https://archtrack.live). Within a minute, you'll see employee activity — what apps they're using, productivity scores, time breakdowns. Check it from your phone too.
+Go back to your dashboard at [YOUR_DOMAIN](https://YOUR_DOMAIN). Within a minute, you'll see employee activity — what apps they're using, productivity scores, time breakdowns. Check it from your phone too.
 
 ---
 
 ## Self-Hosting (Optional)
 
-Want to run your own instance instead of using archtrack.live? Deploy to any Ubuntu server:
+Want to self-host on your own VPS? Deploy to any Ubuntu server:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/maximizeGPT/Archtrack/main/deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/hamdymohamedak/TeamTracker/main/deploy.sh | bash
 ```
 
 Works on DigitalOcean ($6/month droplet), AWS, or any VPS. Add a custom domain + HTTPS with:
@@ -155,16 +184,16 @@ macOS requires two permissions on first launch, both granted from
 
 1. **Screen & System Audio Recording** — lets the tracker capture periodic
    screenshots. On first launch, macOS prompts automatically. Click
-   **Open System Settings** and toggle on **ArchTrack**.
+   **Open System Settings** and toggle on **TeamTracker**.
    - Settings path: **Privacy & Security → Screen & System Audio Recording
-     → toggle on ArchTrack**.
+     → toggle on TeamTracker**.
 2. **Accessibility** — lets the tracker read the active window title via
    the `active-win` library. Without this, activity shows as "Unknown".
    - Settings path: **Privacy & Security → Accessibility → toggle on
-     ArchTrack**.
+     TeamTracker**.
 
 Both prompts appear once on first launch. The packaged app is signed with
-a stable bundle ID (`live.archtrack.tracker`), so permissions survive
+a stable bundle ID (`com.teamtracker.tracker`), so permissions survive
 restarts and app updates.
 
 > ⚠️ **If you build from source**, re-sign the app after building (see
@@ -183,7 +212,7 @@ you may see friction on first run:
    Run anyway**. This only happens once per machine.
 2. **Microsoft Defender / corporate AV** — some EDR products (CrowdStrike,
    SentinelOne, etc.) quarantine unsigned Electron apps by default. If the
-   tracker exits immediately, add an exclusion for the ArchTrack folder or
+   tracker exits immediately, add an exclusion for the TeamTracker folder or
    work with IT to whitelist the binary.
 3. **Group Policy** — in locked-down enterprise environments, policy may
    block side-loaded Electron apps. You may need IT to push the tracker as
@@ -193,10 +222,27 @@ No Accessibility or Screen Recording toggles are needed on Windows.
 
 ### Linux
 
-The desktop tracker is **not officially supported on Linux yet**. Support
-for Wayland/X11 window-title reading is tracked in `DEFERRED.md`. For now,
-we recommend running the tracker on a Mac or Windows box that mirrors the
-Linux user's activity (e.g. developer workstations).
+The desktop tracker runs on Linux (x64) as an **AppImage** or **`.deb`**.
+Window-title reading depends on the display server:
+
+| Environment | Backend | What to install |
+|-------------|---------|-----------------|
+| **X11** (most classic desktops) | `active-win`, then `xdotool` / `xprop` | `sudo apt install xdotool` (recommended) |
+| **GNOME Wayland** | Focused Window D-Bus extension via `gdbus` | [Focused Window D-Bus](https://extensions.gnome.org/extension/5592/focused-window-d-bus) |
+| **Hyprland** | `hyprctl activewindow -j` | ships with Hyprland |
+| **KDE Plasma (Wayland)** | `kdotool` | [kdotool](https://github.com/jinliu/kdotool) |
+
+Without one of these backends, the tracker still runs and can upload
+screenshots, but activity rows will show **"Unknown"** for the app/title.
+
+**Screenshots on Wayland:** Electron uses the XDG Desktop Portal /
+PipeWire screencast path. The first capture may show a system permission
+dialog ("Allow TeamTracker to share your screen?") — grant it once per
+session (or permanently, depending on the portal implementation).
+
+**Autostart:** `desktop/install-autostart-linux.sh` writes an XDG
+`.desktop` entry under `~/.config/autostart/` and, when available, a
+`systemd --user` service with `Restart=on-failure`.
 
 ---
 
@@ -236,9 +282,9 @@ Productive, or Productivity Score. Instead it appears in a separate
 to track 24/7 — great for solopreneurs.
 
 ### Company Branding
-Click the ArchTrack logo in the sidebar to open **Organization Settings**:
+Click the TeamTracker logo in the sidebar to open **Organization Settings**:
 - Upload a custom company logo (PNG, JPEG, WebP, SVG, max 1 MB). It replaces
-  the ArchTrack wordmark in the sidebar for everyone in the org. Leave it
+  the TeamTracker wordmark in the sidebar for everyone in the org. Leave it
   empty for the clean default.
 - Set the organization's timezone (used for the "today" boundary on the
   Dashboard and as the default for new employees).
@@ -252,7 +298,7 @@ rate with the appropriate symbol.
 
 ### Daily Email Summary
 Toggle on **Daily Email Summary** in Organization Settings, set a recipient
-and an hour, and ArchTrack will email a per-employee productivity summary
+and an hour, and TeamTracker will email a per-employee productivity summary
 once a day. The email contains:
 - Team productivity score, total tracked time, productive time
 - Per-employee score, total / productive / idle, top 5 apps with category
@@ -269,7 +315,7 @@ SMTP_HOST=smtp.your-provider.com
 SMTP_PORT=587
 SMTP_USER=your-smtp-user
 SMTP_PASS=your-smtp-pass
-SMTP_FROM="ArchTrack <noreply@yourdomain.com>"
+SMTP_FROM="TeamTracker <noreply@yourdomain.com>"
 ```
 
 If SMTP isn't configured, the cron still runs, the summary is still generated,
@@ -288,18 +334,18 @@ Screenshots are off by default. Storage path on the server:
 
 ### Stealth Mode (Desktop Tracker)
 The tracker can run completely invisibly: no menu-bar / tray icon, no dock
-icon on macOS, silent boot. Enable by launching with the `ARCHTRACK_STEALTH=1`
+icon on macOS, silent boot. Enable by launching with the `TEAMTRACKER_STEALTH=1`
 env var:
 
 ```bash
-ARCHTRACK_STEALTH=1 npx electron .
+TEAMTRACKER_STEALTH=1 npx electron .
 ```
 
-Combined with a launch agent (macOS `launchd` plist) or a Windows scheduled
-task, the tracker becomes invisible to the employee while still uploading
-activity + screenshots to the admin dashboard. Performance overhead is
-negligible — the tracker checks the active window every 10 seconds and
-syncs every 60 seconds.
+Combined with a launch agent (macOS `launchd` plist), a Windows scheduled
+task, or the Linux XDG/systemd autostart script, the tracker becomes
+invisible to the employee while still uploading activity + screenshots to
+the admin dashboard. Performance overhead is negligible — the tracker
+checks the active window every 10 seconds and syncs every 60 seconds.
 
 ### Multi-Tenant
 - Each business is completely isolated
@@ -312,7 +358,7 @@ syncs every 60 seconds.
 ## Architecture
 
 ```
-[Employee Mac/PC]          [Your Server]              [Your Phone/Laptop]
+[Employee Mac/PC/Linux]    [Your Server]              [Your Phone/Laptop]
   Desktop Tracker  --->  Node.js + SQLite  <---   Dashboard (any browser)
   (Electron app)         (port 3001)               (React SPA)
                          nginx (port 80)
@@ -340,7 +386,7 @@ syncs every 60 seconds.
 SSH into your server (or use DigitalOcean Console) and run:
 
 ```bash
-cd /opt/archtrack && git pull && cd admin && npm install --no-package-lock && npx tsc -p tsconfig.server.json && npx vite build && pm2 restart archtrack
+cd /opt/teamtracker && git pull && cd admin && npm install --no-package-lock && npx tsc -p tsconfig.server.json && npx vite build && pm2 restart teamtracker
 ```
 
 ---
@@ -385,9 +431,10 @@ All endpoints require `Authorization: Bearer <token>` header (except auth endpoi
 
 **Server:** Ubuntu 20.04+, 1GB RAM, 1 CPU ($6/month on DigitalOcean)
 
-**Desktop tracker:** Node.js 18+ on Mac or Windows. See
+**Desktop tracker:** Node.js 18+ on Mac, Windows, or Linux (x64). See
 [Desktop Tracker Permissions](#desktop-tracker-permissions) for the
-per-OS first-run setup. Linux is not yet supported.
+per-OS first-run setup. On Linux, install a window-title backend
+(xdotool on X11, or a Wayland compositor bridge — see the Linux section).
 
 **Dashboard:** Any modern browser (phone or computer)
 

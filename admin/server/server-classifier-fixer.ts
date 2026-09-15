@@ -10,7 +10,7 @@
 //     Notes, Reminders, FaceTime, etc.)
 //   * Browser tabs whose titles mention common SaaS work tools the
 //     classifier doesn't yet recognize (Google Drive, Notion, Linear,
-//     ArchTrack itself, claude.ai, etc.)
+//     TeamTracker itself, claude.ai, etc.)
 //
 // Catching all of those gaps requires either rebuilding every employee's
 // desktop tracker (high friction) OR doing one more classification pass
@@ -66,7 +66,7 @@ const SYSTEM_PROCESS_PATTERNS = [
   'finder' // optional — most users don't want Finder time tracked as productive
 ];
 
-// Bare app names that ArchTrack should consider productive Core Work even
+// Bare app names that TeamTracker should consider productive Core Work even
 // when the desktop classifier left them as "other". Keys are lower-cased
 // app-name substrings.
 const CORE_WORK_APPS: string[] = [
@@ -108,8 +108,8 @@ const RESEARCH_APPS: string[] = [
 // desktop tracker has its own list, but this server-side pass adds the
 // common SaaS / company-specific patterns we kept seeing in the wild.
 const BROWSER_WORK_INDICATORS: string[] = [
-  // ArchTrack / Genesis itself
-  'archtrack',
+  // TeamTracker / Genesis itself
+  'teamtracker',
   'genesis design',
   'genesis design studios',
   // Claude / AI
@@ -164,7 +164,7 @@ const BROWSER_WORK_INDICATORS: string[] = [
   // Cloud / infra dashboards. Include both the URL-style match (when the
   // browser puts the hostname in the title) and the product-name match
   // (when the page <title> only shows the human-readable label, e.g.
-  // "archtrack-prod - DigitalOcean Droplet Web Console").
+  // "teamtracker-prod - DigitalOcean Droplet Web Console").
   'cloud.digitalocean',
   'digitalocean',
   'console.aws',
@@ -231,7 +231,7 @@ const BROWSER_WORK_INDICATORS: string[] = [
   'sendgrid',
   'resend.com',
   'postmarkapp',
-  // ArchTrack-tracker-specific things we see in dev
+  // TeamTracker-tracker-specific things we see in dev
   'wix mcp',
   'velo docs',
   'oauth',

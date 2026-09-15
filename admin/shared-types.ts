@@ -1,4 +1,4 @@
-// Shared types for ArchTrack
+// Shared types for TeamTracker
 
 export interface Organization {
   id: string;

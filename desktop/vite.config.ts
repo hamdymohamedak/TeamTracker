@@ -14,7 +14,11 @@ export default defineConfig({
       external: [
         'electron', 
         'electron-store', 
-        'active-win'
+        'active-win',
+        'child_process',
+        'util',
+        'fs',
+        'path'
       ],
       output: {
         inlineDynamicImports: true,

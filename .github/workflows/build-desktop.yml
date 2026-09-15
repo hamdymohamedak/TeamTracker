@@ -17,40 +17,40 @@ jobs:
 
       - name: Prepare standalone build dir
         run: |
-          mkdir -p "$RUNNER_TEMP/archtrack-build"
-          cp -R desktop/. "$RUNNER_TEMP/archtrack-build/"
-          rm -rf "$RUNNER_TEMP/archtrack-build/node_modules" "$RUNNER_TEMP/archtrack-build/release"
+          mkdir -p "$RUNNER_TEMP/teamtracker-build"
+          cp -R desktop/. "$RUNNER_TEMP/teamtracker-build/"
+          rm -rf "$RUNNER_TEMP/teamtracker-build/node_modules" "$RUNNER_TEMP/teamtracker-build/release"
 
       - name: Install deps and build
-        working-directory: ${{ runner.temp }}/archtrack-build
+        working-directory: ${{ runner.temp }}/teamtracker-build
         run: |
           npm install
           npm run build
 
       - name: Package Mac app
-        working-directory: ${{ runner.temp }}/archtrack-build
+        working-directory: ${{ runner.temp }}/teamtracker-build
         run: npm run dist:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Re-sign with correct identifier
-        working-directory: ${{ runner.temp }}/archtrack-build
+        working-directory: ${{ runner.temp }}/teamtracker-build
         run: |
-          for dir in release/mac-arm64/ArchTrack.app release/mac/ArchTrack.app; do
+          for dir in release/mac-arm64/TeamTracker.app release/mac/TeamTracker.app; do
             if [ -d "$dir" ]; then
               find "$dir" -type f -perm +111 -path "*/Frameworks/*" -exec codesign --force --sign - {} \; 2>/dev/null || true
               find "$dir/Contents/Frameworks" -name "*.dylib" -exec codesign --force --sign - {} \; 2>/dev/null || true
               find "$dir/Contents/Frameworks" -name "*.framework" -exec codesign --force --sign - {} \; 2>/dev/null || true
               find "$dir/Contents/Frameworks" -name "*.app" -exec codesign --force --sign - {} \; 2>/dev/null || true
-              codesign --force --sign - --identifier live.archtrack.tracker "$dir"
+              codesign --force --sign - --identifier com.teamtracker.tracker "$dir"
             fi
           done
 
       - name: Copy artifacts to workspace
         run: |
           mkdir -p release
-          cp "$RUNNER_TEMP"/archtrack-build/release/ArchTrack-*.dmg release/ 2>/dev/null || true
-          cp "$RUNNER_TEMP"/archtrack-build/release/ArchTrack-*-mac.zip release/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/teamtracker-build/release/TeamTracker-*.dmg release/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/teamtracker-build/release/TeamTracker-*-mac.zip release/ 2>/dev/null || true
           ls -lh release/
 
       - name: Upload Mac artifacts
@@ -71,13 +71,13 @@ jobs:
       - name: Prepare standalone build dir
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/archtrack-build"
-          cp -R desktop/. "$RUNNER_TEMP/archtrack-build/"
-          rm -rf "$RUNNER_TEMP/archtrack-build/node_modules" "$RUNNER_TEMP/archtrack-build/release"
+          mkdir -p "$RUNNER_TEMP/teamtracker-build"
+          cp -R desktop/. "$RUNNER_TEMP/teamtracker-build/"
+          rm -rf "$RUNNER_TEMP/teamtracker-build/node_modules" "$RUNNER_TEMP/teamtracker-build/release"
 
       - name: Install deps, build, and package
         shell: bash
-        working-directory: ${{ runner.temp }}/archtrack-build
+        working-directory: ${{ runner.temp }}/teamtracker-build
         run: |
           npm install
           npm run dist:win
@@ -86,7 +86,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          cp "$RUNNER_TEMP"/archtrack-build/release/ArchTrack*.exe release/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/teamtracker-build/release/TeamTracker*.exe release/ 2>/dev/null || true
           ls -lh release/
 
       - name: Upload Windows artifacts
@@ -95,8 +95,47 @@ jobs:
           name: windows-builds
           path: release/
 
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Linux packaging deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm fakeroot dpkg
+
+      - name: Prepare standalone build dir
+        run: |
+          mkdir -p "$RUNNER_TEMP/teamtracker-build"
+          cp -R desktop/. "$RUNNER_TEMP/teamtracker-build/"
+          rm -rf "$RUNNER_TEMP/teamtracker-build/node_modules" "$RUNNER_TEMP/teamtracker-build/release"
+
+      - name: Install deps, build, and package
+        working-directory: ${{ runner.temp }}/teamtracker-build
+        run: |
+          npm install
+          npm run dist:linux
+
+      - name: Copy artifacts to workspace
+        run: |
+          mkdir -p release
+          cp "$RUNNER_TEMP"/teamtracker-build/release/*.AppImage release/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/teamtracker-build/release/*.deb release/ 2>/dev/null || true
+          ls -lh release/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-builds
+          path: release/
+
   release:
-    needs: [build-mac, build-windows]
+    needs: [build-mac, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -111,3 +150,4 @@ jobs:
           files: |
             mac-builds/*
             windows-builds/*
+            linux-builds/*

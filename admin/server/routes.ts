@@ -837,7 +837,7 @@ export function setupRoutes(app: Express): void {
       }
       const csv = lines.join('\n') + '\n';
 
-      const filename = `archtrack-${(employeeId as string).slice(0, 8)}-${startDate}-${endDate}.csv`;
+      const filename = `teamtracker-${(employeeId as string).slice(0, 8)}-${startDate}-${endDate}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(csv);

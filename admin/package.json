@@ -1,7 +1,7 @@
 {
-  "name": "@archtrack/admin",
+  "name": "@teamtracker/admin",
   "version": "1.0.0",
-  "description": "Admin dashboard for ArchTrack employee tracking system",
+  "description": "Admin dashboard for TeamTracker employee tracking system",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",

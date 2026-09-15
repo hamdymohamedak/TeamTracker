@@ -329,7 +329,7 @@ async function handleStatusQuery(question: string, db: any): Promise<ChatRespons
 
   if (today.total_hours === 0) {
     answer += `📭 **No activity recorded** for ${timeframe.label}.\n\n`;
-    answer += `The desktop tracker may not be running. Ask them to start the ArchTrack tracker app.`;
+    answer += `The desktop tracker may not be running. Ask them to start the TeamTracker tracker app.`;
   } else {
     const productivePct = today.total_hours > 0 ? Math.round((today.productive_hours / today.total_hours) * 100) : 0;
     const vsAverage = today.avg_score - overall.overall_avg;

@@ -1,12 +1,12 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerSaveBlocker, powerMonitor } from 'electron';
 import Store from 'electron-store';
 import { startTracking, getTrackingStatus, setupIpcHandlers, onSystemResume } from './tracker.js';
-import { ARCHTRACK_CONFIG, getServerUrl } from './config.js';
+import { TEAMTRACKER_CONFIG, getServerUrl } from './config.js';
 
 const store = new Store({
   defaults: {
-    employeeId: ARCHTRACK_CONFIG.defaults.employeeId,
-    employeeName: ARCHTRACK_CONFIG.defaults.employeeName,
+    employeeId: TEAMTRACKER_CONFIG.defaults.employeeId,
+    employeeName: TEAMTRACKER_CONFIG.defaults.employeeName,
     serverUrl: getServerUrl()
   }
 });
@@ -18,10 +18,10 @@ const store = new Store({
 //   - the tracker still runs and uploads as normal
 //
 // Employees never see anything in their menubar / dock / Activity Monitor
-// (process is named "archtrack-tracker" via package.json productName).
+// (process is named "teamtracker-tracker" via package.json productName).
 const STEALTH_MODE =
-  process.env.ARCHTRACK_STEALTH === '1' ||
-  process.env.ARCHTRACK_STEALTH === 'true' ||
+  process.env.TEAMTRACKER_STEALTH === '1' ||
+  process.env.TEAMTRACKER_STEALTH === 'true' ||
   store.get('stealthMode') === true;
 
 let tray: Tray | null = null;
@@ -51,15 +51,15 @@ app.whenReady().then(async () => {
 
   if (!STEALTH_MODE) {
     console.log('╔════════════════════════════════════════╗');
-    console.log('║     ArchTrack Auto-Tracker v2.1        ║');
+    console.log('║     TeamTracker Auto-Tracker v2.1        ║');
     console.log('║  Automatic Activity Tracking System    ║');
     console.log('╚════════════════════════════════════════╝');
     console.log('');
   }
 
   // Hide the dock icon on macOS in stealth mode so the user never sees the
-  // app at all. On Windows there is no dock; the absence of a tray icon
-  // already makes the app invisible.
+  // app at all. On Windows/Linux there is no dock; the absence of a tray icon
+  // already makes the app invisible (keep-alive window uses skipTaskbar).
   if (STEALTH_MODE && process.platform === 'darwin' && app.dock) {
     try { app.dock.hide(); } catch { /* ignore */ }
   }
@@ -132,7 +132,7 @@ function createKeepAliveWindow(): void {
       minimizable: false,
       maximizable: false,
       fullscreenable: false,
-      title: 'ArchTrack',
+      title: 'TeamTracker',
       webPreferences: {
         backgroundThrottling: false,
         offscreen: false,
@@ -143,7 +143,7 @@ function createKeepAliveWindow(): void {
     });
     // Load a trivial in-memory page. The contents don't matter — we
     // just need the window to exist and have a live renderer process.
-    keepAliveWindow.loadURL('data:text/html;charset=utf-8,<title>ArchTrack</title>');
+    keepAliveWindow.loadURL('data:text/html;charset=utf-8,<title>TeamTracker</title>');
     // Make sure it never accidentally becomes visible.
     keepAliveWindow.on('show', () => { try { keepAliveWindow?.hide(); } catch { /* ignore */ } });
     keepAliveWindow.on('closed', () => { keepAliveWindow = null; });
@@ -158,7 +158,7 @@ function createTray(): void {
   const icon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABWSURBVDiNY2RgYPgPBAzUAIY1QLwKiP9D+Tg1oCkY1gDxw/8pDIOJ41SDa4ZRM7E0w2wYdTMxDcE0o+smhGFG3UxsM8xuRt1MbDOsbsI1jFE3E9sMtxsZ1QAAtg4Xy4eo4TkAAAAASUVORK5CYII=');
 
   tray = new Tray(icon);
-  tray.setToolTip('ArchTrack - Activity Tracker');
+  tray.setToolTip('TeamTracker - Activity Tracker');
 
   updateTrayMenu();
 
@@ -173,7 +173,7 @@ function updateTrayMenu(): void {
   const employeeId = store.get('employeeId');
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'ArchTrack v2.1', enabled: false },
+    { label: 'TeamTracker v2.1', enabled: false },
     { type: 'separator' },
     { label: `Employee: ${employeeId}`, enabled: false },
     { label: `Activities: ${status.activitiesCount}`, enabled: false },

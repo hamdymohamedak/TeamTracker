@@ -1,4 +1,4 @@
-# ArchTrack: install a Windows Scheduled Task so the tracker
+# TeamTracker: install a Windows Scheduled Task so the tracker
 # - launches at user logon
 # - restarts automatically on failure (crash, sleep/wake disconnect, etc.)
 #
@@ -7,7 +7,7 @@
 #   powershell -ExecutionPolicy Bypass -File install-autostart-windows.ps1 -Stealth
 #
 # Re-running is safe — it overwrites the existing task.
-# Uninstall with: schtasks /Delete /TN "ArchTrack Tracker" /F
+# Uninstall with: schtasks /Delete /TN "TeamTracker Tracker" /F
 
 param([switch]$Stealth)
 
@@ -21,12 +21,12 @@ if (-not (Test-Path $electronBin)) {
   Write-Error "electron not found at $electronBin. Run 'npm install' in the repo root first."
 }
 
-$taskName = 'ArchTrack Tracker'
+$taskName = 'TeamTracker Tracker'
 $stealthVal = if ($Stealth) { '1' } else { '0' }
 
 # wrap the launch in a cmd.exe call so we can set the env var inline
 $cmd = "cmd.exe"
-$cmdArgs = "/c set ARCHTRACK_STEALTH=$stealthVal && `"$electronBin`" `"$desktopDir`""
+$cmdArgs = "/c set TEAMTRACKER_STEALTH=$stealthVal && `"$electronBin`" `"$desktopDir`""
 
 $action    = New-ScheduledTaskAction -Execute $cmd -Argument $cmdArgs -WorkingDirectory $desktopDir
 $trigger   = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME

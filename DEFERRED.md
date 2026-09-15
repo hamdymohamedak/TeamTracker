@@ -1,4 +1,4 @@
-# ArchTrack — Deferred Work
+# TeamTracker — Deferred Work
 
 This file tracks work we deliberately skipped or deferred in prior fix batches so we
 don't lose the context. Add new items to the top of the relevant section.
@@ -75,10 +75,12 @@ the rest.
 ---
 
 ### Linux desktop tracker
-**Status:** Not supported (explicitly skipped this batch per request)
-**Notes:** Current tracker is Mac/Windows (Electron + `active-win`). Linux
-would need a different window-title source (X11 `xdotool` / Wayland
-`wlr-foreign-toplevel` + `wmctrl` fallback). README already calls this out.
+**Status:** Done (2026-09) — AppImage + `.deb` via electron-builder; window
+titles via `active-win` (X11) with CLI fallbacks (`xdotool`/`xprop`, GNOME
+Focused Window D-Bus, `hyprctl`, `kdotool`); `install-autostart-linux.sh`
+for XDG Autostart + systemd --user. Remaining edge case: exotic Wayland
+compositors without a bridge still report "Unknown" for app/title
+(screenshots still work via the desktop portal).
 
 ---
 
@@ -125,7 +127,7 @@ launch-on-boot today.
 
 **Fix path:**
 - Mac: ship a launchd plist (e.g.
-  `/Library/LaunchAgents/com.archtrack.tracker.plist`) with
+  `/Library/LaunchAgents/com.teamtracker.tracker.plist`) with
   `RunAtLoad: true`, `KeepAlive: true`, plus
   `com.apple.launchd.LimitLoadToSessionType: Aqua` so it launches
   with the user's GUI session. Bundle as a one-line install
@@ -143,15 +145,15 @@ capture loop and stealth-mode flag were added. Even though
 admin/data has the new server-side fixer, the user's LOCAL tracker
 is still the old build and:
   - won't capture screenshots until rebuilt
-  - won't honor ARCHTRACK_STEALTH=1
+  - won't honor TEAMTRACKER_STEALTH=1
   - has the broken x.com social_media classifier (server-side
     rescue path catches the false positives but the desktop
     tracker is still mislabeling at write time)
 
 **Fix:** README needs a "Rebuilding your local tracker after a
-ArchTrack update" section:
+TeamTracker update" section:
   ```
-  cd Archtrack/desktop
+  cd TeamTracker/desktop
   npm install
   npm run dev   # rebuilds + restarts Electron
   ```
@@ -199,7 +201,7 @@ type. Nothing in the current tracker writes to it.
 ## ✅ Completed in the 2026-04-06 / 2026-04-07 fix batches
 
 ### 2026-04-07 batch (uncle's feedback + DEFERRED cleanup)
-- **Stealth mode** for the desktop tracker (`ARCHTRACK_STEALTH=1` env var or
+- **Stealth mode** for the desktop tracker (`TEAMTRACKER_STEALTH=1` env var or
   store flag) — no tray icon, no dock icon on macOS, silent boot.
 - **Periodic screenshots** captured by the tracker (Electron `desktopCapturer`,
   JPEG q=70, ~250 KB each). Stored at

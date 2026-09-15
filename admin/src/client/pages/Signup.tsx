@@ -31,7 +31,7 @@ export const Signup: React.FC = () => {
     <div style={styles.wrapper}>
       <div style={styles.card}>
         <div style={styles.logoSection}>
-          <h1 style={styles.logo}>ArchTrack</h1>
+          <h1 style={styles.logo}>TeamTracker</h1>
           <p style={styles.subtitle}>Admin Dashboard</p>
         </div>
 

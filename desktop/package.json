@@ -1,8 +1,8 @@
 {
-  "name": "@archtrack/desktop",
-  "version": "1.0.3",
-  "description": "Desktop activity tracker for ArchTrack",
-  "author": "ArchTrack <support@archtrack.live>",
+  "name": "@teamtracker/desktop",
+  "version": "1.0.4",
+  "description": "Desktop activity tracker for TeamTracker",
+  "author": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
   "type": "module",
   "electronVersion": "30.5.1",
   "scripts": {
@@ -12,13 +12,14 @@
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
-    "dist:all": "npm run build && electron-builder -mw --publish never",
-    "release": "npm run build && electron-builder -mw --publish always"
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "dist:all": "npm run build && electron-builder -mwl --publish never",
+    "release": "npm run build && electron-builder -mwl --publish always"
   },
   "build": {
-    "appId": "live.archtrack.tracker",
-    "productName": "ArchTrack",
-    "copyright": "Copyright © 2026 ArchTrack",
+    "appId": "com.teamtracker.tracker",
+    "productName": "TeamTracker",
+    "copyright": "Copyright \u00a9 2026 TeamTracker",
     "electronVersion": "30.5.1",
     "directories": {
       "output": "release",
@@ -29,33 +30,53 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "assets", "to": "assets" }
+      {
+        "from": "assets",
+        "to": "assets"
+      }
     ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "zip", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.png",
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "identity": null,
       "extendInfo": {
-        "NSScreenCaptureUsageDescription": "ArchTrack captures periodic screenshots so your team admin can review work activity.",
-        "NSAppleEventsUsageDescription": "ArchTrack reads the active window title to track which apps are in use.",
+        "NSScreenCaptureUsageDescription": "TeamTracker captures periodic screenshots so your team admin can review work activity.",
+        "NSAppleEventsUsageDescription": "TeamTracker reads the active window title to track which apps are in use.",
         "LSUIElement": true
       }
     },
     "dmg": {
-      "title": "ArchTrack ${version}",
+      "title": "TeamTracker ${version}",
       "icon": "assets/icon.png",
       "background": null,
       "writeUpdateInfo": false
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.png",
       "signAndEditExecutable": false
@@ -66,12 +87,59 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "ArchTrack"
+      "shortcutName": "TeamTracker"
+    },
+    "linux": {
+      "category": "Utility",
+      "maintainer": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
+      "vendor": "TeamTracker",
+      "synopsis": "Employee activity tracker",
+      "description": "TeamTracker desktop tracker \u2014 samples the active window and syncs productivity data to your admin dashboard.",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "desktop": {
+        "Name": "TeamTracker",
+        "Comment": "TeamTracker activity tracker",
+        "Categories": "Utility;Office;",
+        "StartupNotify": "false",
+        "Terminal": "false"
+      },
+      "executableArgs": []
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1"
+      ],
+      "packageCategory": "utils",
+      "priority": "optional"
     },
     "publish": {
       "provider": "github",
-      "owner": "maximizeGPT",
-      "repo": "Archtrack",
+      "owner": "hamdymohamedak",
+      "repo": "TeamTracker",
       "releaseType": "release"
     }
   },

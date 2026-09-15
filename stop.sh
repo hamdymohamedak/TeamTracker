@@ -1,8 +1,8 @@
 #!/bin/bash
-# ArchTrack Stop
-# Stops the running ArchTrack server
+# TeamTracker Stop
+# Stops the running TeamTracker server
 
-echo "🛑 Stopping ArchTrack..."
+echo "🛑 Stopping TeamTracker..."
 
 # Find and kill the server process
 PID=$(lsof -ti:3001 2>/dev/null)

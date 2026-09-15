@@ -316,7 +316,7 @@ async function generateSystemPrompt(db: any, orgId?: string): Promise<string> {
     return `${h}h ${m % 60}m`;
   };
 
-  return `You are Genesis, an AI analytics assistant for ArchTrack — an employee productivity tracking system.
+  return `You are Genesis, an AI analytics assistant for TeamTracker — an employee productivity tracking system.
 
 PRODUCTIVITY FORMULA (HARDCODED — DO NOT RESTATE OR INVENT A DIFFERENT FORMULA):
   productivity_score = productive_seconds ÷ (productive_seconds + unproductive_seconds)
@@ -499,7 +499,7 @@ function enhanceResponseWithActions(answer: string, question: string): string {
         '2. **Time blocking**: Schedule 2-hour "deep work" blocks in calendar, turn off notifications\n' +
         '3. **Environment**: Close Slack/Teams, put phone in another room\n\n' +
         '**Track Progress:**\n' +
-        '- Check ArchTrack dashboard daily at 5pm\n' +
+        '- Check TeamTracker dashboard daily at 5pm\n' +
         '- Aim for 3+ hours of "core work" daily\n' +
         '- Review weekly: Is productive time increasing?';
     }

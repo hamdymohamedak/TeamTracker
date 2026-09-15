@@ -1,4 +1,4 @@
-// Timezone-aware day-boundary helpers for ArchTrack.
+// Timezone-aware day-boundary helpers for TeamTracker.
 //
 // SQLite stores all activity timestamps as UTC ISO strings (e.g.
 // "2026-04-06T14:30:00.000Z"). Comparing activities against "today" in UTC

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const GITHUB_RELEASE_URL = 'https://github.com/maximizeGPT/Archtrack/releases/latest';
+const GITHUB_RELEASE_URL = 'https://github.com/hamdymohamedak/TeamTracker/releases/latest';
 
 interface ReleaseAsset {
   name: string;
@@ -8,13 +8,14 @@ interface ReleaseAsset {
   size: number;
 }
 
-type DetectedOS = 'mac-arm' | 'mac-intel' | 'windows' | 'unknown';
+type DetectedOS = 'mac-arm' | 'mac-intel' | 'windows' | 'linux' | 'unknown';
 
 function detectOS(): DetectedOS {
   const ua = navigator.userAgent.toLowerCase();
   const platform = (navigator as any).userAgentData?.platform?.toLowerCase() || navigator.platform?.toLowerCase() || '';
 
   if (ua.includes('win') || platform.includes('win')) return 'windows';
+  if (ua.includes('linux') || platform.includes('linux')) return 'linux';
   if (ua.includes('mac') || platform.includes('mac')) {
     // Check for Apple Silicon — WebGL renderer is the most reliable signal
     try {
@@ -46,7 +47,7 @@ export const Download: React.FC = () => {
   useEffect(() => {
     setOS(detectOS());
 
-    fetch('https://api.github.com/repos/maximizeGPT/Archtrack/releases/latest')
+    fetch('https://api.github.com/repos/hamdymohamedak/TeamTracker/releases/latest')
       .then(r => r.json())
       .then(data => {
         if (data.assets) {
@@ -64,13 +65,17 @@ export const Download: React.FC = () => {
   const macArmDmg = findAsset('arm64.dmg');
   const macIntelDmg = findAsset('1.0.0.dmg') || assets.find(a => a.name.endsWith('.dmg') && !a.name.includes('arm64'));
   const windowsExe = findAsset('.exe');
+  const linuxAppImage = findAsset('.appimage') || findAsset('appimage');
+  const linuxDeb = findAsset('.deb');
 
   const primaryAsset = os === 'windows' ? windowsExe
+    : os === 'linux' ? (linuxAppImage || linuxDeb)
     : os === 'mac-arm' ? macArmDmg
     : os === 'mac-intel' ? macIntelDmg
     : macArmDmg;
 
   const primaryLabel = os === 'windows' ? 'Download for Windows'
+    : os === 'linux' ? 'Download for Linux'
     : os === 'mac-arm' ? 'Download for Mac (Apple Silicon)'
     : os === 'mac-intel' ? 'Download for Mac (Intel)'
     : 'Download for Mac';
@@ -80,12 +85,12 @@ export const Download: React.FC = () => {
       <div style={styles.card}>
         <div style={styles.logoSection}>
           <div style={styles.logoIcon}>📊</div>
-          <h1 style={styles.title}>ArchTrack</h1>
+          <h1 style={styles.title}>TeamTracker</h1>
           <p style={styles.subtitle}>Desktop Tracker {version}</p>
         </div>
 
         <p style={styles.description}>
-          Install the ArchTrack desktop tracker on each employee's computer.
+          Install the TeamTracker desktop tracker on each employee's computer.
           It runs silently in the background and syncs activity data to your admin dashboard.
         </p>
 
@@ -116,6 +121,16 @@ export const Download: React.FC = () => {
                     Windows <span style={styles.size}>{formatSize(windowsExe.size)}</span>
                   </a>
                 )}
+                {linuxAppImage && os !== 'linux' && (
+                  <a href={linuxAppImage.browser_download_url} style={styles.secondaryButton}>
+                    Linux (AppImage) <span style={styles.size}>{formatSize(linuxAppImage.size)}</span>
+                  </a>
+                )}
+                {linuxDeb && os === 'linux' && linuxAppImage && (
+                  <a href={linuxDeb.browser_download_url} style={styles.secondaryButton}>
+                    Linux (.deb) <span style={styles.size}>{formatSize(linuxDeb.size)}</span>
+                  </a>
+                )}
               </div>
             </div>
           </>
@@ -132,15 +147,27 @@ export const Download: React.FC = () => {
               <li>Run the installer and follow the wizard</li>
               <li>If Windows shows a SmartScreen warning, click <strong>More info</strong> then <strong>Run anyway</strong></li>
               <li>Enter the setup token from your admin (Employees page &rarr; Setup Token)</li>
-              <li>ArchTrack runs silently — no further action needed</li>
+              <li>TeamTracker runs silently — no further action needed</li>
+            </ol>
+          ) : os === 'linux' ? (
+            <ol style={styles.stepsList}>
+              <li>Download the <strong>AppImage</strong> (or <code>.deb</code> for Debian/Ubuntu)</li>
+              <li>Make it executable: <code>chmod +x TeamTracker-*.AppImage</code>, then run it</li>
+              <li>
+                For window titles: install <code>xdotool</code> on X11
+                (<code>sudo apt install xdotool</code>). On GNOME Wayland, install the
+                {' '}<strong>Focused Window D-Bus</strong> Shell extension.
+              </li>
+              <li>Enter the setup token from your admin (Employees page &rarr; Setup Token)</li>
+              <li>Optional autostart: <code>./install-autostart-linux.sh /path/to/TeamTracker.AppImage</code></li>
             </ol>
           ) : (
             <ol style={styles.stepsList}>
-              <li>Open the DMG and drag <strong>ArchTrack</strong> to Applications</li>
-              <li>Right-click ArchTrack in Applications &rarr; <strong>Open</strong> &rarr; <strong>Open Anyway</strong></li>
+              <li>Open the DMG and drag <strong>TeamTracker</strong> to Applications</li>
+              <li>Right-click TeamTracker in Applications &rarr; <strong>Open</strong> &rarr; <strong>Open Anyway</strong></li>
               <li>Grant <strong>Screen Recording</strong> and <strong>Accessibility</strong> permissions when prompted</li>
               <li>Enter the setup token from your admin (Employees page &rarr; Setup Token)</li>
-              <li>ArchTrack runs silently — no further action needed</li>
+              <li>TeamTracker runs silently — no further action needed</li>
             </ol>
           )}
         </div>
@@ -148,7 +175,7 @@ export const Download: React.FC = () => {
         <div style={styles.footer}>
           <a href="/login" style={styles.footerLink}>Admin Login</a>
           <span style={styles.footerDot}>&middot;</span>
-          <a href="https://github.com/maximizeGPT/Archtrack" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>GitHub</a>
+          <a href="https://github.com/hamdymohamedak/TeamTracker" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>GitHub</a>
         </div>
       </div>
     </div>

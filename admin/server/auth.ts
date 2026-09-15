@@ -1,4 +1,4 @@
-// Authentication module for ArchTrack
+// Authentication module for TeamTracker
 import './types.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -11,7 +11,7 @@ const BCRYPT_ROUNDS = 12;
 function getJwtSecret(): string {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
   // In dev, use a stable secret derived from a fixed seed so tokens survive restarts
-  const devSecret = 'archtrack-dev-secret-change-in-production-' + crypto.createHash('sha256').update('archtrack').digest('hex');
+  const devSecret = 'teamtracker-dev-secret-change-in-production-' + crypto.createHash('sha256').update('teamtracker').digest('hex');
   console.warn('WARNING: Using auto-generated JWT_SECRET. Set JWT_SECRET in .env for production.');
   return devSecret;
 }

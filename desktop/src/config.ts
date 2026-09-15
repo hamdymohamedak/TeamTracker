@@ -1,30 +1,28 @@
-// ArchTrack Desktop App Configuration
+// TeamTracker Desktop App Configuration
 // Update this file to change the server URL for all desktop trackers
 
-export const ARCHTRACK_CONFIG = {
-  // Server URL - Change this to your deployed server URL
-  // Examples:
-  // - Render: 'https://archtrack-admin.onrender.com'
-  // - DigitalOcean: 'http://165.227.78.107:3001'
-  // - Local: 'http://localhost:3001'
-  serverUrl: 'https://archtrack.live',
+export const TEAMTRACKER_CONFIG = {
+  // Change this to your VPS URL before building employee installers, e.g.
+  // 'https://track.yourcompany.com'
+  // Override at runtime with TEAMTRACKER_SERVER_URL.
+  serverUrl: 'http://localhost:3001',
 
   // Device auth token (from setup token enrollment)
-  deviceToken: process.env.ARCHTRACK_DEVICE_TOKEN || '',
+  deviceToken: process.env.TEAMTRACKER_DEVICE_TOKEN || '',
 
   // Default employee settings (overridden by device token)
   defaults: {
     employeeId: 'emp-001',
     employeeName: 'Employee'
   },
-  
+
   // Sync settings
   sync: {
     intervalMs: 30000,      // Sync every 30 seconds
     batchSize: 100,         // Max activities per batch
     retryDelayMs: 60000     // Retry after 1 minute on failure
   },
-  
+
   // Tracking settings
   tracking: {
     checkIntervalMs: 5000,  // Check active window every 5 seconds
@@ -34,5 +32,5 @@ export const ARCHTRACK_CONFIG = {
 
 // Helper to get server URL (checks environment variable first)
 export function getServerUrl(): string {
-  return process.env.ARCHTRACK_SERVER_URL || ARCHTRACK_CONFIG.serverUrl;
+  return process.env.TEAMTRACKER_SERVER_URL || TEAMTRACKER_CONFIG.serverUrl;
 }

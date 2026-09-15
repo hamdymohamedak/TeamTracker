@@ -1,4 +1,4 @@
-// Activity Classification System for ArchTrack Desktop
+// Activity Classification System for TeamTracker Desktop
 // Universal classification that works for ANY employee type
 
 export type ActivityCategory =
@@ -129,7 +129,7 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
   // OpenClaw - Core Work (employee-specific context)
   {
     patterns: [
-      'openclaw', 'claw', 'mohltbot', 'mission-control', 'archtrack', 'arch-track',
+      'openclaw', 'claw', 'mohltbot', 'mission-control', 'teamtracker', 'arch-track',
     ],
     category: 'core_work'
   },

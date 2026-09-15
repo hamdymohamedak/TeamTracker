@@ -156,13 +156,13 @@ const AppContent: React.FC = () => {
                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
                 <div style={{ lineHeight: 1.1 }}>
-                  <h1 style={{ margin: 0, fontSize: '16px' }}>{org.name || 'ArchTrack'}</h1>
+                  <h1 style={{ margin: 0, fontSize: '16px' }}>{org.name || 'TeamTracker'}</h1>
                   <span style={{ fontSize: '10px', color: '#94a3b8' }}>Admin</span>
                 </div>
               </>
             ) : (
               <>
-                <h1>ArchTrack</h1>
+                <h1>TeamTracker</h1>
                 <span>Admin</span>
               </>
             )}
@@ -215,13 +215,13 @@ const AppContent: React.FC = () => {
                   }}
                 />
                 <div>
-                  <h1 style={{ margin: 0 }}>{org.name || 'ArchTrack'}</h1>
+                  <h1 style={{ margin: 0 }}>{org.name || 'TeamTracker'}</h1>
                   <span style={{ fontSize: '11px', color: '#94a3b8' }}>Admin</span>
                 </div>
               </div>
             ) : (
               <>
-                <h1>ArchTrack</h1>
+                <h1>TeamTracker</h1>
                 <span>Admin</span>
                 {org?.name && (
                   <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', fontWeight: 400 }}>
@@ -303,7 +303,7 @@ const AppContent: React.FC = () => {
 
         <div style={{ marginTop: 'auto', padding: '16px' }}>
           <a
-            href="https://github.com/maximizeGPT/Archtrack"
+            href="https://github.com/hamdymohamedak/TeamTracker"
             target="_blank"
             rel="noopener noreferrer"
             style={{

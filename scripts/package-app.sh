@@ -1,10 +1,10 @@
 #!/bin/bash
-# ArchTrack Packaging Script
+# TeamTracker Packaging Script
 # Creates distributable Electron app for uncle's architecture firm
 
 set -e
 
-echo "🏗️ ArchTrack Packager"
+echo "🏗️ TeamTracker Packager"
 echo "======================"
 
 # Colors
@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-APP_NAME="ArchTrack"
+APP_NAME="TeamTracker"
 APP_VERSION="1.0.0"
 OUTPUT_DIR="./dist-packages"
 DESKTOP_DIR="./desktop"
@@ -59,7 +59,7 @@ cd ..
 echo -e "${YELLOW}📦 Creating deployment package...${NC}"
 
 # Copy necessary files to dist-packages
-DEPLOY_DIR="$OUTPUT_DIR/archtrack-v$APP_VERSION"
+DEPLOY_DIR="$OUTPUT_DIR/teamtracker-v$APP_VERSION"
 mkdir -p "$DEPLOY_DIR"
 
 cp -r "$DESKTOP_DIR/dist" "$DEPLOY_DIR/"
@@ -68,7 +68,7 @@ cp -r "$DESKTOP_DIR/node_modules" "$DEPLOY_DIR/" 2>/dev/null || true
 
 # Create README for deployment
 cat > "$DEPLOY_DIR/README.txt" << 'EOF'
-ArchTrack Employee Tracking System
+TeamTracker Employee Tracking System
 ==================================
 Version: 1.0.0
 
@@ -76,7 +76,7 @@ INSTALLATION INSTRUCTIONS
 -------------------------
 
 1. EXTRACT this folder to a location on the employee's computer
-   (e.g., C:\Program Files\ArchTrack\ or ~/Applications/ArchTrack/)
+   (e.g., C:\Program Files\TeamTracker\ or ~/Applications/TeamTracker/)
 
 2. INSTALL the admin dashboard on your server:
    - See admin-dashboard-setup.md for server setup
@@ -86,9 +86,9 @@ INSTALLATION INSTRUCTIONS
    - Default: http://localhost:3000
 
 4. RUN the tracker:
-   - Windows: Double-click ArchTrack.exe
-   - Mac: Double-click ArchTrack.app
-   - Linux: ./ArchTrack
+   - Windows: Double-click TeamTracker.exe
+   - Mac: Double-click TeamTracker.app
+   - Linux: ./TeamTracker
 
 5. GRANT PERMISSIONS when prompted:
    - Screen Recording (to detect active window)
@@ -127,12 +127,12 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     npx electron-builder --mac --publish=never || echo "macOS build requires macOS"
     
     if [ -d "dist/mac" ]; then
-        cp -r "dist/mac" "../$OUTPUT_DIR/archtrack-mac"
+        cp -r "dist/mac" "../$OUTPUT_DIR/teamtracker-mac"
         echo -e "${GREEN}✓ macOS build ready${NC}"
     fi
     
     if [ -d "dist/mac-arm64" ]; then
-        cp -r "dist/mac-arm64" "../$OUTPUT_DIR/archtrack-mac-arm64"
+        cp -r "dist/mac-arm64" "../$OUTPUT_DIR/teamtracker-mac-arm64"
         echo -e "${GREEN}✓ macOS ARM64 build ready${NC}"
     fi
 fi
@@ -142,7 +142,7 @@ if [[ "$OSTYPE" == "linux"* ]]; then
     npx electron-builder --linux --publish=never || echo "Linux build requires Linux"
     
     if [ -d "dist/linux-unpacked" ]; then
-        cp -r "dist/linux-unpacked" "../$OUTPUT_DIR/archtrack-linux"
+        cp -r "dist/linux-unpacked" "../$OUTPUT_DIR/teamtracker-linux"
         echo -e "${GREEN}✓ Linux build ready${NC}"
     fi
 fi
@@ -152,7 +152,7 @@ echo "Building for Windows (requires Wine on Mac/Linux)..."
 npx electron-builder --win --publish=never 2>/dev/null || echo "Windows build skipped (requires Windows or Wine)"
 
 if [ -d "dist/win-unpacked" ]; then
-    cp -r "dist/win-unpacked" "../$OUTPUT_DIR/archtrack-windows"
+    cp -r "dist/win-unpacked" "../$OUTPUT_DIR/teamtracker-windows"
     echo -e "${GREEN}✓ Windows build ready${NC}"
 fi
 

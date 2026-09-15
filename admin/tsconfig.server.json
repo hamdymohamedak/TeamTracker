@@ -15,7 +15,7 @@
     "declaration": true,
     "baseUrl": ".",
     "paths": {
-      "@archtrack/shared": ["./shared-types"]
+      "@teamtracker/shared": ["./shared-types"]
     }
   },
   "include": ["server/**/*", "shared-types.ts"],

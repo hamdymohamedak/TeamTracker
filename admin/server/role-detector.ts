@@ -1,4 +1,4 @@
-// Smart Role Detection for ArchTrack
+// Smart Role Detection for TeamTracker
 // Analyzes employee activity patterns to auto-detect job type
 // and reclassify apps accordingly
 

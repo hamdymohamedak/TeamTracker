@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ArchTrack: install the macOS launchd autostart agent so the tracker
+# TeamTracker: install the macOS launchd autostart agent so the tracker
 # - launches when the user logs in (RunAtLoad)
 # - restarts automatically after a crash OR after the Mac wakes from sleep
 #   (KeepAlive + LimitLoadToSessionType=Aqua)
@@ -13,8 +13,8 @@
 # Re-running is safe — it unloads + overwrites the existing plist.
 #
 # Uninstall with:
-#   launchctl unload ~/Library/LaunchAgents/com.archtrack.tracker.plist
-#   rm ~/Library/LaunchAgents/com.archtrack.tracker.plist
+#   launchctl unload ~/Library/LaunchAgents/com.teamtracker.tracker.plist
+#   rm ~/Library/LaunchAgents/com.teamtracker.tracker.plist
 
 set -euo pipefail
 
@@ -24,10 +24,10 @@ if [[ "${1:-}" == "--stealth" ]]; then STEALTH=1; fi
 DESKTOP_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DESKTOP_DIR/.." && pwd)"
 ELECTRON_BIN="$REPO_ROOT/node_modules/.bin/electron"
-LABEL="com.archtrack.tracker"
+LABEL="com.teamtracker.tracker"
 PLIST_PATH="$HOME/Library/LaunchAgents/$LABEL.plist"
-LOG_OUT="/tmp/archtrack-tracker.log"
-LOG_ERR="/tmp/archtrack-tracker.err.log"
+LOG_OUT="/tmp/teamtracker-tracker.log"
+LOG_ERR="/tmp/teamtracker-tracker.err.log"
 
 if [[ ! -x "$ELECTRON_BIN" ]]; then
   echo "ERROR: electron not found at $ELECTRON_BIN"
@@ -42,15 +42,15 @@ fi
 case "$REPO_ROOT" in
   "$HOME/Desktop"/*|"$HOME/Documents"/*|"$HOME/Downloads"/*)
     echo ""
-    echo "⚠️  WARNING: ArchTrack is installed under a TCC-protected folder ($REPO_ROOT)."
+    echo "⚠️  WARNING: TeamTracker is installed under a TCC-protected folder ($REPO_ROOT)."
     echo "    macOS will block the launchd-spawned tracker from reading files"
     echo "    inside this folder until you grant Full Disk Access to:"
     echo "      $ELECTRON_BIN"
     echo "    System Settings → Privacy & Security → Full Disk Access → +"
     echo ""
     echo "    Recommended fix: move the repo to a non-protected location, e.g."
-    echo "      mv \"$REPO_ROOT\" ~/Library/Application\\ Support/ArchTrack"
-    echo "      cd ~/Library/Application\\ Support/ArchTrack/desktop"
+    echo "      mv \"$REPO_ROOT\" ~/Library/Application\\ Support/TeamTracker"
+    echo "      cd ~/Library/Application\\ Support/TeamTracker/desktop"
     echo "      ./install-autostart-mac.sh${1:+ $1}"
     echo ""
     ;;
@@ -82,7 +82,7 @@ cat > "$PLIST_PATH" <<PLIST
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
-    <key>ARCHTRACK_STEALTH</key><string>$STEALTH</string>
+    <key>TEAMTRACKER_STEALTH</key><string>$STEALTH</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

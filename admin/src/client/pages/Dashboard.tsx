@@ -163,7 +163,7 @@ const GettingStarted: React.FC<{ orgName: string; onDismiss: () => void; showDis
   return (
     <div style={gsStyles.card}>
       <div style={gsStyles.header}>
-        <h1 style={gsStyles.headerTitle}>Welcome to ArchTrack{orgName ? `, ${orgName}` : ''}!</h1>
+        <h1 style={gsStyles.headerTitle}>Welcome to TeamTracker{orgName ? `, ${orgName}` : ''}!</h1>
         <p style={gsStyles.headerSub}>Follow these steps to get your team up and running.</p>
       </div>
       <div style={gsStyles.body}>
@@ -203,7 +203,7 @@ const GettingStarted: React.FC<{ orgName: string; onDismiss: () => void; showDis
             <p style={gsStyles.stepDesc}>
               Download and install the desktop tracker on each team member's computer.{' '}
               <a
-                href="https://github.com/maximizeGPT/Archtrack#3-install-the-desktop-tracker"
+                href="https://github.com/hamdymohamedak/TeamTracker#3-install-the-desktop-tracker"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={gsStyles.stepLink}
@@ -246,7 +246,7 @@ export const Dashboard: React.FC = () => {
   // audit caught the user mistaking 48m today for "all-time" because there
   // was no day-scope toggle anywhere on the page.
   const [scope, setScope] = useState<DashboardScope>(() => {
-    const saved = localStorage.getItem('archtrack_dashboard_scope');
+    const saved = localStorage.getItem('teamtracker_dashboard_scope');
     return saved === 'week' || saved === 'all' ? saved : 'today';
   });
   // Activity feed state — separate from `stats` so we can paginate it
@@ -260,19 +260,19 @@ export const Dashboard: React.FC = () => {
   const [feedCategoryFilter, setFeedCategoryFilter] = useState<string>('');
   const PAGE = 20;
   const [showOnboarding, setShowOnboarding] = useState(() => {
-    return localStorage.getItem('archtrack_onboarding_dismissed') !== 'true';
+    return localStorage.getItem('teamtracker_onboarding_dismissed') !== 'true';
   });
   const { onlineEmployees, recentActivity: _recentActivity } = useWebSocket();
   const { org } = useAuth();
 
   const dismissOnboarding = () => {
-    localStorage.setItem('archtrack_onboarding_dismissed', 'true');
+    localStorage.setItem('teamtracker_onboarding_dismissed', 'true');
     setShowOnboarding(false);
   };
 
   const changeScope = (next: DashboardScope) => {
     setScope(next);
-    localStorage.setItem('archtrack_dashboard_scope', next);
+    localStorage.setItem('teamtracker_dashboard_scope', next);
   };
 
   useEffect(() => {

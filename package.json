@@ -1,7 +1,7 @@
 {
-  "name": "arch-firm-dashboard",
+  "name": "teamtracker",
   "version": "1.0.0",
-  "description": "Employee time tracking and admin dashboard for architectural firm",
+  "description": "TeamTracker — employee time tracking and admin dashboard",
   "private": true,
   "workspaces": [
     "admin",

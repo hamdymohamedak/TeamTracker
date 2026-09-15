@@ -219,7 +219,7 @@ loadData();
 
 app.listen(PORT, () => {
   console.log('╔════════════════════════════════════════╗');
-  console.log('║     ArchTrack Admin Dashboard v2.0     ║');
+  console.log('║     TeamTracker Admin Dashboard v2.0     ║');
   console.log('╚════════════════════════════════════════╝');
   console.log('');
   console.log(`Dashboard: http://localhost:${PORT}`);

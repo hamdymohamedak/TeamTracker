@@ -1,4 +1,4 @@
-// Activity Classification System for ArchTrack
+// Activity Classification System for TeamTracker
 // Universal classification that works for ANY employee type - manufacturing, office, remote, etc.
 // Productivity scores by category (0-100)
 export const PRODUCTIVITY_SCORES = {

@@ -135,7 +135,7 @@ export const Reports: React.FC = () => {
             // because we need to send the Bearer token.
             try {
               const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-              const token = localStorage.getItem('archtrack_token');
+              const token = localStorage.getItem('teamtracker_token');
               const res = await fetch(
                 `/api/reports/export.csv?employeeId=${selectedEmployee}&startDate=${startDate}&endDate=${endDate}&tz=${tz}`,
                 { headers: { Authorization: `Bearer ${token}` } }
@@ -148,7 +148,7 @@ export const Reports: React.FC = () => {
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `archtrack-${startDate}-${endDate}.csv`;
+              a.download = `teamtracker-${startDate}-${endDate}.csv`;
               document.body.appendChild(a);
               a.click();
               setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);

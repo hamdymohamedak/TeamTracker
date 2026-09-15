@@ -1,5 +1,5 @@
-const TOKEN_KEY = 'archtrack_token';
-const REFRESH_TOKEN_KEY = 'archtrack_refresh_token';
+const TOKEN_KEY = 'teamtracker_token';
+const REFRESH_TOKEN_KEY = 'teamtracker_refresh_token';
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;

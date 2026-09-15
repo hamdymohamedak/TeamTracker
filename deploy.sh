@@ -1,13 +1,13 @@
 #!/bin/bash
-# ArchTrack One-Command Deploy Script
+# TeamTracker One-Command Deploy Script
 # Run this ON the DigitalOcean droplet (not your Mac)
-# Usage: curl -sSL https://raw.githubusercontent.com/maximizeGPT/Archtrack/main/deploy.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/hamdymohamedak/TeamTracker/main/deploy.sh | bash
 
 set -e
 
 echo ""
 echo "========================================="
-echo "  ArchTrack SaaS — Production Deploy"
+echo "  TeamTracker SaaS — Production Deploy"
 echo "========================================="
 echo ""
 
@@ -27,10 +27,10 @@ fi
 echo "✅ PM2 installed"
 
 # Step 3: Clone fresh (always clean deploy)
-APP_DIR="/opt/archtrack"
+APP_DIR="/opt/teamtracker"
 echo "📥 Cloning fresh from GitHub..."
 rm -rf "$APP_DIR"
-git clone https://github.com/maximizeGPT/Archtrack.git "$APP_DIR"
+git clone https://github.com/hamdymohamedak/TeamTracker.git "$APP_DIR"
 cd "$APP_DIR"
 
 # Step 4: Install dependencies (including dev deps for build)
@@ -48,7 +48,7 @@ npx vite build 2>&1 | tail -3
 if [ ! -f "$APP_DIR/admin/.env" ]; then
     JWT_SECRET=$(openssl rand -hex 32)
     cat > "$APP_DIR/admin/.env" << ENVEOF
-# ArchTrack Production Environment
+# TeamTracker Production Environment
 DATABASE_PATH=./data/admin.db
 PORT=3001
 NODE_ENV=production
@@ -76,7 +76,7 @@ if ! command -v nginx &> /dev/null; then
     apt-get install -y nginx
 fi
 
-cat > /etc/nginx/sites-available/archtrack << 'NGINXEOF'
+cat > /etc/nginx/sites-available/teamtracker << 'NGINXEOF'
 server {
     listen 80;
     server_name _;
@@ -97,22 +97,22 @@ server {
 }
 NGINXEOF
 
-ln -sf /etc/nginx/sites-available/archtrack /etc/nginx/sites-enabled/archtrack
+ln -sf /etc/nginx/sites-available/teamtracker /etc/nginx/sites-enabled/teamtracker
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 echo "✅ Nginx configured (port 80 -> 3001)"
 
 # Step 9: Start/restart with PM2
 cd "$APP_DIR/admin"
-pm2 stop archtrack 2>/dev/null || true
-pm2 delete archtrack 2>/dev/null || true
-pm2 start dist/server/index.js --name archtrack --cwd "$APP_DIR/admin"
+pm2 stop teamtracker 2>/dev/null || true
+pm2 delete teamtracker 2>/dev/null || true
+pm2 start dist/server/index.js --name teamtracker --cwd "$APP_DIR/admin"
 pm2 save
 pm2 startup systemd -u root --hp /root 2>/dev/null || true
 
 echo ""
 echo "========================================="
-echo "  ✅ ArchTrack is LIVE!"
+echo "  ✅ TeamTracker is LIVE!"
 echo "========================================="
 echo ""
 DROPLET_IP=$(curl -s ifconfig.me 2>/dev/null || echo "your-server-ip")
@@ -121,8 +121,8 @@ echo "  Sign up:    http://$DROPLET_IP/signup"
 echo "  Health:     http://$DROPLET_IP/api/health"
 echo ""
 echo "  PM2 status: pm2 status"
-echo "  Logs:       pm2 logs archtrack"
-echo "  Restart:    pm2 restart archtrack"
+echo "  Logs:       pm2 logs teamtracker"
+echo "  Restart:    pm2 restart teamtracker"
 echo ""
 echo "  Next: Add HTTPS with 'certbot --nginx -d yourdomain.com'"
 echo "========================================="

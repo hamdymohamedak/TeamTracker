@@ -1,17 +1,18 @@
 // Periodic screenshot capture for the desktop tracker.
 //
 // Uses Electron's `desktopCapturer` API which works on macOS, Windows, and
-// Linux without spawning a child process or showing any UI flash. The
-// capture happens in-memory, gets converted to JPEG @ 70% quality, and is
-// uploaded as base64 to the server's POST /api/screenshots endpoint with
-// the device JWT.
+// Linux. On Wayland, Chromium talks to the XDG Desktop Portal / PipeWire
+// screencast path — the OS may prompt once for screen-share permission.
+// Capture is in-memory, JPEG @ 70% quality, uploaded as base64 to
+// POST /api/screenshots with the device JWT. No child process / UI flash
+// on X11, Windows, or macOS.
 //
 // The interval and the on/off switch come from the server's
 // /api/organization endpoint, polled once on startup and every hour after.
 // Employees never need to configure anything.
 
 import { desktopCapturer, screen } from 'electron';
-import { ARCHTRACK_CONFIG, getServerUrl } from './config.js';
+import { TEAMTRACKER_CONFIG, getServerUrl } from './config.js';
 
 interface ScreenshotConfig {
   enabled: boolean;

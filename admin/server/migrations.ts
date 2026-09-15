@@ -1,4 +1,4 @@
-// Database migrations for ArchTrack multi-tenancy
+// Database migrations for TeamTracker multi-tenancy
 import { Database } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import crypto from 'crypto';

@@ -134,7 +134,7 @@ export const Overrides: React.FC = () => {
       <header style={styles.header}>
         <h1 style={styles.title}>Classification Overrides</h1>
         <p style={styles.subtitle}>
-          Tell ArchTrack how to classify apps and window titles that the global
+          Tell TeamTracker how to classify apps and window titles that the global
           classifier doesn't recognize. Pattern matches are case-insensitive
           substring matches against the app name OR window title. Example:
           <code style={styles.code}>Overflow Plumbing</code> matches any window

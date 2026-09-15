@@ -42,7 +42,7 @@ export const ResetPassword: React.FC = () => {
       <div style={styles.wrapper}>
         <div style={styles.card}>
           <div style={styles.logoSection}>
-            <h1 style={styles.logo}>ArchTrack</h1>
+            <h1 style={styles.logo}>TeamTracker</h1>
           </div>
           <div style={styles.form}>
             <div style={styles.error}>Invalid reset link. No token provided.</div>
@@ -57,7 +57,7 @@ export const ResetPassword: React.FC = () => {
     <div style={styles.wrapper}>
       <div style={styles.card}>
         <div style={styles.logoSection}>
-          <h1 style={styles.logo}>ArchTrack</h1>
+          <h1 style={styles.logo}>TeamTracker</h1>
           <p style={styles.subtitle}>Admin Dashboard</p>
         </div>
 

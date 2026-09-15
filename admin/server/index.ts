@@ -63,8 +63,8 @@ function findStaticPath(): string {
     // Development: client at admin/dist/client/
     path.join(__dirname, '../../admin/dist/client'),
     // Absolute fallback
-    '/opt/archtrack/admin/dist/client',
-    '/opt/archtrack/dist/client'
+    '/opt/teamtracker/admin/dist/client',
+    '/opt/teamtracker/dist/client'
   ];
   
   for (const staticPath of possiblePaths) {
@@ -83,7 +83,7 @@ function findStaticPath(): string {
 // Initialize database and start server
 async function startServer() {
   try {
-    console.log('🏢 ArchTrack Enterprise Server Starting...');
+    console.log('🏢 TeamTracker Enterprise Server Starting...');
     console.log(`📁 Server location: ${__dirname}`);
     
     // Step 1: Initialize database
@@ -152,7 +152,7 @@ async function startServer() {
     // Step 5: Start listening
     server.listen(PORT, () => {
       console.log('');
-      console.log('🚀 ArchTrack Enterprise Server Running');
+      console.log('🚀 TeamTracker Enterprise Server Running');
       console.log('=====================================');
       console.log(`📊 Dashboard: http://localhost:${PORT}`);
       console.log(`🔌 WebSocket: ws://localhost:${PORT}/ws`);
@@ -171,7 +171,7 @@ async function startServer() {
     console.error('Troubleshooting:');
     console.error('1. Check database permissions: ls -la data/');
     console.error('2. Verify build: ls -la dist/client/');
-    console.error('3. Check logs: pm2 logs archtrack');
+    console.error('3. Check logs: pm2 logs teamtracker');
     console.error('');
     process.exit(1);
   }

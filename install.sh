@@ -1,10 +1,10 @@
 #!/bin/bash
-# ArchTrack Quick Install Script
-# Run this on a fresh Ubuntu server to install ArchTrack
+# TeamTracker Quick Install Script
+# Run this on a fresh Ubuntu server to install TeamTracker
 
 set -e
 
-echo "🏢 ArchTrack Installation"
+echo "🏢 TeamTracker Installation"
 echo "========================="
 echo ""
 
@@ -31,17 +31,17 @@ echo "📦 Installing PM2..."
 npm install -g pm2
 
 # Create app directory
-APP_DIR="/opt/archtrack"
+APP_DIR="/opt/teamtracker"
 echo "📁 Creating app directory: $APP_DIR"
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
 # Clone the repo
-echo "📥 Downloading ArchTrack..."
+echo "📥 Downloading TeamTracker..."
 if [ -d ".git" ]; then
     git pull origin main
 else
-    git clone https://github.com/maximizeGPT/Archtrack.git .
+    git clone https://github.com/hamdymohamedak/TeamTracker.git .
 fi
 
 # Install dependencies
@@ -51,7 +51,7 @@ cd admin && npm install && cd ..
 cd desktop && npm install && cd ..
 
 # Build the app
-echo "🔨 Building ArchTrack..."
+echo "🔨 Building TeamTracker..."
 cd admin
 npm run build
 cd ..
@@ -80,9 +80,9 @@ initDatabase().then(() => {
 cd ..
 
 # Start with PM2
-echo "🚀 Starting ArchTrack..."
+echo "🚀 Starting TeamTracker..."
 cd admin
-pm2 start dist/server/index.js --name archtrack --env production
+pm2 start dist/server/index.js --name teamtracker --env production
 pm2 save
 pm2 startup systemd
 
@@ -90,7 +90,7 @@ cd ..
 
 # Setup nginx
 echo "🌐 Configuring nginx..."
-cat > /etc/nginx/sites-available/archtrack << 'EOF'
+cat > /etc/nginx/sites-available/teamtracker << 'EOF'
 server {
     listen 80;
     server_name _;
@@ -109,7 +109,7 @@ server {
 }
 EOF
 
-ln -sf /etc/nginx/sites-available/archtrack /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/teamtracker /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 
@@ -117,7 +117,7 @@ nginx -t && systemctl restart nginx
 SERVER_IP=$(curl -s ifconfig.me)
 
 echo ""
-echo "✅ ArchTrack is installed and running!"
+echo "✅ TeamTracker is installed and running!"
 echo ""
 echo "🌐 Dashboard URL: http://$SERVER_IP"
 echo ""
@@ -127,5 +127,5 @@ echo "2. Add your employees in the dashboard"
 echo "3. Download the desktop tracker for each employee"
 echo ""
 echo "To check status: pm2 status"
-echo "To view logs: pm2 logs archtrack"
-echo "To restart: pm2 restart archtrack"
+echo "To view logs: pm2 logs teamtracker"
+echo "To restart: pm2 restart teamtracker"

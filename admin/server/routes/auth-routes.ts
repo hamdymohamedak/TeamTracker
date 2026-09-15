@@ -1,4 +1,4 @@
-// Auth routes for ArchTrack multi-tenancy
+// Auth routes for TeamTracker multi-tenancy
 import { Express } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../database.js';

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ArchTrack Simple Tracker (Node.js only, no Electron)
+ * TeamTracker Simple Tracker (Node.js only, no Electron)
  * Tracks activity and sends to server
  */
 
@@ -14,14 +14,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Config
-const CONFIG_PATH = path.join(os.homedir(), '.archtrack', 'config.json');
-const QUEUE_PATH = path.join(os.homedir(), '.archtrack', 'queue.json');
+const CONFIG_PATH = path.join(os.homedir(), '.teamtracker', 'config.json');
+const QUEUE_PATH = path.join(os.homedir(), '.teamtracker', 'queue.json');
 
 // Default config - Update this to your deployed server URL
-// Render: 'https://archtrack-admin.onrender.com'
+// Render: 'https://your-server.example.com'
 // DigitalOcean: 'http://165.227.78.107:3001'
 // Local: 'http://localhost:3001'
-const DEFAULT_SERVER_URL = process.env.ARCHTRACK_SERVER_URL || 'https://archtrack-admin.onrender.com';
+const DEFAULT_SERVER_URL = process.env.TEAMTRACKER_SERVER_URL || 'http://localhost:3001';
 
 let config = {
   employeeId: 'emp-001',
@@ -182,7 +182,7 @@ async function syncToServer() {
 // Setup prompt
 async function setup() {
   console.log('╔════════════════════════════════════════╗');
-  console.log('║     ArchTrack Employee Setup           ║');
+  console.log('║     TeamTracker Employee Setup           ║');
   console.log('╚════════════════════════════════════════╝');
   console.log('');
   
@@ -221,7 +221,7 @@ async function main() {
   }
   
   console.log('╔════════════════════════════════════════╗');
-  console.log('║     ArchTrack Tracker v2.0             ║');
+  console.log('║     TeamTracker Tracker v2.0             ║');
   console.log('║  Press Ctrl+C to stop                  ║');
   console.log('╚════════════════════════════════════════╝');
   console.log('');

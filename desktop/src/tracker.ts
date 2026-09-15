@@ -2,7 +2,7 @@ import { powerMonitor, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import { getServerUrl, ARCHTRACK_CONFIG } from './config.js';
+import { getServerUrl, TEAMTRACKER_CONFIG } from './config.js';
 import {
   classifyActivity,
   calculateTrueProductivity,
@@ -13,9 +13,7 @@ import {
   SUSPICIOUS_THRESHOLDS
 } from './classifier.js';
 import { startScreenshotService } from './screenshot.js';
-
-// Dynamic import for active-win (ESM module)
-let activeWin: any = null;
+import { getActiveWindow, hasActiveWinModule } from './active-window.js';
 
 interface RawActivity {
   timestamp: string;
@@ -72,14 +70,14 @@ let consecutiveIdleChecks = 0;
 
 // Store config (simple JSON file)
 let config: Config = {
-  employeeId: ARCHTRACK_CONFIG.defaults.employeeId,
-  employeeName: ARCHTRACK_CONFIG.defaults.employeeName,
+  employeeId: TEAMTRACKER_CONFIG.defaults.employeeId,
+  employeeName: TEAMTRACKER_CONFIG.defaults.employeeName,
   serverUrl: getServerUrl(),
-  deviceToken: ARCHTRACK_CONFIG.deviceToken || ''
+  deviceToken: TEAMTRACKER_CONFIG.deviceToken || ''
 };
 
 export async function startTracking(): Promise<void> {
-  console.log('🚀 Starting ArchTrack smart activity tracking...');
+  console.log('🚀 Starting TeamTracker smart activity tracking...');
 
   // Load config
   loadConfig();
@@ -93,14 +91,14 @@ export async function startTracking(): Promise<void> {
 
   console.log(`Auth: token=${config.deviceToken ? 'present (' + config.deviceToken.length + ' chars)' : 'MISSING'}, server=${config.serverUrl}`);
 
-  // Load active-win dynamically
-  try {
-    const activeWinModule = await import('active-win');
-    activeWin = activeWinModule.default || activeWinModule;
+  // Probe window backends (active-win + Linux CLI fallbacks).
+  const hasNative = await hasActiveWinModule();
+  if (hasNative) {
     console.log('✓ active-win library loaded');
-  } catch (err) {
-    console.error('Failed to load active-win:', err);
-    console.log('⚠️ Running in mock mode for testing');
+  } else if (process.platform === 'linux') {
+    console.log('⚠️ active-win unavailable — will use Linux CLI fallbacks (xdotool / gdbus / hyprctl)');
+  } else {
+    console.error('Failed to load active-win — window tracking will not work on this platform');
   }
 
   // Load offline queue
@@ -191,32 +189,34 @@ async function checkActivity(): Promise<void> {
       consecutiveIdleChecks++;
     }
 
-    // Get active window info
+    // Get active window info (active-win on Mac/Win/X11; CLI fallbacks on Linux)
     let windowTitle = 'Unknown';
     let appName = 'Unknown';
 
-    if (activeWin) {
-      try {
-        const winInfo = await activeWin();
-        if (winInfo) {
-          windowTitle = winInfo.title || 'Untitled';
-          appName = winInfo.owner?.name || winInfo.owner?.bundleId || 'Unknown';
-        }
-      } catch (err) {
-        // No mock data - just log error and skip this check
-        console.error('Failed to get active window:', err);
-        return; // Skip recording this cycle
+    try {
+      const winInfo = await getActiveWindow();
+      if (!winInfo) {
+        // Nothing readable this cycle (locked screen, Wayland without a
+        // backend, brief focus transition). Skip rather than invent data.
+        return;
       }
-    } else {
-      // No active-win library - skip recording
-      console.log('active-win not available, skipping tracking');
-      return; // Skip recording this cycle
+      windowTitle = winInfo.title || 'Untitled';
+      appName = winInfo.owner?.name || 'Unknown';
+    } catch (err) {
+      console.error('Failed to get active window:', err);
+      return;
     }
 
     // FIX: Skip system processes that shouldn't be tracked as employee activity
     const systemProcesses = [
+      // macOS / Windows
       'loginwindow', 'window server', 'kernel', 'system', 'login window',
-      'screen saver', 'screensaver', 'lockscreen', 'lock screen'
+      'screen saver', 'screensaver', 'lockscreen', 'lock screen',
+      // Linux display / session plumbing
+      'gdm', 'gdm-session', 'lightdm', 'sddm', 'greeter',
+      'gnome-shell', 'plasmashell', 'kwin_x11', 'kwin_wayland',
+      'xorg', 'xwayland', 'wayland', 'pipewire', 'wireplumber',
+      'xdg-desktop-portal', 'gsd-', 'gnome-session'
     ];
     const isSystemProcess = systemProcesses.some(proc => 
       appName.toLowerCase().includes(proc) || windowTitle.toLowerCase().includes(proc)
@@ -519,7 +519,7 @@ function loadConfig(): void {
 }
 
 /**
- * First-run activation: look for an `archtrack-activate*.json` file in the
+ * First-run activation: look for an `teamtracker-activate*.json` file in the
  * user's Downloads folder, redeem the setup token against /api/auth/enroll,
  * and persist the returned device JWT + employee info into config.json.
  *
@@ -544,12 +544,12 @@ async function activateFromDownloadsIfNeeded(): Promise<boolean> {
 
   if (!fs.existsSync(downloadsDir)) return false;
 
-  // Find all archtrack-activate*.json files, pick the newest by mtime.
+  // Find all teamtracker-activate*.json files, pick the newest by mtime.
   let matches: { path: string; mtimeMs: number }[] = [];
   try {
     const entries = fs.readdirSync(downloadsDir);
     for (const name of entries) {
-      if (!name.startsWith('archtrack-activate') || !name.endsWith('.json')) continue;
+      if (!name.startsWith('teamtracker-activate') || !name.endsWith('.json')) continue;
       const full = path.join(downloadsDir, name);
       try {
         const stat = fs.statSync(full);
