@@ -21,8 +21,13 @@
   "build": {
     "appId": "com.teamtracker.admin",
     "productName": "TeamTracker Admin",
+    "executableName": "teamtracker-admin",
     "copyright": "Copyright © 2026 TeamTracker",
     "electronVersion": "30.5.1",
+    "extraMetadata": {
+      "name": "teamtracker-admin"
+    },
+    "artifactName": "TeamTracker-Admin-${version}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -70,6 +75,7 @@
     },
     "linux": {
       "category": "Office",
+      "executableName": "teamtracker-admin",
       "maintainer": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
       "vendor": "TeamTracker",
       "synopsis": "Admin dashboard desktop shell",
@@ -91,7 +97,7 @@
       "artifactName": "TeamTracker-Admin-${version}-${arch}.${ext}"
     },
     "deb": {
-      "artifactName": "TeamTracker-Admin-${version}-${arch}.${ext}",
+      "artifactName": "teamtracker-admin-${version}-${arch}.${ext}",
       "packageCategory": "utils",
       "priority": "optional"
     },

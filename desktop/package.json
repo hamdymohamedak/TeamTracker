@@ -22,8 +22,13 @@
   "build": {
     "appId": "com.teamtracker.tracker",
     "productName": "TeamTracker",
+    "executableName": "teamtracker",
     "copyright": "Copyright \u00a9 2026 TeamTracker",
     "electronVersion": "30.5.1",
+    "extraMetadata": {
+      "name": "teamtracker"
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -59,8 +64,8 @@
       "icon": "assets/icon.png",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist",
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "TeamTracker captures periodic screenshots so your team admin can review work activity.",
         "NSAppleEventsUsageDescription": "TeamTracker reads the active window title to track which apps are in use.",
@@ -95,6 +100,7 @@
     },
     "linux": {
       "category": "Utility",
+      "executableName": "teamtracker",
       "maintainer": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
       "vendor": "TeamTracker",
       "synopsis": "Employee activity tracker",
@@ -124,7 +130,7 @@
       "executableArgs": []
     },
     "appImage": {
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "TeamTracker-${version}-${arch}.${ext}"
     },
     "deb": {
       "depends": [
@@ -138,7 +144,8 @@
         "libuuid1"
       ],
       "packageCategory": "utils",
-      "priority": "optional"
+      "priority": "optional",
+      "artifactName": "teamtracker-${version}-${arch}.${ext}"
     },
     "publish": {
       "provider": "github",
