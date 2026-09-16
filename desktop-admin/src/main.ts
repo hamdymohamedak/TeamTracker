@@ -54,6 +54,10 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     title: 'TeamTracker Admin',
+    icon: (() => {
+      const img = nativeImage.createFromPath(asset('icon.png'));
+      return img.isEmpty() ? undefined : img;
+    })(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -202,6 +206,12 @@ function createTray(): void {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      const dockIcon = nativeImage.createFromPath(asset('icon.png'));
+      if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
+    } catch { /* ignore */ }
+  }
   buildMenu();
   createTray();
   createWindow();

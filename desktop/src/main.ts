@@ -2,11 +2,31 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerSaveBlocker,
 import Store from 'electron-store';
 import * as path from 'path';
 import { startTracking, getTrackingStatus, setupIpcHandlers, onSystemResume, isEnrolled, logoutDevice } from './tracker.js';
+import { TEAMTRACKER_CONFIG, getServerUrl } from './config.js';
 
 function assetPath(...parts: string[]): string {
   return path.join(app.getAppPath(), 'dist', ...parts);
 }
-import { TEAMTRACKER_CONFIG, getServerUrl } from './config.js';
+
+/** Icons / branding from buildResources (extraResources → resources/assets when packaged). */
+function brandingAsset(...parts: string[]): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'assets', ...parts);
+  }
+  return path.join(app.getAppPath(), 'assets', ...parts);
+}
+
+function loadAppIcon(): Electron.NativeImage {
+  const fromPng = nativeImage.createFromPath(brandingAsset('icon.png'));
+  if (!fromPng.isEmpty()) return fromPng;
+  return nativeImage.createEmpty();
+}
+
+function loadTrayIcon(): Electron.NativeImage {
+  const tray = nativeImage.createFromPath(brandingAsset('tray-icon.png'));
+  if (!tray.isEmpty()) return tray;
+  return loadAppIcon().resize({ width: 32, height: 32 });
+}
 
 const store = new Store({
   defaults: {
@@ -67,7 +87,11 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
     try {
       if (STEALTH_MODE) app.dock.hide();
-      else app.dock.show();
+      else {
+        app.dock.show();
+        const dockIcon = loadAppIcon();
+        if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
+      }
     } catch { /* ignore */ }
   }
 
@@ -181,6 +205,7 @@ function createEmployeeWindow(): void {
     resizable: false,
     skipTaskbar: false,
     autoHideMenuBar: true,
+    icon: loadAppIcon(),
     webPreferences: {
       preload: assetPath('preload.cjs'),
       contextIsolation: true,
@@ -219,10 +244,8 @@ function createEmployeeWindow(): void {
 }
 
 function createTray(): void {
-  // Simple colored square icon (green for active)
-  const icon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABWSURBVDiNY2RgYPgPBAzUAIY1QLwKiP9D+Tg1oCkY1gDxw/8pDIOJ41SDa4ZRM7E0w2wYdTMxDcE0o+smhGFG3UxsM8xuRt1MbDOsbsI1jFE3E9sMtxsZ1QAAtg4Xy4eo4TkAAAAASUVORK5CYII=');
-
-  tray = new Tray(icon);
+  const icon = loadTrayIcon();
+  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip('TeamTracker - Activity Tracker');
 
   tray.on('click', () => createEmployeeWindow());

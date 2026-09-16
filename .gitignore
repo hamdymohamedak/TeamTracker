@@ -40,6 +40,23 @@ Thumbs.db
 /dist-electron/
 /out/
 
+# Electron Builder / packaging output (never commit installers or unpacked apps)
+desktop/release/
+desktop-admin/release/
+**/release/
+*.dmg
+*.exe
+*.blockmap
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.msi
+*.appx
+# Generated icon caches from electron-builder
+**/.icon-icns/
+**/.icon-ico/
+
 # Code-signing material (use GitHub Secrets — never commit)
 .secrets/
 *.pfx

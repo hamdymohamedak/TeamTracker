@@ -14,7 +14,9 @@
     "build": "tsc && vite build && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64 --publish never",
+    "dist:mac:arm64": "npm run build && electron-builder --mac --arm64 --publish never",
+    "dist:mac:x64": "npm run build && electron-builder --mac --x64 --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:all": "npm run build && electron-builder -mwl --publish never",
@@ -49,20 +51,8 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
+        "dmg",
+        "zip"
       ],
       "icon": "assets/icon.png",
       "hardenedRuntime": true,
@@ -75,7 +65,7 @@
       }
     },
     "dmg": {
-      "title": "TeamTracker ${version}",
+      "title": "TeamTracker-${version}",
       "icon": "assets/icon.png",
       "background": null,
       "writeUpdateInfo": false
