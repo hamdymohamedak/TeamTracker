@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -16,23 +16,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: admin/package-lock.json
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: admin/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck server
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Unit / security tests
-        run: npm test
+        run: pnpm test
 
       - name: Build admin (server + client)
-        run: npm run build
+        run: pnpm run build
         env:
           NODE_ENV: production
 
@@ -43,11 +47,16 @@ jobs:
         working-directory: shared
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Install
-        run: npm install || true
-      - name: Typecheck if tsconfig exists
+          node-version: 22
+
+      - name: Typecheck shared package
         run: |
-          if [ -f tsconfig.json ]; then npx tsc --noEmit; else echo "no tsconfig"; fi
+          if [ -f tsconfig.json ]; then
+            # Use the real TypeScript compiler (not the abandoned npm package named "tsc")
+            npx --yes -p typescript@5.9.3 tsc --noEmit -p tsconfig.json
+          else
+            echo "no tsconfig"
+          fi
