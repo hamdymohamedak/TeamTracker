@@ -3,6 +3,7 @@
   "version": "1.0.4",
   "description": "Desktop activity tracker for TeamTracker",
   "author": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
+  "homepage": "https://github.com/hamdymohamedak/TeamTracker",
   "type": "module",
   "electronVersion": "30.5.1",
   "scripts": {
