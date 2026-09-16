@@ -101,7 +101,7 @@ export const en = {
 
   // Download
   'download.title': 'Desktop tracker',
-  'download.desc': 'Install the silent desktop tracker on each employee device. Activity syncs live to your admin dashboard.',
+  'download.desc': 'Install the desktop tracker on each employee device. Activity syncs live to your admin dashboard.',
   'download.loading': 'Loading latest release…',
   'download.other': 'Other platforms',
   'download.setup': 'Setup instructions',
@@ -427,7 +427,7 @@ export const ar: Record<TranslationKey, string> = {
   'auth.codesSavedContinue': 'حفظتها — متابعة',
 
   'download.title': 'متتبع سطح المكتب',
-  'download.desc': 'ثبّت متتبع سطح المكتب الصامت على جهاز كل موظف. تتم مزامنة النشاط مباشرة مع لوحة التحكم.',
+  'download.desc': 'ثبّت متتبع سطح المكتب على جهاز كل موظف. تتم مزامنة النشاط مباشرة مع لوحة التحكم.',
   'download.loading': 'جاري تحميل أحدث إصدار…',
   'download.other': 'منصات أخرى',
   'download.setup': 'تعليمات التثبيت',

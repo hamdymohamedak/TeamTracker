@@ -1,120 +1,155 @@
-# Desktop Tracker Code Signing & Notarization
+# Desktop distribution & optional code signing
 
-TeamTracker ships Electron desktop apps (`desktop/`, `desktop-admin/`). **Unsigned builds work** for internal use but trigger OS warnings (Gatekeeper, SmartScreen). This doc lists the **secrets and env vars** needed for Apple notarization and Windows Authenticode signing in CI.
+TeamTracker ships two Electron apps (`desktop/`, `desktop-admin/`) via **electron-builder** and GitHub Actions (`.github/workflows/build-desktop.yml`).
 
-**Never commit** `.pfx` / `.p12` / `.p8` / passwords. Store them as **GitHub Actions encrypted secrets** so CI can sign without keeping certs only on your laptop.
+## Default model (recommended for small teams)
 
-## Prerequisites
-
-| Platform | What you need |
-|----------|----------------|
-| macOS | Apple Developer Program membership; Developer ID Application certificate; App-specific password or API key for notarization |
-| Windows | Authenticode code-signing certificate (OV/EV preferred) as `.pfx` / base64; password — or a **self-signed** cert for internal testing |
-| CI | GitHub Actions secrets — never commit certs or passwords |
-
-Tooling: [electron-builder](https://www.electron.build/code-signing).
-
-## Why `zsh: unknown file attribute: 5`?
-
-`New-SelfSignedCertificate` is a **Windows PowerShell** cmdlet. It does **not** run in macOS Terminal (`zsh`). On a Mac, use the OpenSSL script below instead.
-
-## Windows (Authenticode) — create cert on Mac + upload to GitHub
-
-From the repo root:
-
-```bash
-chmod +x scripts/create-windows-codesign-cert.sh
-./scripts/create-windows-codesign-cert.sh --upload
-```
-
-That script:
-
-1. Creates a 5-year self-signed code-signing cert (`CN=TeamTracker, O=TeamTracker, C=EG`)
-2. Writes a `.pfx` under `.secrets/windows-codesign/` (gitignored)
-3. Uploads GitHub secrets:
-   - `WIN_CSC_LINK` — base64 of the `.pfx`
-   - `WIN_CSC_KEY_PASSWORD` — PFX password
-
-Without `--upload`, it only writes local files and prints the `gh secret set` commands.
-
-### Manual PowerShell (Windows only)
-
-```powershell
-$cert = New-SelfSignedCertificate -Type CodeSigningCert `
-  -Subject "CN=TeamTracker, O=TeamTracker, C=EG" `
-  -FriendlyName "TeamTrackerSigning" `
-  -NotAfter (Get-Date).AddYears(5)
-```
-
-Then export to `.pfx`, base64-encode it, and set `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` in the repo secrets.
-
-### CI env vars (Windows job)
-
-| Variable | Purpose |
-|----------|---------|
-| `WIN_CSC_LINK` | Base64-encoded `.pfx` (or path) — **use this on Windows**, not Mac `CSC_LINK` |
-| `WIN_CSC_KEY_PASSWORD` | Password for the PFX |
-
-The `build-windows` job in `.github/workflows/build-desktop.yml` passes these into electron-builder. Empty secrets → unsigned build (no failure).
-
-**Self-signed note:** employees’ PCs still show SmartScreen / “Unknown publisher” unless the cert is installed in Trusted Root / Trusted Publishers, or you buy an OV/EV Authenticode cert from a public CA.
-
-### Auto-trust inside the Windows installer (no separate .cer for users)
-
-The public half of the signing cert (`TeamTrackerCodeSign.cer`) is committed under `desktop/assets/` and `desktop-admin/assets/`. The NSIS script `installer.nsh` runs during Setup and imports that cert into the **current user’s** `Root` + `TrustedPublisher` stores via `certutil`.
-
-| What users do | What happens |
-|---------------|--------------|
-| Run `TeamTracker Setup.exe` once | Installer trusts publisher + installs app |
-| No PowerShell / no extra download | Works offline if the Setup file is intact |
-
-**Cannot do:** have the app “re-sign itself” before launch. Signing needs the **private** key; shipping that key inside the app lets anyone forge TeamTracker malware. Trusting the **public** cert at install time is the safe equivalent of your idea.
-
-**Still true:** the *first* download of Setup.exe may show SmartScreen (Mark-of-the-Web) until the user clicks Run anyway once — the cert import only runs *inside* that install. After that, signed installed binaries should show publisher `TeamTracker` as trusted for that user. A paid CA cert is the only way to avoid first-run SmartScreen for strangers on the internet.
-
-When you rotate the signing cert (`./scripts/create-windows-codesign-cert.sh --upload`), commit the refreshed `.cer` files so installers match `WIN_CSC_LINK`.
-
-## macOS (Developer ID + notarization)
-
-| Variable | Purpose |
-|----------|---------|
-| `CSC_LINK` | Path or base64 of the **Developer ID Application** `.p12` |
-| `CSC_KEY_PASSWORD` | P12 password |
-| `APPLE_ID` | Apple ID email used for notarization |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password ([appleid.apple.com](https://appleid.apple.com)) |
-| `APPLE_TEAM_ID` | 10-character Team ID |
-| `API_KEY_ID` / `API_KEY_ISSUER_ID` / `API_KEY` (or `APPLE_API_KEY` path) | Alternative: App Store Connect API key for notarization |
-
-Also ensure electron-builder mac options appropriate for distribution:
-
-- `hardenedRuntime: true`
-- Entitlements file for Electron (camera/screen capture as required by your build)
-- `notarize: true` (electron-builder 24+) **or** a `afterSign` notarize hook
-
-Bundle IDs: `com.teamtracker.tracker`, `com.teamtracker.admin`.
-
-## Suggested GitHub Actions secret names
+**Ship unsigned builds. Do not buy signing certificates until users and revenue justify the cost.**
 
 ```text
-# macOS
+Build
+  ↓
+Unsigned Windows installer + unsigned macOS DMG/ZIP
+  ↓
+GitHub Release
+```
+
+Missing signing secrets must **never** fail the release pipeline. CI unsets empty cert env vars and builds normally.
+
+| Platform | Artifact examples | Without paid signing |
+|----------|-------------------|----------------------|
+| Windows | `TeamTracker-*-x64.exe`, `TeamTracker-Admin-Setup-*.exe` | SmartScreen / “Unknown publisher” may appear |
+| macOS | `TeamTracker-*-arm64.dmg`, `TeamTracker-Admin-*-arm64.dmg` | Gatekeeper may block until the user allows the app |
+
+Ad-hoc macOS signing (`codesign --sign -` via `afterPack`) only stabilizes the bundle identity for TCC permissions. It is **not** Apple Developer ID trust and does **not** remove Gatekeeper warnings.
+
+### What we deliberately do **not** do
+
+- Buy OV/EV / Apple Developer certificates “just to quiet warnings”
+- Bundle self-signed certificates or install them into users’ trust stores
+- Pretend self-signed Authenticode is equivalent to a public CA
+- Disable Gatekeeper, SmartScreen, or antivirus
+- Claim “Verified by Apple”, “Trusted Publisher”, or “officially signed” when unsigned
+
+---
+
+## macOS — unsigned install (employees)
+
+1. Open the `.dmg` and drag the app to **Applications**.
+2. First launch may show that Apple cannot verify the developer.
+3. Allow it **for this app only**:
+   - **Right-click** the app → **Open** → **Open**, or
+   - **System Settings → Privacy & Security** → scroll to the blocked-app message → **Open Anyway**
+4. Grant **Screen Recording** and **Accessibility** when prompted (employee tracker).
+
+Do **not** turn Gatekeeper off globally.
+
+---
+
+## Windows — unsigned install (employees)
+
+1. Run the NSIS `.exe` installer.
+2. If SmartScreen shows **Windows protected your PC**:
+   - Click **More info** → **Run anyway**
+3. Complete the installer wizard.
+
+Do **not** disable SmartScreen or Windows Defender globally.
+
+An unknown-publisher / reputation warning on a new unsigned build is expected. It does not mean the installer is malware; it means Windows has no paid Authenticode reputation for this binary yet.
+
+---
+
+## CI behavior
+
+| Secrets | Result |
+|---------|--------|
+| **Absent** | Unsigned Windows + unsigned macOS (ad-hoc identity) + Linux → release succeeds |
+| **Present** | Same pipeline uses them for signing (and notarization later when configured) |
+
+macOS packaging runs on **two runner types** so Intel MacBooks are covered on real hardware:
+
+| Runner | CPU | Artifact examples |
+|--------|-----|-------------------|
+| `macos-latest` | Apple Silicon (arm64) | `TeamTracker-*-arm64.dmg` |
+| `macos-15-intel` | Intel (x64) | `TeamTracker-*-x64.dmg` |
+
+Each Mac job builds only its native arch and verifies the binary architecture with `file` before uploading.
+
+Relevant secrets (only when you later add paid certs):
+
+```text
+# macOS (Developer ID Application .p12)
 CSC_LINK
 CSC_KEY_PASSWORD
 APPLE_ID
 APPLE_APP_SPECIFIC_PASSWORD
 APPLE_TEAM_ID
 
-# Windows (separate from Mac — different cert type)
+# Windows (public-CA Authenticode .pfx) — separate from Mac
 WIN_CSC_LINK
 WIN_CSC_KEY_PASSWORD
 ```
 
-## What not to do
+Empty secrets are unset before electron-builder runs so `""` is never treated as a file path.
 
-- Do not commit `.p12` / `.pfx` / `.p8` files to git (use secrets).
-- Do not reuse Mac `CSC_LINK` as the Windows signing cert.
-- Do not “fake” notarization stapling in docs or CI logs.
-- Do not rotate `CSC_*` / `WIN_CSC_*` mid-release without rebuilding all platform artifacts employees install.
+---
 
-## Unsigned internal distribution
+## Future upgrade path (paid certificates)
 
-For private fleets you may ship unsigned AppImages / DMGs / EXEs and document SmartScreen/Gatekeeper steps in the main README. Prefer a public CA cert before any broad employee rollout.
+When commercial signing becomes worthwhile:
+
+```text
+Build
+  ↓
+Code signing (Developer ID / Authenticode)
+  ↓
+Notarization (macOS) when Apple credentials are complete
+  ↓
+Release
+```
+
+### macOS (later)
+
+1. Enroll in the Apple Developer Program; create a **Developer ID Application** certificate; export `.p12`.
+2. Store `CSC_LINK` (base64 of `.p12`) + `CSC_KEY_PASSWORD` as GitHub secrets.
+3. For notarization: set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
+4. In each app’s `package.json` → `"build"."mac"`, add `"notarize": true` (electron-builder 24+) once those secrets exist.
+
+Both apps already use `hardenedRuntime` + entitlements so notarization can be enabled without a packaging rewrite.
+
+### Windows (later)
+
+1. Purchase an Authenticode certificate from a public CA (OV/EV as appropriate).
+2. Store `WIN_CSC_LINK` (base64 of `.pfx`) + `WIN_CSC_KEY_PASSWORD`.
+3. Rebuild — electron-builder signs when `WIN_CSC_*` is set.
+
+Do **not** reuse Mac `CSC_LINK` as the Windows cert.
+
+Tooling reference: [electron-builder code signing](https://www.electron.build/code-signing).
+
+**Never commit** `.pfx` / `.p12` / `.p8` / passwords. Use GitHub Actions encrypted secrets.
+
+---
+
+## Local build commands
+
+From a **standalone copy** of `desktop/` or `desktop-admin/` (avoids npm workspace conflicts with electron-builder):
+
+```bash
+# Unsigned by default (recommended)
+export CSC_IDENTITY_AUTO_DISCOVERY=false
+unset CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+
+npm install
+npm run dist:mac    # DMG + ZIP (macOS host)
+npm run dist:win    # NSIS installer (best on Windows CI / Windows host)
+```
+
+Output: `release/` under that app directory.
+
+---
+
+## Related
+
+- Employee install overview: [README.md](../README.md)
+- Server deploy: [DEPLOYMENT.md](./DEPLOYMENT.md)

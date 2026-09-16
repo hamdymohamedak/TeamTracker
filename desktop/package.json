@@ -44,6 +44,8 @@
         "to": "assets"
       }
     ],
+    "afterPack": "scripts/afterPack.cjs",
+    "forceCodeSigning": false,
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -69,8 +71,7 @@
       "entitlementsInherit": "assets/entitlements.mac.plist",
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "TeamTracker captures periodic screenshots so your team admin can review work activity.",
-        "NSAppleEventsUsageDescription": "TeamTracker reads the active window title to track which apps are in use.",
-        "LSUIElement": true
+        "NSAppleEventsUsageDescription": "TeamTracker reads the active window title to track which apps are in use."
       }
     },
     "dmg": {
@@ -89,7 +90,10 @@
         }
       ],
       "icon": "assets/icon.png",
-      "signAndEditExecutable": true
+      "signAndEditExecutable": true,
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -97,8 +101,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "TeamTracker",
-      "include": "installer.nsh"
+      "shortcutName": "TeamTracker"
     },
     "linux": {
       "category": "Utility",

@@ -16,24 +16,23 @@ const store = new Store({
   }
 });
 
+// Default: normal desktop app (Dock / taskbar / tray visible).
 // Stealth mode is opt-in via env var or store flag. When on:
 //   - no tray icon is created
 //   - dock icon is hidden on macOS (app.dock.hide)
-//   - no startup banner in console (still logs errors)
+//   - employee window is not shown at startup
 //   - the tracker still runs and uploads as normal
-//
-// Employees never see anything in their menubar / dock / Activity Monitor
-// (process is named "teamtracker-tracker" via package.json productName).
 const STEALTH_MODE =
   process.env.TEAMTRACKER_STEALTH === '1' ||
   process.env.TEAMTRACKER_STEALTH === 'true' ||
   store.get('stealthMode') === true;
 
 let tray: Tray | null = null;
+let isQuitting = false;
 // Hold a reference so the powerSaveBlocker isn't garbage-collected.
 // Without this, macOS App Nap throttles background timers (setInterval)
 // when the app has no visible window — sync/screenshot loops freeze
-// indefinitely. Required for headless / LSUIElement builds.
+// indefinitely.
 let powerSaveBlockerId: number | null = null;
 // Hold a reference to a hidden BrowserWindow. macOS App Nap will fully
 // suspend the JS event loop for headless Electron apps even with
@@ -63,11 +62,13 @@ app.whenReady().then(async () => {
     console.log('');
   }
 
-  // Hide the dock icon on macOS in stealth mode so the user never sees the
-  // app at all. On Windows/Linux there is no dock; the absence of a tray icon
-  // already makes the app invisible (keep-alive window uses skipTaskbar).
-  if (STEALTH_MODE && process.platform === 'darwin' && app.dock) {
-    try { app.dock.hide(); } catch { /* ignore */ }
+  // Normal mode: show in macOS Dock like any other open app.
+  // Stealth: hide Dock; Windows/Linux rely on no tray + skipTaskbar keep-alive.
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      if (STEALTH_MODE) app.dock.hide();
+      else app.dock.show();
+    } catch { /* ignore */ }
   }
 
   if (!STEALTH_MODE) {
@@ -178,6 +179,7 @@ function createEmployeeWindow(): void {
     title: 'TeamTracker',
     show: false,
     resizable: false,
+    skipTaskbar: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: assetPath('preload.cjs'),
@@ -199,6 +201,17 @@ function createEmployeeWindow(): void {
   employeeWindow.once('ready-to-show', () => {
     employeeWindow?.show();
     employeeWindow?.focus();
+  });
+  // Closing the window should not quit the tracker. Keep the app in the
+  // Dock (macOS) / tray; on Windows/Linux minimize so it stays on the taskbar.
+  employeeWindow.on('close', (event) => {
+    if (isQuitting || STEALTH_MODE) return;
+    event.preventDefault();
+    if (process.platform === 'darwin') {
+      employeeWindow?.hide();
+    } else {
+      employeeWindow?.minimize();
+    }
   });
   employeeWindow.on('closed', () => {
     employeeWindow = null;
@@ -254,6 +267,16 @@ function updateTrayMenu(): void {
   tray.setContextMenu(Menu.buildFromTemplate(items));
 }
 
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
+app.on('activate', () => {
+  // macOS Dock click / Cmd+Tab back to the app.
+  if (!STEALTH_MODE) createEmployeeWindow();
+});
+
 app.on('window-all-closed', () => {
-  // Keep running in background — never quit on window close.
+  // Keep the tracker running when windows are closed/hidden.
+  // Quit only from the tray menu (or Cmd+Q / app.quit()).
 });
