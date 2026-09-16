@@ -1,12 +1,12 @@
-// TeamTracker Desktop App Configuration
+  // TeamTracker Desktop App Configuration
 // Update this file to change the server URL for all desktop trackers
 
 export const TEAMTRACKER_CONFIG = {
   // Change this to your VPS URL before building employee installers, e.g.
   // 'https://track.yourcompany.com'
   // Override at runtime with TEAMTRACKER_SERVER_URL.
-  serverUrl: 'http://localhost:3001',
-
+  // serverUrl: 'http://localhost:3001',
+  serverUrl: 'https://tracker.hostly-eg.com',
   // Device auth token (from setup token enrollment)
   deviceToken: process.env.TEAMTRACKER_DEVICE_TOKEN || '',
 
