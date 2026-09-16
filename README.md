@@ -52,7 +52,7 @@ Go to **Employees → Add Employee**. Enter name, email, and department for each
 ### 3. Install the desktop app
 For each employee, generate a **Setup Token** from the dashboard, share it with them, and have them paste it once in the TeamTracker desktop app to connect their device:
 
-![Setup token — admin generates a one-time token; employee pastes it in the desktop app](./assets/sys_tokens.png)
+![Setup token — admin generates a one-time token; employee pastes it in the desktop app](assets/sys_tokens.png)
 
 - **[Download for Mac, Windows, or Linux](https://github.com/hamdymohamedak/TeamTracker/releases)**
 
@@ -71,7 +71,7 @@ Open the dashboard on any device. You’ll see apps in use, time breakdowns, and
 
 **Live Activity** lets you view an employee’s screen in real time — stop, fullscreen, or capture a frame when you need it:
 
-![Live Activity — real-time screen broadcast of a connected employee](./assets/Stream.png)
+![Live Activity — real-time screen broadcast of a connected employee](assets/Stream.png)
 
 ---
 
