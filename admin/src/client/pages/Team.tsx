@@ -3,15 +3,12 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
+import { RecoveryCodesPanel } from '../components/RecoveryCodesPanel';
 
 // Multi-admin team management page.
 //
 // Backend: GET/POST/DELETE /api/auth/team — see admin/server/routes/auth-routes.ts.
-//
-// MVP: the owner picks an email + name + temporary password and shares
-// those credentials with the new admin out-of-band. We don't send invite
-// emails yet (no transactional email config beyond Resend, and Resend's
-// onboarding sender doesn't accept arbitrary recipients on the free tier).
+// Password recovery is offline via recovery codes (no paid email required).
 
 interface TeamUser {
   id: string;
@@ -35,6 +32,14 @@ export const Team: React.FC = () => {
   const [invitePassword, setInvitePassword] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'owner'>('admin');
   const [submitting, setSubmitting] = useState(false);
+  const [inviteCodes, setInviteCodes] = useState<string[] | null>(null);
+
+  const [passwordTarget, setPasswordTarget] = useState<TeamUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [settingPassword, setSettingPassword] = useState(false);
+
+  const [remainingCodes, setRemainingCodes] = useState<number | null>(null);
+  const [myNewCodes, setMyNewCodes] = useState<string[] | null>(null);
 
   const load = async () => {
     try {
@@ -49,7 +54,19 @@ export const Team: React.FC = () => {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  const loadCodeCount = async () => {
+    try {
+      const res = await api.get('/api/auth/recovery-codes');
+      if (res.success) setRemainingCodes(res.data?.remaining ?? 0);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    load();
+    loadCodeCount();
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,10 +81,16 @@ export const Team: React.FC = () => {
         role: inviteRole,
       });
       if (res.success) {
-        setFlash(`Invited ${inviteEmail} as ${inviteRole}. Share the password securely — we don't email it for you yet.`);
+        setFlash(`Invited ${inviteEmail} as ${inviteRole}. Share the password securely.`);
         setTimeout(() => setFlash(null), 8000);
+        if (Array.isArray(res.data?.recoveryCodes)) {
+          setInviteCodes(res.data.recoveryCodes);
+        }
         setShowInvite(false);
-        setInviteEmail(''); setInviteName(''); setInvitePassword(''); setInviteRole('admin');
+        setInviteEmail('');
+        setInviteName('');
+        setInvitePassword('');
+        setInviteRole('admin');
         load();
       } else {
         setError(res.error || 'Failed to invite');
@@ -94,6 +117,45 @@ export const Team: React.FC = () => {
     }
   };
 
+  const submitPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordTarget || newPassword.length < 6) return;
+    setSettingPassword(true);
+    setError(null);
+    try {
+      const res = await api.post(`/api/auth/team/${passwordTarget.id}/password`, {
+        password: newPassword,
+      });
+      if (res.success) {
+        setFlash(res.message || `Password updated for ${passwordTarget.email}`);
+        setTimeout(() => setFlash(null), 6000);
+        setPasswordTarget(null);
+        setNewPassword('');
+      } else {
+        setError(res.error || 'Failed to set password');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to set password');
+    } finally {
+      setSettingPassword(false);
+    }
+  };
+
+  const regenerateMyCodes = async () => {
+    if (!confirm(t('team.regenerateConfirm'))) return;
+    try {
+      const res = await api.post('/api/auth/recovery-codes/regenerate', {});
+      if (res.success && Array.isArray(res.data?.recoveryCodes)) {
+        setMyNewCodes(res.data.recoveryCodes);
+        setRemainingCodes(res.data.recoveryCodes.length);
+      } else {
+        setError(res.error || 'Failed to regenerate codes');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to regenerate codes');
+    }
+  };
+
   if (loading) return <div style={styles.container}><p>{t('team.loading')}</p></div>;
 
   return (
@@ -115,6 +177,32 @@ export const Team: React.FC = () => {
 
       {flash && <div style={styles.flash}>✅ {flash}</div>}
       {error && <div style={styles.error}>⚠️ {error}</div>}
+
+      <section style={styles.card}>
+        <h2 style={styles.cardTitle}>{t('team.recoverySection')}</h2>
+        {myNewCodes ? (
+          <RecoveryCodesPanel codes={myNewCodes} onContinue={() => setMyNewCodes(null)} />
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--tt-text-muted)' }}>
+              {t('team.recoveryRemaining').replace(
+                '{count}',
+                String(remainingCodes ?? '—')
+              )}
+            </p>
+            <button type="button" onClick={regenerateMyCodes} style={styles.secondaryBtn}>
+              {t('team.regenerateCodes')}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {inviteCodes && (
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>{t('team.inviteCodesNote')}</h2>
+          <RecoveryCodesPanel codes={inviteCodes} onContinue={() => setInviteCodes(null)} />
+        </section>
+      )}
 
       {showInvite && (
         <section style={styles.card}>
@@ -150,6 +238,45 @@ export const Team: React.FC = () => {
         </section>
       )}
 
+      {passwordTarget && (
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>
+            {t('team.setPasswordTitle').replace('{name}', passwordTarget.name)}
+          </h2>
+          <p style={{ fontSize: 13, color: 'var(--tt-text-muted)', marginTop: 0 }}>
+            {t('team.setPasswordHint')}
+          </p>
+          <form onSubmit={submitPassword} style={styles.form}>
+            <label style={styles.label}>
+              New password
+              <input
+                type="text"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={6}
+                style={styles.input}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" disabled={settingPassword} style={styles.primaryBtn}>
+                {settingPassword ? 'Saving…' : t('common.save')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPasswordTarget(null);
+                  setNewPassword('');
+                }}
+                style={styles.secondaryBtn}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
       <section style={styles.card}>
         <h2 style={styles.cardTitle}>Active dashboard users ({users.length})</h2>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -173,9 +300,14 @@ export const Team: React.FC = () => {
                 <td style={styles.td}>{u.email}</td>
                 <td style={styles.td}><span style={styles.roleTag(u.role)}>{u.role}</span></td>
                 <td style={styles.td}>{new Date(u.created_at).toLocaleDateString()}</td>
-                <td style={styles.td}>
+                <td style={{ ...styles.td, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {u.id !== user?.id && (
-                    <button onClick={() => remove(u)} style={styles.deleteBtn}>Remove</button>
+                    <>
+                      <button onClick={() => { setPasswordTarget(u); setNewPassword(''); }} style={styles.secondaryBtn}>
+                        {t('team.setPassword')}
+                      </button>
+                      <button onClick={() => remove(u)} style={styles.deleteBtn}>Remove</button>
+                    </>
                   )}
                 </td>
               </tr>
@@ -194,6 +326,7 @@ const styles: { [key: string]: any } = {
   title: { fontSize: '28px', fontWeight: 600, color: 'var(--tt-text)', margin: 0 },
   subtitle: { fontSize: '14px', color: 'var(--tt-text-muted)', marginTop: '8px' },
   primaryBtn: { padding: '10px 20px', backgroundColor: 'var(--tt-teal)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
+  secondaryBtn: { padding: '8px 14px', backgroundColor: 'var(--tt-surface-muted)', color: 'var(--tt-text)', border: '1px solid var(--tt-border-strong)', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' },
   card: { backgroundColor: 'var(--tt-surface)', padding: '24px', borderRadius: 'var(--tt-radius)', boxShadow: 'var(--tt-shadow-sm)', marginBottom: '24px' },
   cardTitle: { fontSize: '18px', fontWeight: 600, color: 'var(--tt-text)', marginTop: 0, marginBottom: '16px' },
   form: { display: 'flex', flexDirection: 'column', gap: '16px' },

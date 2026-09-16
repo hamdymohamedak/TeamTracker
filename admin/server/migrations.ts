@@ -332,6 +332,27 @@ export async function runMigrations(db: DB): Promise<void> {
         `);
         console.log('  Migration 7: device_sessions table created');
       }
+    },
+    {
+      version: 8,
+      name: 'recovery_codes — offline password reset without email',
+      up: async (db: DB) => {
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS recovery_codes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_recovery_codes_user
+            ON recovery_codes(user_id);
+          CREATE INDEX IF NOT EXISTS idx_recovery_codes_hash
+            ON recovery_codes(code_hash);
+        `);
+        console.log('  Migration 8: recovery_codes table created');
+      }
     }
   ];
 

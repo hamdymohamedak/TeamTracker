@@ -19,6 +19,7 @@
     "typecheck": "pnpm -C admin run typecheck",
     "test": "pnpm -C admin run test",
     "test:conformance": "pnpm -C admin run test:conformance",
+    "reset-password": "pnpm -C admin run reset-password",
     "install:all": "pnpm install"
   },
   "devDependencies": {

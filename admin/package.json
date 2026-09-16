@@ -13,7 +13,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc -p tsconfig.server.json --noEmit",
     "test": "tsx --test server/__tests__/**/*.test.ts",
-    "test:conformance": "tsx scripts/conformance.mjs"
+    "test:conformance": "tsx scripts/conformance.mjs",
+    "reset-password": "node scripts/reset-password.mjs"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.0",

@@ -30,6 +30,8 @@ TeamTracker is an open-source employee tracking SaaS. See who's working, what th
 
 Go to **[YOUR_DOMAIN/signup](https://YOUR_DOMAIN/signup)**. Enter your company name, your name, email, and a password. You're in.
 
+**Save your recovery codes** shown right after signup. They are the offline way to reset your password (no email service required). Each code works once.
+
 ### 2. Add Employees
 
 Go to **Employees** > **+ Add Employee**. Add each team member with their name, email, and department.
@@ -409,13 +411,31 @@ All endpoints require `Authorization: Bearer <token>` header (except auth endpoi
 ### Auth
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/auth/signup` | POST | Public | Create account + org |
+| `/api/auth/signup` | POST | Public | Create account + org (returns recovery codes once) |
 | `/api/auth/login` | POST | Public | Login, get JWT |
-| `/api/auth/forgot-password` | POST | Public | Generate reset link |
-| `/api/auth/reset-password` | POST | Public | Reset password with token |
+| `/api/auth/reset-with-recovery-code` | POST | Public | Reset password with email + recovery code |
+| `/api/auth/recovery-codes` | GET | Dashboard | Count unused recovery codes |
+| `/api/auth/recovery-codes/regenerate` | POST | Dashboard | Issue new recovery codes (shown once) |
+| `/api/auth/forgot-password` | POST | Public | Optional email reset link (only if SMTP/Resend configured) |
+| `/api/auth/reset-password` | POST | Public | Reset password with email token |
+| `/api/auth/team/:id/password` | POST | Owner/Admin | Set another teammate’s password |
 | `/api/auth/setup-token` | POST | Dashboard | Generate employee setup token |
 | `/api/auth/enroll` | POST | Public | Redeem setup token for device JWT |
 | `/api/auth/me` | GET | Any | Get current user info |
+
+### Password recovery (offline)
+
+Forgot password in the UI uses a **recovery code** (no paid email required). From **Team** you can regenerate your codes while logged in, or set a teammate’s password.
+
+Break-glass on the server (SSH / local machine with the SQLite DB):
+
+```bash
+pnpm run reset-password -- --email example@gmail.com --password '123456789' --codes
+```
+
+- `--email` / `--password` — required  
+- `--codes` — also print fresh recovery codes once  
+- Optional: `DATABASE_PATH=/var/lib/teamtracker/database/admin.db` if not using the default DB path  
 
 ### Employees & Activities
 | Endpoint | Method | Description |

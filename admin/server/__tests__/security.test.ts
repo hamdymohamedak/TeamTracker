@@ -40,6 +40,11 @@ const {
 } = await import('../auth.js');
 const { createSqliteBackup } = await import('../backup.js');
 const { getPaths, resolveScreenshotAbsolutePath, ensureDataDirectories } = await import('../paths.js');
+const {
+  issueRecoveryCodes,
+  consumeRecoveryCode,
+  countUnusedRecoveryCodes,
+} = await import('../recovery-codes.js');
 
 await initDatabase();
 ensureDataDirectories();
@@ -239,6 +244,25 @@ describe('backup', () => {
   });
 });
 
+describe('recovery codes', () => {
+  it('issues codes and consumes one exactly once', async () => {
+    const a = await createOrgUser('rec1');
+    const codes = await issueRecoveryCodes(a.userId, 3);
+    assert.equal(codes.length, 3);
+    assert.equal(await countUnusedRecoveryCodes(a.userId), 3);
+
+    const ok = await consumeRecoveryCode(a.userId, codes[0]);
+    assert.equal(ok, true);
+    assert.equal(await countUnusedRecoveryCodes(a.userId), 2);
+
+    const again = await consumeRecoveryCode(a.userId, codes[0]);
+    assert.equal(again, false);
+
+    const ok2 = await consumeRecoveryCode(a.userId, codes[1].replace('-', '').toLowerCase());
+    assert.equal(ok2, true);
+  });
+});
+
 describe('migrations', () => {
   it('applies team_invites and device_sessions migrations', async () => {
     const db = getDatabase();
@@ -246,8 +270,10 @@ describe('migrations', () => {
     assert.ok(invites);
     const sessions = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='device_sessions'`);
     assert.ok(sessions);
+    const recovery = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='recovery_codes'`);
+    assert.ok(recovery);
     const ver = await db.get(`SELECT MAX(version) as v FROM _migrations`);
-    assert.ok((ver?.v || 0) >= 7);
+    assert.ok((ver?.v || 0) >= 8);
   });
 });
 

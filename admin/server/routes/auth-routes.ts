@@ -14,6 +14,12 @@ import {
   issueDeviceSession,
   revokeEmployeeDeviceSessions,
 } from '../auth.js';
+import {
+  issueRecoveryCodes,
+  consumeRecoveryCode,
+  countUnusedRecoveryCodes,
+  invalidateUserSessions,
+} from '../recovery-codes.js';
 import { rateLimit } from '../rate-limit.js';
 import { logger } from '../logger.js';
 
@@ -30,10 +36,11 @@ const enrollLimiter = rateLimit({
   keyPrefix: 'enroll',
 });
 
-const aiFriendlyForgotLimiter = rateLimit({
+const recoveryResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 10,
-  keyPrefix: 'forgot',
+  max: 8,
+  keyPrefix: 'recovery-reset',
+  message: 'Too many recovery attempts. Please try again later.',
 });
 
 export function setupAuthRoutes(app: Express): void {
@@ -102,11 +109,14 @@ export function setupAuthRoutes(app: Express): void {
         [uuidv4(), userId, hashToken(refreshToken), refreshExpiry, now]
       );
 
+      const recoveryCodes = await issueRecoveryCodes(userId);
+
       res.json({
         success: true,
         data: {
           accessToken,
           refreshToken,
+          recoveryCodes,
           user: { id: userId, email, name, role: 'owner' },
           org: {
             id: orgId,
@@ -388,8 +398,77 @@ export function setupAuthRoutes(app: Express): void {
     }
   });
 
-  // Forgot password: generate reset token (never return the token in the API response)
-  app.post('/api/auth/forgot-password', aiFriendlyForgotLimiter, async (req, res) => {
+  // Offline password reset with a one-time recovery code (no email required)
+  app.post('/api/auth/reset-with-recovery-code', recoveryResetLimiter, async (req, res) => {
+    try {
+      const { email, recoveryCode, newPassword } = req.body || {};
+      if (!email || !recoveryCode || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          error: 'email, recoveryCode, and newPassword are required',
+        });
+      }
+      if (String(newPassword).length < 6) {
+        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+      }
+
+      const user = await db().get('SELECT id, email FROM users WHERE email = ?', [email]);
+      // Same generic error whether email/code is wrong (avoid account enumeration)
+      const fail = () =>
+        res.status(401).json({
+          success: false,
+          error: 'Invalid email or recovery code',
+        });
+
+      if (!user) return fail();
+
+      const ok = await consumeRecoveryCode(user.id, recoveryCode);
+      if (!ok) return fail();
+
+      const passwordHash = await hashPassword(newPassword);
+      await db().run(
+        'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
+        [passwordHash, new Date().toISOString(), user.id]
+      );
+      await invalidateUserSessions(user.id);
+
+      const remaining = await countUnusedRecoveryCodes(user.id);
+      res.json({
+        success: true,
+        message: 'Password updated. You can sign in now.',
+        data: { remainingRecoveryCodes: remaining },
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Authenticated: how many unused recovery codes remain
+  app.get('/api/auth/recovery-codes', requireAuth, async (req, res) => {
+    try {
+      const remaining = await countUnusedRecoveryCodes(req.userId!);
+      res.json({ success: true, data: { remaining } });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Authenticated: regenerate recovery codes (returns plaintext once)
+  app.post('/api/auth/recovery-codes/regenerate', requireAuth, authLimiter, async (req, res) => {
+    try {
+      const codes = await issueRecoveryCodes(req.userId!);
+      res.json({
+        success: true,
+        data: { recoveryCodes: codes },
+        message: 'Save these codes now. They will not be shown again.',
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Optional email-based forgot (only when SMTP/Resend configured). Prefer recovery codes.
+  app.post('/api/auth/forgot-password', recoveryResetLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email) {
@@ -397,16 +476,15 @@ export function setupAuthRoutes(app: Express): void {
       }
 
       const user = await db().get('SELECT id, name, email FROM users WHERE email = ?', [email]);
-
-      // Always return the same message (don't reveal if email exists)
-      const publicMessage = 'If that email exists, a reset link has been generated.';
+      const publicMessage =
+        'If that account exists, use a recovery code on the reset page. Email reset is only sent when mail is configured.';
 
       if (!user) {
         return res.json({ success: true, message: publicMessage });
       }
 
       const token = generateSetupToken();
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       const now = new Date().toISOString();
 
       await db().run(
@@ -418,27 +496,25 @@ export function setupAuthRoutes(app: Express): void {
       const baseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
       const resetUrl = `${baseUrl || ''}/reset-password?token=${token}`;
 
-      // Attempt email delivery when configured; never include resetUrl in JSON
       let emailed = false;
       try {
-        const { sendPasswordResetEmail } = await import('../mail.js');
-        emailed = await sendPasswordResetEmail(user.email, resetUrl, user.name);
-      } catch {
-        // mail module optional
-      }
-
-      if (!emailed) {
-        // Log only that a reset was issued — never log the raw token in production
-        if (process.env.NODE_ENV !== 'production') {
-          logger.info('Password reset issued (dev)', { email: user.email, resetUrl });
-        } else {
-          logger.info('Password reset issued; configure SMTP/Resend to email the link', {
-            email: user.email,
-          });
+        const { sendPasswordResetEmail, isEmailConfigured } = await import('../mail.js');
+        if (isEmailConfigured()) {
+          emailed = await sendPasswordResetEmail(user.email, resetUrl, user.name);
         }
+      } catch {
+        // mail optional
       }
 
-      res.json({ success: true, message: publicMessage });
+      if (!emailed && process.env.NODE_ENV !== 'production') {
+        logger.info('Password reset issued (dev, no email)', { email: user.email, resetUrl });
+      }
+
+      res.json({
+        success: true,
+        message: publicMessage,
+        data: { emailed },
+      });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
@@ -552,9 +628,62 @@ export function setupAuthRoutes(app: Express): void {
         [userId, req.orgId!, email.toLowerCase().trim(), passwordHash, name.trim(), finalRole, now, now]
       );
 
+      const recoveryCodes = await issueRecoveryCodes(userId);
+
       res.json({
         success: true,
-        data: { id: userId, email, name, role: finalRole },
+        data: { id: userId, email, name, role: finalRole, recoveryCodes },
+        message: 'Share the temporary password and recovery codes securely. Codes are shown only once.',
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Owner/admin: set another teammate's password (no email needed)
+  app.post('/api/auth/team/:id/password', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
+    try {
+      const { password } = req.body || {};
+      if (!password || String(password).length < 6) {
+        return res.status(400).json({ success: false, error: 'password (min 6 chars) is required' });
+      }
+
+      const caller = await db().get(
+        'SELECT role FROM users WHERE id = ? AND org_id = ?',
+        [req.userId, req.orgId!]
+      );
+      if (!caller) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      const target = await db().get(
+        'SELECT id, role, email, name FROM users WHERE id = ? AND org_id = ?',
+        [req.params.id, req.orgId!]
+      );
+      if (!target) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      if (target.id === req.userId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Use recovery codes or ask another owner to reset your own password',
+        });
+      }
+      if (target.role === 'owner' && caller.role !== 'owner') {
+        return res.status(403).json({ success: false, error: 'Only an owner can reset another owner’s password' });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await db().run(
+        'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
+        [passwordHash, new Date().toISOString(), target.id]
+      );
+      await invalidateUserSessions(target.id);
+
+      res.json({
+        success: true,
+        message: `Password updated for ${target.email}. Share it securely out of band.`,
+        data: { userId: target.id, email: target.email },
       });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
@@ -635,8 +764,9 @@ export function setupAuthRoutes(app: Express): void {
       const passwordHash = await hashPassword(password);
       await db().run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, record.user_id]);
 
-      // Delete the reset token
+      // Delete the reset token + all sessions
       await db().run('DELETE FROM refresh_tokens WHERE id = ?', [record.id]);
+      await invalidateUserSessions(record.user_id);
 
       res.json({ success: true, message: 'Password has been reset. You can now log in.' });
     } catch (error) {
@@ -672,6 +802,8 @@ export function setupAuthRoutes(app: Express): void {
       );
       await db().run(`UPDATE team_invites SET accepted_at = ? WHERE id = ?`, [now, invite.id]);
 
+      const recoveryCodes = await issueRecoveryCodes(userId);
+
       const accessToken = generateDashboardToken({
         userId,
         orgId: invite.org_id,
@@ -681,6 +813,7 @@ export function setupAuthRoutes(app: Express): void {
         success: true,
         data: {
           accessToken,
+          recoveryCodes,
           user: { id: userId, email: invite.email, name: invite.name, role: invite.role },
         },
       });
