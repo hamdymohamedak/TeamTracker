@@ -19,5 +19,5 @@
     }
   },
   "include": ["server/**/*", "shared-types.ts"],
-  "exclude": ["node_modules", "dist", "src/client"]
+  "exclude": ["node_modules", "dist", "src/client", "server/__tests__"]
 }

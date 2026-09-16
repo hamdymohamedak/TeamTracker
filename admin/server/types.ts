@@ -6,6 +6,7 @@ declare global {
       userId?: string;
       employeeId?: string;
       tokenType?: 'dashboard' | 'device';
+      userRole?: 'owner' | 'admin' | 'viewer';
     }
   }
 }

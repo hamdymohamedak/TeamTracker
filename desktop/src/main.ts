@@ -182,8 +182,16 @@ function createEmployeeWindow(): void {
       preload: assetPath('preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
+  });
+
+  employeeWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  employeeWindow.webContents.on('will-navigate', (event, url) => {
+    // Local UI only — block any navigation away from the packaged file:// page.
+    if (!url.startsWith('file://')) {
+      event.preventDefault();
+    }
   });
 
   employeeWindow.loadFile(assetPath('ui', 'index.html'));

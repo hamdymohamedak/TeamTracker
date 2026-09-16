@@ -314,10 +314,12 @@ export async function applyOverrides(
 ): Promise<{ category: string; categoryName: string; productivityScore: number; productivityLevel: string }> {
   const db = getDatabase();
 
-  // Check for employee-specific override first, then role-based, then global
+  // Org-scoped overrides only. Global (org_id IS NULL) rows are reserved for
+  // true system defaults that are not tenant data — prefer org_id = ? for
+  // tenant-owned classification overrides.
   const override = await db.get(
     `SELECT * FROM classification_overrides
-     WHERE (org_id IS NULL OR org_id = ?)
+     WHERE org_id = ?
      AND (employee_id = ? OR employee_id IS NULL)
      AND (role_type = ? OR role_type IS NULL)
      AND (LOWER(?) LIKE '%' || LOWER(app_pattern) || '%' OR LOWER(?) LIKE '%' || LOWER(app_pattern) || '%')

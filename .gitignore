@@ -14,8 +14,12 @@ build/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+admin/data/backups/
+admin/data/uploads/
 
 # Logs
 logs/

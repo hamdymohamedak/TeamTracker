@@ -4,26 +4,32 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
+import { getDatabase } from './database.js';
 
 const BCRYPT_ROUNDS = 12;
 
-// Auto-generate JWT secret if not set
+let _jwtSecret: string | null = null;
+
 function getJwtSecret(): string {
-  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
-  // In dev, use a stable secret derived from a fixed seed so tokens survive restarts
-  const devSecret = 'teamtracker-dev-secret-change-in-production-' + crypto.createHash('sha256').update('teamtracker').digest('hex');
+  if (_jwtSecret) return _jwtSecret;
+  if (process.env.JWT_SECRET) {
+    _jwtSecret = process.env.JWT_SECRET;
+    return _jwtSecret;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET is required in production');
+  }
+  // Stable dev secret so tokens survive restarts
+  _jwtSecret =
+    'teamtracker-dev-secret-change-in-production-' +
+    crypto.createHash('sha256').update('teamtracker').digest('hex');
   console.warn('WARNING: Using auto-generated JWT_SECRET. Set JWT_SECRET in .env for production.');
-  return devSecret;
+  return _jwtSecret;
 }
 
-const JWT_SECRET = getJwtSecret();
-
-// Token expiry
 const DASHBOARD_TOKEN_EXPIRY = '24h';
 const DEVICE_TOKEN_EXPIRY = '90d';
-const REFRESH_TOKEN_EXPIRY = '30d';
 
-// Password hashing
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
@@ -32,7 +38,6 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-// JWT
 export interface DashboardTokenPayload {
   userId: string;
   orgId: string;
@@ -49,11 +54,11 @@ export interface DeviceTokenPayload {
 type TokenPayload = DashboardTokenPayload | DeviceTokenPayload;
 
 export function generateDashboardToken(payload: Omit<DashboardTokenPayload, 'type'>): string {
-  return jwt.sign({ ...payload, type: 'dashboard' }, JWT_SECRET, { expiresIn: DASHBOARD_TOKEN_EXPIRY });
+  return jwt.sign({ ...payload, type: 'dashboard' }, getJwtSecret(), { expiresIn: DASHBOARD_TOKEN_EXPIRY });
 }
 
 export function generateDeviceToken(payload: Omit<DeviceTokenPayload, 'type'>): string {
-  return jwt.sign({ ...payload, type: 'device' }, JWT_SECRET, { expiresIn: DEVICE_TOKEN_EXPIRY });
+  return jwt.sign({ ...payload, type: 'device' }, getJwtSecret(), { expiresIn: DEVICE_TOKEN_EXPIRY });
 }
 
 export function generateRefreshToken(): string {
@@ -65,91 +70,115 @@ export function hashToken(token: string): string {
 }
 
 export function verifyToken(token: string): TokenPayload {
-  return jwt.verify(token, JWT_SECRET) as TokenPayload;
+  return jwt.verify(token, getJwtSecret()) as TokenPayload;
 }
 
 export function generateSetupToken(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
-// Middleware: require dashboard auth
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+function extractBearer(req: Request): string | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  return authHeader.slice(7);
+}
+
+/** Dashboard users only — never accept device JWTs. */
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const token = extractBearer(req);
+  if (!token) {
     res.status(401).json({ success: false, error: 'Authentication required' });
     return;
   }
 
   try {
-    const token = authHeader.slice(7);
     const payload = verifyToken(token);
-
-    if (payload.type === 'dashboard') {
-      req.orgId = payload.orgId;
-      req.userId = payload.userId;
-      req.tokenType = 'dashboard';
-    } else if (payload.type === 'device') {
-      req.orgId = payload.orgId;
-      req.employeeId = payload.employeeId;
-      req.tokenType = 'device';
+    if (payload.type !== 'dashboard') {
+      res.status(403).json({ success: false, error: 'Dashboard authentication required' });
+      return;
     }
-
+    req.orgId = payload.orgId;
+    req.userId = payload.userId;
+    req.tokenType = 'dashboard';
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ success: false, error: 'Invalid or expired token' });
   }
 }
 
-// Middleware: require device auth (desktop tracker)
+/** Device (desktop tracker) JWTs only. */
 export function requireDeviceAuth(req: Request, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  const token = extractBearer(req);
+  if (!token) {
     res.status(401).json({ success: false, error: 'Device authentication required' });
     return;
   }
 
   try {
-    const token = authHeader.slice(7);
     const payload = verifyToken(token);
-
-    req.orgId = payload.orgId;
-    req.tokenType = payload.type;
-
-    if (payload.type === 'device') {
-      req.employeeId = payload.employeeId;
-    } else if (payload.type === 'dashboard') {
-      req.userId = payload.userId;
+    if (payload.type !== 'device') {
+      res.status(403).json({ success: false, error: 'Device authentication required' });
+      return;
     }
-
+    req.orgId = payload.orgId;
+    req.employeeId = payload.employeeId;
+    req.tokenType = 'device';
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ success: false, error: 'Invalid or expired device token' });
   }
 }
 
-// Middleware: accept either dashboard or device auth
+/** Accept either dashboard or device auth. */
 export function requireAnyAuth(req: Request, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  const token = extractBearer(req);
+  if (!token) {
     res.status(401).json({ success: false, error: 'Authentication required' });
     return;
   }
 
   try {
-    const token = authHeader.slice(7);
     const payload = verifyToken(token);
-
     req.orgId = payload.orgId;
     req.tokenType = payload.type;
-
     if (payload.type === 'dashboard') {
       req.userId = payload.userId;
     } else if (payload.type === 'device') {
       req.employeeId = payload.employeeId;
+    } else {
+      res.status(401).json({ success: false, error: 'Invalid token type' });
+      return;
     }
-
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ success: false, error: 'Invalid or expired token' });
   }
+}
+
+/**
+ * Require the dashboard user to have one of the given roles in their org.
+ * Must be used after requireAuth.
+ */
+export function requireRole(...roles: Array<'owner' | 'admin' | 'viewer'>) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.userId || !req.orgId) {
+        res.status(401).json({ success: false, error: 'Authentication required' });
+        return;
+      }
+      const db = getDatabase();
+      const user = await db.get(
+        'SELECT role FROM users WHERE id = ? AND org_id = ?',
+        [req.userId, req.orgId]
+      );
+      if (!user || !roles.includes(user.role)) {
+        res.status(403).json({ success: false, error: 'Insufficient permissions' });
+        return;
+      }
+      req.userRole = user.role;
+      next();
+    } catch (e) {
+      res.status(500).json({ success: false, error: 'Authorization check failed' });
+    }
+  };
 }

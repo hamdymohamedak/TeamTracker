@@ -23,6 +23,14 @@ function todayLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** Append dashboard JWT for <img src> — browser cannot send Authorization headers. */
+function authenticatedFileUrl(fileUrl: string): string {
+  const token = localStorage.getItem('teamtracker_token');
+  if (!token || !fileUrl) return fileUrl;
+  const sep = fileUrl.includes('?') ? '&' : '?';
+  return `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
+}
+
 export const Screenshots: React.FC = () => {
   const { t } = useI18n();
   const { onlineEmployees, lastMessage } = useWebSocket();
@@ -325,7 +333,7 @@ export const Screenshots: React.FC = () => {
                 style={styles.thumbBtn}
                 aria-label="View full size"
               >
-                <img src={s.fileUrl} alt="" style={styles.thumb} loading="lazy" />
+                <img src={authenticatedFileUrl(s.fileUrl)} alt="" style={styles.thumb} loading="lazy" />
               </button>
               <div style={styles.cardBody}>
                 <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--tt-text)' }}>
@@ -359,7 +367,7 @@ export const Screenshots: React.FC = () => {
           style={styles.lightbox}
         >
           <img
-            src={zoomed.fileUrl}
+            src={authenticatedFileUrl(zoomed.fileUrl)}
             alt="Screenshot full size"
             style={styles.lightboxImg}
             onClick={e => e.stopPropagation()}

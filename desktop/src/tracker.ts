@@ -1,27 +1,15 @@
-import { powerMonitor, ipcMain } from 'electron';
+import { powerMonitor, ipcMain, safeStorage, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
-import { getServerUrl, TEAMTRACKER_CONFIG } from './config.js';
+import { getServerUrl, getEffectiveServerUrl, setRuntimeServerUrl, TEAMTRACKER_CONFIG } from './config.js';
 import {
   classifyActivity,
-  calculateTrueProductivity,
-  detectGamingAttempts,
   generateDailySummary,
-  ActivityClassification,
   ActivityCategory,
-  SUSPICIOUS_THRESHOLDS
 } from './classifier.js';
 import { startScreenshotService } from './screenshot.js';
 import { startRemoteCommandClient } from './remote.js';
 import { getActiveWindow, hasActiveWinModule } from './active-window.js';
-
-interface RawActivity {
-  timestamp: string;
-  windowTitle: string;
-  appName: string;
-  idleTimeMs: number;
-}
 
 interface TrackedActivity {
   id: string;
@@ -45,7 +33,17 @@ interface Config {
   employeeName: string;
   serverUrl: string;
   deviceToken?: string;
+  /** Optional active project for activity payload (set via IPC / updateConfig). */
+  activeProjectId?: string;
+  /** Optional active task for activity payload (set via IPC / updateConfig). */
+  activeTaskId?: string;
 }
+
+const MAX_QUEUE = 5000;
+const QUEUE_SAVE_DEBOUNCE_MS = 2000;
+const CLOCK_SKEW_WARN_MS = 5 * 60 * 1000;
+const SYNC_BACKOFF_INITIAL_MS = 1000;
+const SYNC_BACKOFF_MAX_MS = 60_000;
 
 // Activity tracking state
 const activities: TrackedActivity[] = [];
@@ -53,6 +51,14 @@ const offlineQueue: TrackedActivity[] = [];
 let lastActivity: TrackedActivity | null = null;
 let lastSyncTime = 0;
 let isOnline = true;
+let queueOverflow = false;
+let queueDropCount = 0;
+let queueSaveTimer: NodeJS.Timeout | null = null;
+let syncBackoffMs = SYNC_BACKOFF_INITIAL_MS;
+let nextSyncAllowedAt = 0;
+/** serverTime - clientTime from last /api/time probe. Informational only. */
+let clockOffsetMs = 0;
+let quitHooksRegistered = false;
 
 // Module-level timer handles so onSystemResume can rebuild them after a
 // macOS App Nap freeze. NodeJS.Timeout in Electron's runtime.
@@ -77,11 +83,19 @@ let config: Config = {
   deviceToken: TEAMTRACKER_CONFIG.deviceToken || ''
 };
 
+export { getEffectiveServerUrl };
+
+function syncRuntimeServerUrl(): void {
+  setRuntimeServerUrl(config.serverUrl || getServerUrl());
+}
+
 export async function startTracking(): Promise<void> {
   console.log('🚀 Starting TeamTracker smart activity tracking...');
 
   // Load config
   loadConfig();
+  syncRuntimeServerUrl();
+  registerQuitHooks();
 
   // First-run activation: if no device token is saved, look for an
   // activation file in Downloads (dropped by the admin dashboard's
@@ -90,7 +104,7 @@ export async function startTracking(): Promise<void> {
     await activateFromDownloadsIfNeeded();
   }
 
-  console.log(`Auth: token=${config.deviceToken ? 'present (' + config.deviceToken.length + ' chars)' : 'MISSING'}, server=${config.serverUrl}`);
+  console.log(`Auth: token=${config.deviceToken ? 'present (' + config.deviceToken.length + ' chars)' : 'MISSING'}, server=${getEffectiveServerUrl()}`);
 
   // Probe window backends (active-win + Linux CLI fallbacks).
   const hasNative = await hasActiveWinModule();
@@ -104,6 +118,9 @@ export async function startTracking(): Promise<void> {
 
   // Load offline queue
   loadOfflineQueue();
+
+  // Clock skew probe (informational — does not rewrite activity timestamps).
+  await syncClockSkew();
 
   // Wire up the periodic timers. They're held in module-level handles so
   // `onSystemResume` can clear and re-arm them after a sleep/wake cycle —
@@ -135,7 +152,7 @@ export async function startTracking(): Promise<void> {
 
   console.log('✓ Smart tracking active');
   console.log('✓ Employee:', config.employeeName, `(${config.employeeId})`);
-  console.log('✓ Server:', config.serverUrl);
+  console.log('✓ Server:', getEffectiveServerUrl());
   console.log('');
   console.log('📊 Tracking:');
   console.log('  • Core work activities');
@@ -179,10 +196,7 @@ async function checkActivity(): Promise<void> {
         hasInputActivity: false
       };
       activities.push(idleGap);
-      offlineQueue.push(idleGap);
-      if (offlineQueue.length > 5000) {
-        offlineQueue.splice(0, offlineQueue.length - 5000);
-      }
+      enqueueActivity(idleGap);
       lastActivity = idleGap;
       console.log(`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] 💤 GAP | Backfilled ${Math.round(timeSinceLastCheck / 60)}m of idle (tracker was suspended)`);
     }
@@ -262,10 +276,7 @@ async function checkActivity(): Promise<void> {
         };
         
         activities.push(idleActivity);
-        offlineQueue.push(idleActivity);
-        if (offlineQueue.length > 5000) {
-          offlineQueue.splice(0, offlineQueue.length - 5000);
-        }
+        enqueueActivity(idleActivity);
         lastActivity = idleActivity;
         
         console.log(`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] 💤 IDLE | User away for ${Math.round(idleTimeSec / 60)} minutes`);
@@ -356,10 +367,7 @@ async function checkActivity(): Promise<void> {
 
     if (shouldRecord) {
       activities.push(activity);
-      offlineQueue.push(activity);
-      if (offlineQueue.length > 5000) {
-        offlineQueue.splice(0, offlineQueue.length - 5000);
-      }
+      enqueueActivity(activity);
       lastActivity = activity;
 
       logActivity(activity);
@@ -412,21 +420,111 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-async function syncToServer(): Promise<void> {
-  if (offlineQueue.length === 0) return;
-
-  if (!isOnline) {
-    console.log(`📴 Offline - ${offlineQueue.length} activities queued for later`);
-    saveOfflineQueue();
+/** FIFO enqueue with id-dedup, MAX_QUEUE cap, and debounced disk persist. */
+function enqueueActivity(activity: TrackedActivity): void {
+  if (activity.id && offlineQueue.some((a) => a.id === activity.id)) {
     return;
   }
 
-  // Process in batches of 50 to avoid payload too large
+  offlineQueue.push(activity);
+
+  let droppedThisCall = 0;
+  while (offlineQueue.length > MAX_QUEUE) {
+    offlineQueue.shift();
+    droppedThisCall++;
+    queueDropCount++;
+    queueOverflow = true;
+  }
+  if (droppedThisCall > 0) {
+    console.warn(
+      `[queue] overflow — dropped ${droppedThisCall} oldest (total drops: ${queueDropCount}, cap=${MAX_QUEUE})`
+    );
+  }
+
+  scheduleSaveOfflineQueue();
+}
+
+function scheduleSaveOfflineQueue(): void {
+  if (queueSaveTimer) return;
+  queueSaveTimer = setTimeout(() => {
+    queueSaveTimer = null;
+    saveOfflineQueue();
+  }, QUEUE_SAVE_DEBOUNCE_MS);
+}
+
+function flushOfflineQueueToDisk(): void {
+  if (queueSaveTimer) {
+    clearTimeout(queueSaveTimer);
+    queueSaveTimer = null;
+  }
+  saveOfflineQueue();
+}
+
+function registerQuitHooks(): void {
+  if (quitHooksRegistered) return;
+  quitHooksRegistered = true;
+  const flush = () => {
+    try { flushOfflineQueueToDisk(); } catch { /* ignore */ }
+  };
+  app.on('before-quit', flush);
+  app.on('will-quit', flush);
+}
+
+/**
+ * Probe server clock. Stores clockOffsetMs for diagnostics via getStatus.
+ * Do NOT rewrite activity timestamps automatically — client wall-clock
+ * stamps stay as recorded; offset is informational for admins only.
+ */
+async function syncClockSkew(): Promise<void> {
+  const serverUrl = getEffectiveServerUrl();
+  const token = config.deviceToken;
+  if (!token || !serverUrl) return;
+
+  const clientTime = Date.now();
+  try {
+    const res = await fetch(`${serverUrl}/api/time?clientTime=${clientTime}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return;
+    const json: any = await res.json().catch(() => null);
+    const offset = json?.data?.clockOffsetMs;
+    if (typeof offset !== 'number' || !Number.isFinite(offset)) return;
+
+    clockOffsetMs = offset;
+    if (Math.abs(offset) > CLOCK_SKEW_WARN_MS) {
+      console.warn(
+        `[clock] skew |offset|=${Math.round(Math.abs(offset) / 1000)}s ` +
+        `(${offset > 0 ? 'client behind server' : 'client ahead of server'}) — ` +
+        `activity timestamps are NOT rewritten`
+      );
+    }
+  } catch (err) {
+    console.warn('[clock] time probe failed:', (err as Error).message);
+  }
+}
+
+async function syncToServer(): Promise<void> {
+  if (offlineQueue.length === 0) return;
+
+  if (Date.now() < nextSyncAllowedAt) {
+    return;
+  }
+
+  if (!isOnline) {
+    console.log(`📴 Offline - ${offlineQueue.length} activities queued for later`);
+    flushOfflineQueueToDisk();
+    return;
+  }
+
+  // Process in batches of 50 to avoid payload too large (FIFO from front)
   const BATCH_SIZE = 50;
   let totalSynced = 0;
   let totalSuspicious = 0;
 
   while (offlineQueue.length > 0) {
+    if (Date.now() < nextSyncAllowedAt) break;
+
     const batchSize = Math.min(BATCH_SIZE, offlineQueue.length);
     const batch = offlineQueue.splice(0, batchSize);
 
@@ -446,7 +544,9 @@ async function syncToServer(): Promise<void> {
           suspiciousReason: a.suspiciousReason,
           isIdle: a.isIdle,
           idleTimeSeconds: a.idleTimeSeconds,
-          durationSeconds: a.durationSeconds
+          durationSeconds: a.durationSeconds,
+          ...(config.activeProjectId ? { projectId: config.activeProjectId } : {}),
+          ...(config.activeTaskId ? { taskId: config.activeTaskId } : {}),
         }))
       };
 
@@ -454,9 +554,9 @@ async function syncToServer(): Promise<void> {
       if (config.deviceToken) {
         headers['Authorization'] = `Bearer ${config.deviceToken}`;
       }
-      console.log(`Sync: token=${config.deviceToken ? 'yes' : 'no'}, url=${config.serverUrl}, authHeader=${headers['Authorization'] ? 'set' : 'MISSING'}`);
+      console.log(`Sync: token=${config.deviceToken ? 'yes' : 'no'}, url=${getEffectiveServerUrl()}, authHeader=${headers['Authorization'] ? 'set' : 'MISSING'}`);
 
-      const response = await fetch(`${config.serverUrl}/api/activity`, {
+      const response = await fetch(`${getEffectiveServerUrl()}/api/activity`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
@@ -470,21 +570,42 @@ async function syncToServer(): Promise<void> {
         const result: any = await response.json();
         totalSynced += batch.length;
         totalSuspicious += result.data?.suspiciousCount || 0;
+        syncBackoffMs = SYNC_BACKOFF_INITIAL_MS;
+        nextSyncAllowedAt = 0;
       } else if (response.status === 401) {
         // Token expired or invalid — stop retrying
         console.error('Device token expired. Please re-enroll.');
         isOnline = false;
         offlineQueue.unshift(...batch);
         break;
-      } else {
+      } else if (response.status === 429) {
         offlineQueue.unshift(...batch);
-        console.error(`Sync failed for batch: ${response.statusText}`);
+        nextSyncAllowedAt = Date.now() + syncBackoffMs;
+        console.warn(`[sync] rate limited — retry in ${syncBackoffMs}ms`);
+        syncBackoffMs = Math.min(syncBackoffMs * 2, SYNC_BACKOFF_MAX_MS);
+        break;
+      } else if (response.status >= 400 && response.status < 500) {
+        // Non-retryable client error — drop this batch (do not poison the queue)
+        console.warn(
+          `[sync] dropping ${batch.length} activities due to HTTP ${response.status} (non-retryable 4xx)`
+        );
+        flushOfflineQueueToDisk();
+        // continue with remaining FIFO items
+      } else {
+        // 5xx / other — requeue and back off
+        offlineQueue.unshift(...batch);
+        nextSyncAllowedAt = Date.now() + syncBackoffMs;
+        console.error(`[sync] failed (${response.status}) — retry in ${syncBackoffMs}ms`);
+        syncBackoffMs = Math.min(syncBackoffMs * 2, SYNC_BACKOFF_MAX_MS);
         break;
       }
     } catch (err) {
       offlineQueue.unshift(...batch);
       isOnline = false;
-      console.error('Sync error:', err);
+      nextSyncAllowedAt = Date.now() + syncBackoffMs;
+      console.error(`[sync] network error — retry in ${syncBackoffMs}ms:`, err);
+      syncBackoffMs = Math.min(syncBackoffMs * 2, SYNC_BACKOFF_MAX_MS);
+      flushOfflineQueueToDisk();
       break;
     }
   }
@@ -495,13 +616,13 @@ async function syncToServer(): Promise<void> {
       console.warn(`⚠️ Server flagged ${totalSuspicious} suspicious activities`);
     }
     lastSyncTime = Date.now();
-    saveOfflineQueue();
+    flushOfflineQueueToDisk();
   }
 }
 
 async function checkOnlineStatus(): Promise<void> {
   try {
-    const response = await fetch(`${config.serverUrl}/api/health`, {
+    const response = await fetch(`${getEffectiveServerUrl()}/api/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(5000)
     });
@@ -510,6 +631,8 @@ async function checkOnlineStatus(): Promise<void> {
 
     if (wasOffline && isOnline && offlineQueue.length > 0) {
       console.log('🌐 Back online - syncing queued activities...');
+      syncBackoffMs = SYNC_BACKOFF_INITIAL_MS;
+      nextSyncAllowedAt = 0;
       syncToServer();
     }
   } catch {
@@ -522,7 +645,25 @@ function loadConfig(): void {
     const configPath = path.join(app.getPath('userData'), 'config.json');
     if (fs.existsSync(configPath)) {
       const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      // Prefer safeStorage-encrypted token when available.
+      if (saved.deviceTokenEnc && typeof saved.deviceTokenEnc === 'string') {
+        try {
+          if (safeStorage.isEncryptionAvailable()) {
+            saved.deviceToken = safeStorage.decryptString(Buffer.from(saved.deviceTokenEnc, 'base64'));
+          } else {
+            console.warn('[config] encrypted token present but safeStorage unavailable');
+          }
+        } catch (err) {
+          console.error('[config] failed to decrypt device token:', (err as Error).message);
+        }
+        delete saved.deviceTokenEnc;
+      }
+      // Never log token material from saved config.
       config = { ...config, ...saved };
+      if (config.serverUrl) {
+        config.serverUrl = config.serverUrl.replace(/\/+$/, '');
+      }
+      syncRuntimeServerUrl();
     }
   } catch (err) {
     console.error('Failed to load config:', err);
@@ -617,12 +758,14 @@ async function activateFromDownloadsIfNeeded(): Promise<boolean> {
     config.employeeId = data.data.employeeId;
     config.employeeName = data.data.employeeName;
     config.serverUrl = serverUrl;
+    syncRuntimeServerUrl();
     saveConfig();
 
     // Clean up ALL activation files so stale ones don't linger.
     for (const m of matches) tryDeleteFile(m.path);
 
     console.log(`[activate] ✓ activated as ${data.data.employeeName} (${data.data.employeeId})`);
+    void syncClockSkew();
     return true;
   } catch (err) {
     console.error('[activate] network error during enrollment:', (err as Error).message);
@@ -639,7 +782,28 @@ function tryDeleteFile(p: string): void {
 function saveConfig(): void {
   try {
     const configPath = path.join(app.getPath('userData'), 'config.json');
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    const toSave: Record<string, unknown> = {
+      employeeId: config.employeeId,
+      employeeName: config.employeeName,
+      serverUrl: config.serverUrl,
+    };
+    if (config.activeProjectId) toSave.activeProjectId = config.activeProjectId;
+    if (config.activeTaskId) toSave.activeTaskId = config.activeTaskId;
+
+    if (config.deviceToken) {
+      try {
+        if (safeStorage.isEncryptionAvailable()) {
+          toSave.deviceTokenEnc = safeStorage.encryptString(config.deviceToken).toString('base64');
+        } else {
+          // Linux without keyring / encryption unavailable — plaintext fallback.
+          toSave.deviceToken = config.deviceToken;
+        }
+      } catch {
+        toSave.deviceToken = config.deviceToken;
+      }
+    }
+
+    fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2));
   } catch (err) {
     console.error('Failed to save config:', err);
   }
@@ -651,8 +815,21 @@ function loadOfflineQueue(): void {
     if (fs.existsSync(queuePath)) {
       const data = JSON.parse(fs.readFileSync(queuePath, 'utf-8'));
       if (Array.isArray(data)) {
-        offlineQueue.push(...data);
-        console.log(`📦 Loaded ${data.length} queued activities from disk`);
+        const seen = new Set<string>();
+        for (const item of data) {
+          if (item?.id && seen.has(item.id)) continue;
+          if (item?.id) seen.add(item.id);
+          offlineQueue.push(item);
+        }
+        while (offlineQueue.length > MAX_QUEUE) {
+          offlineQueue.shift();
+          queueDropCount++;
+          queueOverflow = true;
+        }
+        console.log(`📦 Loaded ${offlineQueue.length} queued activities from disk`);
+        if (queueOverflow) {
+          console.warn(`[queue] loaded queue was over cap — overflow flag set (drops: ${queueDropCount})`);
+        }
       }
     }
   } catch (err) {
@@ -697,10 +874,12 @@ export async function enrollWithSetupToken(
     config.employeeId = data.data.employeeId;
     config.employeeName = data.data.employeeName;
     config.serverUrl = url;
+    syncRuntimeServerUrl();
     saveConfig();
 
     console.log(`[enroll] ✓ connected as ${data.data.employeeName} (${data.data.employeeId})`);
     isOnline = true;
+    void syncClockSkew();
     // Flush anything queued while offline / before auth.
     Promise.resolve().then(() => syncToServer()).catch(() => { /* ignore */ });
     return { success: true };
@@ -719,8 +898,16 @@ export function setupIpcHandlers(): void {
       isOnline,
       activitiesCount: activities.length,
       queuedCount: offlineQueue.length,
+      queueOverflow,
+      queueDropCount,
+      clockOffsetMs,
       lastActivity,
-      config: { ...config, deviceToken: config.deviceToken ? '***' : '' }
+      config: {
+        ...config,
+        deviceToken: config.deviceToken ? '***' : '',
+        activeProjectId: config.activeProjectId,
+        activeTaskId: config.activeTaskId,
+      }
     };
   });
 
@@ -751,9 +938,33 @@ export function setupIpcHandlers(): void {
   });
 
   ipcMain.handle('tracker:updateConfig', (_, newConfig: Partial<Config>) => {
-    config = { ...config, ...newConfig };
+    // Never accept/log raw token dumps from renderer beyond assignment.
+    const { deviceToken: _ignored, ...safe } = newConfig as Partial<Config> & { deviceToken?: string };
+    void _ignored;
+    config = { ...config, ...safe };
+    // Allow explicit project/task clear via nullish empty string
+    if ('activeProjectId' in newConfig) {
+      config.activeProjectId = newConfig.activeProjectId || undefined;
+    }
+    if ('activeTaskId' in newConfig) {
+      config.activeTaskId = newConfig.activeTaskId || undefined;
+    }
+    if (config.serverUrl) {
+      config.serverUrl = String(config.serverUrl).replace(/\/+$/, '');
+    }
+    syncRuntimeServerUrl();
     saveConfig();
-    return config;
+    return {
+      ...config,
+      deviceToken: config.deviceToken ? '***' : '',
+    };
+  });
+
+  ipcMain.handle('tracker:setActiveProjectTask', (_, projectId?: string, taskId?: string) => {
+    config.activeProjectId = projectId || undefined;
+    config.activeTaskId = taskId || undefined;
+    saveConfig();
+    return { activeProjectId: config.activeProjectId, activeTaskId: config.activeTaskId };
   });
 }
 
@@ -761,10 +972,16 @@ export function getTrackingStatus() {
   return {
     activitiesCount: activities.length,
     queuedCount: offlineQueue.length,
+    queueOverflow,
+    queueDropCount,
+    clockOffsetMs,
     isOnline,
     lastSync: lastSyncTime ? new Date(lastSyncTime).toISOString() : null,
     lastActivity,
-    config
+    config: {
+      ...config,
+      deviceToken: config.deviceToken ? '***' : '',
+    }
   };
 }
 

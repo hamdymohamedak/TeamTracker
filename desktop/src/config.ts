@@ -34,3 +34,15 @@ export const TEAMTRACKER_CONFIG = {
 export function getServerUrl(): string {
   return process.env.TEAMTRACKER_SERVER_URL || TEAMTRACKER_CONFIG.serverUrl;
 }
+
+/** Enrolled / runtime server URL (set by tracker after load or activation). */
+let runtimeServerUrl = '';
+
+export function setRuntimeServerUrl(url: string): void {
+  runtimeServerUrl = (url || '').replace(/\/+$/, '');
+}
+
+/** Prefer enrolled config.serverUrl; fall back to build-time / env default. */
+export function getEffectiveServerUrl(): string {
+  return (runtimeServerUrl || getServerUrl()).replace(/\/+$/, '');
+}

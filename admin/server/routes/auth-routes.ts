@@ -10,14 +10,36 @@ import {
   generateRefreshToken,
   generateSetupToken,
   hashToken,
-  requireAuth
+  requireAuth,
+  requireRole
 } from '../auth.js';
+import { rateLimit } from '../rate-limit.js';
+import { logger } from '../logger.js';
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  keyPrefix: 'auth',
+  message: 'Too many authentication attempts. Please try again later.',
+});
+
+const enrollLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyPrefix: 'enroll',
+});
+
+const aiFriendlyForgotLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyPrefix: 'forgot',
+});
 
 export function setupAuthRoutes(app: Express): void {
   const db = () => getDatabase();
 
   // Sign up: create org + owner account
-  app.post('/api/auth/signup', async (req, res) => {
+  app.post('/api/auth/signup', authLimiter, async (req, res) => {
     try {
       const { email, password, name, orgName, timezone } = req.body;
 
@@ -101,7 +123,7 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Login
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
 
@@ -278,7 +300,7 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Desktop tracker enrollment: redeem setup token for device JWT
-  app.post('/api/auth/enroll', async (req, res) => {
+  app.post('/api/auth/enroll', enrollLimiter, async (req, res) => {
     try {
       const { setupToken } = req.body;
       if (!setupToken) {
@@ -339,8 +361,8 @@ export function setupAuthRoutes(app: Express): void {
     }
   });
 
-  // Forgot password: generate reset token
-  app.post('/api/auth/forgot-password', async (req, res) => {
+  // Forgot password: generate reset token (never return the token in the API response)
+  app.post('/api/auth/forgot-password', aiFriendlyForgotLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email) {
@@ -349,37 +371,47 @@ export function setupAuthRoutes(app: Express): void {
 
       const user = await db().get('SELECT id, name, email FROM users WHERE email = ?', [email]);
 
-      // Always return success (don't reveal if email exists)
+      // Always return the same message (don't reveal if email exists)
+      const publicMessage = 'If that email exists, a reset link has been generated.';
+
       if (!user) {
-        return res.json({ success: true, message: 'If that email exists, a reset link has been generated.' });
+        return res.json({ success: true, message: publicMessage });
       }
 
-      // Generate reset token
       const token = generateSetupToken();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
       const now = new Date().toISOString();
 
-      // Store in refresh_tokens table (reuse it for password resets)
       await db().run(
         `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at)
          VALUES (?, ?, ?, ?, ?)`,
-        [uuidv4(), user.id, 'pwreset:' + token, expiresAt, now]
+        [uuidv4(), user.id, 'pwreset:' + hashToken(token), expiresAt, now]
       );
 
-      // In production, you'd email this link. For now, log it to PM2 logs.
-      const resetUrl = `/reset-password?token=${token}`;
-      console.log(`\n=== PASSWORD RESET ===`);
-      console.log(`User: ${user.email}`);
-      console.log(`Reset URL: ${resetUrl}`);
-      console.log(`Expires: ${expiresAt}`);
-      console.log(`======================\n`);
+      const baseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+      const resetUrl = `${baseUrl || ''}/reset-password?token=${token}`;
 
-      res.json({
-        success: true,
-        message: 'If that email exists, a reset link has been generated.',
-        // Include reset URL in response for MVP (remove this when email is set up)
-        resetUrl
-      });
+      // Attempt email delivery when configured; never include resetUrl in JSON
+      let emailed = false;
+      try {
+        const { sendPasswordResetEmail } = await import('../mail.js');
+        emailed = await sendPasswordResetEmail(user.email, resetUrl, user.name);
+      } catch {
+        // mail module optional
+      }
+
+      if (!emailed) {
+        // Log only that a reset was issued — never log the raw token in production
+        if (process.env.NODE_ENV !== 'production') {
+          logger.info('Password reset issued (dev)', { email: user.email, resetUrl });
+        } else {
+          logger.info('Password reset issued; configure SMTP/Resend to email the link', {
+            email: user.email,
+          });
+        }
+      }
+
+      res.json({ success: true, message: publicMessage });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
@@ -405,49 +437,97 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Invite (create) a new admin user. Only an owner or admin can do this.
-  // For MVP we accept a password directly rather than emailing an invite
-  // link — the owner shares it out-of-band. Roles supported: 'admin' or
-  // 'owner'. The created user is scoped to the caller's org.
-  app.post('/api/auth/team', requireAuth, async (req, res) => {
+  // When email is configured, prefer invite tokens; otherwise accept a password
+  // shared out-of-band (legacy). Only owners may grant the 'owner' role.
+  app.post('/api/auth/team', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
     try {
       const { email, password, name, role } = req.body || {};
-      if (!email || !password || !name) {
-        return res.status(400).json({ success: false, error: 'email, password, and name are required' });
+      if (!email || !name) {
+        return res.status(400).json({ success: false, error: 'email and name are required' });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
-      }
-      const allowedRoles = new Set(['admin', 'owner']);
-      const finalRole = allowedRoles.has(role) ? role : 'admin';
 
-      // Caller must already be an admin/owner to add teammates.
       const caller = await db().get(
-        'SELECT role FROM users WHERE id = ? AND org_id = ?',
+        'SELECT role, name FROM users WHERE id = ? AND org_id = ?',
         [req.userId, req.orgId!]
       );
-      if (!caller || (caller.role !== 'owner' && caller.role !== 'admin')) {
+      if (!caller) {
         return res.status(403).json({ success: false, error: 'Only an owner or admin can invite teammates' });
       }
 
-      // Email must be unique across the entire users table (it's the
-      // login identifier and the table has UNIQUE on email).
+      let finalRole: 'admin' | 'owner' = role === 'owner' ? 'owner' : 'admin';
+      if (finalRole === 'owner' && caller.role !== 'owner') {
+        return res.status(403).json({ success: false, error: 'Only an owner can invite another owner' });
+      }
+
       const existing = await db().get('SELECT id FROM users WHERE email = ?', [email]);
       if (existing) {
         return res.status(409).json({ success: false, error: 'A user with that email already exists' });
       }
 
       const now = new Date().toISOString();
-      const userId = uuidv4();
+
+      // Invite-token flow when no password supplied and email is available
+      if (!password) {
+        const { isEmailConfigured, sendInviteEmail } = await import('../mail.js');
+        const inviteToken = generateSetupToken();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        await db().run(
+          `INSERT INTO team_invites (id, org_id, email, name, role, token_hash, invited_by, expires_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            uuidv4(),
+            req.orgId!,
+            email.toLowerCase().trim(),
+            name.trim(),
+            finalRole,
+            hashToken(inviteToken),
+            req.userId!,
+            expiresAt,
+            now,
+          ]
+        );
+
+        const org = await db().get('SELECT name FROM organizations WHERE id = ?', [req.orgId!]);
+        const baseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+        const inviteUrl = `${baseUrl}/accept-invite?token=${inviteToken}`;
+
+        let emailed = false;
+        if (isEmailConfigured()) {
+          emailed = await sendInviteEmail(email, inviteUrl, org?.name || 'your organization', caller.name);
+        }
+
+        if (!emailed && process.env.NODE_ENV !== 'production') {
+          logger.info('Team invite created (dev)', { email, inviteUrl });
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            email,
+            role: finalRole,
+            invitePending: true,
+            emailed,
+            // Only expose invite URL in development when email is not configured
+            ...(process.env.NODE_ENV !== 'production' && !emailed ? { inviteUrl } : {}),
+          },
+        });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+      }
+
       const passwordHash = await hashPassword(password);
+      const userId = uuidv4();
       await db().run(
         `INSERT INTO users (id, org_id, email, password_hash, name, role, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, req.orgId!, email, passwordHash, name, finalRole, now, now]
+        [userId, req.orgId!, email.toLowerCase().trim(), passwordHash, name.trim(), finalRole, now, now]
       );
 
       res.json({
         success: true,
-        data: { id: userId, email, name, role: finalRole, created_at: now }
+        data: { id: userId, email, name, role: finalRole },
       });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
@@ -456,7 +536,7 @@ export function setupAuthRoutes(app: Express): void {
 
   // Remove a teammate. Refuses to delete the last owner of the org so the
   // org doesn't get locked out.
-  app.delete('/api/auth/team/:id', requireAuth, async (req, res) => {
+  app.delete('/api/auth/team/:id', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
     try {
       const caller = await db().get(
         'SELECT role FROM users WHERE id = ? AND org_id = ?',
@@ -501,7 +581,7 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Reset password: validate token and set new password
-  app.post('/api/auth/reset-password', async (req, res) => {
+  app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
       if (!token || !password) {
@@ -517,7 +597,7 @@ export function setupAuthRoutes(app: Express): void {
         `SELECT rt.*, u.email FROM refresh_tokens rt
          JOIN users u ON rt.user_id = u.id
          WHERE rt.token_hash = ? AND rt.expires_at > ?`,
-        ['pwreset:' + token, now]
+        ['pwreset:' + hashToken(token), now]
       );
 
       if (!record) {
@@ -532,6 +612,51 @@ export function setupAuthRoutes(app: Express): void {
       await db().run('DELETE FROM refresh_tokens WHERE id = ?', [record.id]);
 
       res.json({ success: true, message: 'Password has been reset. You can now log in.' });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Accept a team invite (public, token-gated)
+  app.post('/api/auth/accept-invite', authLimiter, async (req, res) => {
+    try {
+      const { token, password } = req.body || {};
+      if (!token || !password || String(password).length < 6) {
+        return res.status(400).json({ success: false, error: 'token and password (min 6 chars) are required' });
+      }
+      const now = new Date().toISOString();
+      const invite = await db().get(
+        `SELECT * FROM team_invites WHERE token_hash = ? AND accepted_at IS NULL AND expires_at > ?`,
+        [hashToken(token), now]
+      );
+      if (!invite) {
+        return res.status(400).json({ success: false, error: 'Invalid or expired invitation' });
+      }
+      const existing = await db().get('SELECT id FROM users WHERE email = ?', [invite.email]);
+      if (existing) {
+        return res.status(409).json({ success: false, error: 'A user with that email already exists' });
+      }
+      const userId = uuidv4();
+      const passwordHash = await hashPassword(password);
+      await db().run(
+        `INSERT INTO users (id, org_id, email, password_hash, name, role, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, invite.org_id, invite.email, passwordHash, invite.name, invite.role, now, now]
+      );
+      await db().run(`UPDATE team_invites SET accepted_at = ? WHERE id = ?`, [now, invite.id]);
+
+      const accessToken = generateDashboardToken({
+        userId,
+        orgId: invite.org_id,
+        email: invite.email,
+      });
+      res.json({
+        success: true,
+        data: {
+          accessToken,
+          user: { id: userId, email: invite.email, name: invite.name, role: invite.role },
+        },
+      });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }

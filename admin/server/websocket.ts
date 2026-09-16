@@ -15,6 +15,7 @@ interface ConnectedClient {
   employeeName?: string;
   isAdmin?: boolean;
   orgId?: string;
+  tokenType?: 'dashboard' | 'device';
 }
 
 /** One live screen session: admin watches one employee; frames relay only to that admin. */
@@ -40,6 +41,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
     let orgId: string | undefined;
     let employeeId: string | undefined;
     let isAdmin = false;
+    let tokenType: 'dashboard' | 'device' | undefined;
 
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -53,9 +55,11 @@ export function setupWebSocket(wss: WebSocketServer): void {
       if (payload.type === 'device') {
         employeeId = payload.employeeId;
         isAdmin = false;
+        tokenType = 'device';
       } else if (payload.type === 'dashboard') {
         employeeId = payload.userId;
         isAdmin = true;
+        tokenType = 'dashboard';
       } else {
         ws.close(4002, 'Authentication failed: unsupported token type');
         return;
@@ -66,7 +70,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
       return;
     }
 
-    clients.set(ws, { ws, orgId, employeeId, isAdmin });
+    clients.set(ws, { ws, orgId, employeeId, isAdmin, tokenType });
 
     // Admins get an immediate presence snapshot so already-connected
     // trackers appear Online without waiting for a later register event.
@@ -213,11 +217,20 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
 
         for (const entry of message.entries) {
           try {
-            const existing = await getActivityById(client.orgId!, entry.id);
+            // Device tokens may only write their own employee activities
+            const entryEmployeeId =
+              client.tokenType === 'device' ? client.employeeId : entry.employeeId;
+            if (!entryEmployeeId) {
+              errorCount++;
+              lastError = 'Missing employeeId';
+              continue;
+            }
+            const safeEntry = { ...entry, employeeId: entryEmployeeId };
+            const existing = await getActivityById(client.orgId!, safeEntry.id);
             if (existing) {
-              await updateActivity(client.orgId!, entry.id, entry);
+              await updateActivity(client.orgId!, safeEntry.id, safeEntry);
             } else {
-              await createActivity(client.orgId!, entry);
+              await createActivity(client.orgId!, safeEntry);
             }
             successCount++;
           } catch (err: any) {

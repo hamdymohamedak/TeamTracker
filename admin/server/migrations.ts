@@ -275,6 +275,40 @@ export async function runMigrations(db: DB): Promise<void> {
         `);
         console.log('  Migration 5: capture_privacy_blocks table created');
       }
+    },
+    {
+      version: 6,
+      name: 'team_invites + employee active_project/task assignment',
+      up: async (db: DB) => {
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS team_invites (
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'admin',
+            token_hash TEXT UNIQUE NOT NULL,
+            invited_by TEXT,
+            accepted_at TEXT,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (org_id) REFERENCES organizations(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_team_invites_org ON team_invites(org_id);
+          CREATE INDEX IF NOT EXISTS idx_team_invites_token ON team_invites(token_hash);
+        `);
+
+        // Optional active project/task on employees for tracker stamping
+        const empCols = await db.all(`PRAGMA table_info(employees)`);
+        const empColNames = new Set(empCols.map((c: any) => c.name));
+        if (!empColNames.has('active_project_id')) {
+          await db.exec(`ALTER TABLE employees ADD COLUMN active_project_id TEXT`);
+        }
+        if (!empColNames.has('active_task_id')) {
+          await db.exec(`ALTER TABLE employees ADD COLUMN active_task_id TEXT`);
+        }
+        console.log('  Migration 6: team_invites + employee active_project/task');
+      }
     }
   ];
 

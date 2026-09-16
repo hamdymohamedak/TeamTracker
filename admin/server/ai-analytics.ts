@@ -43,27 +43,38 @@ interface DbActivity {
   created_at: string;
 }
 
+/** Clamp lookback window to a safe integer range for SQL datetime modifiers. */
+function clampDaysBack(daysBack: number): number {
+  const n = Math.floor(Number(daysBack));
+  if (!Number.isFinite(n)) return 7;
+  return Math.max(1, Math.min(90, n));
+}
+
 /**
- * Detect repetitive patterns in employee activity data
+ * Detect repetitive patterns in employee activity data (org-scoped).
  */
 export async function detectRepetitivePatterns(
-  employeeId?: string,
-  daysBack: number = 7
+  employeeId: string | undefined,
+  daysBack: number = 7,
+  orgId: string
 ): Promise<RepetitivePattern[]> {
   const db = getDatabase();
   const patterns: RepetitivePattern[] = [];
+  const days = clampDaysBack(daysBack);
+  const dayModifier = `-${days} days`;
 
-  // Get activities for analysis
   const query = employeeId
-    ? `SELECT * FROM activities 
-       WHERE employee_id = ? 
-       AND timestamp > datetime('now', '-${daysBack} days')
+    ? `SELECT * FROM activities
+       WHERE employee_id = ?
+       AND org_id = ?
+       AND timestamp > datetime('now', ?)
        ORDER BY timestamp ASC`
-    : `SELECT * FROM activities 
-       WHERE timestamp > datetime('now', '-${daysBack} days')
+    : `SELECT * FROM activities
+       WHERE org_id = ?
+       AND timestamp > datetime('now', ?)
        ORDER BY employee_id, timestamp ASC`;
 
-  const params = employeeId ? [employeeId] : [];
+  const params = employeeId ? [employeeId, orgId, dayModifier] : [orgId, dayModifier];
   const activities = await db.all<DbActivity[]>(query, params);
 
   // Pattern 1: Same app sequence repeated
@@ -107,8 +118,8 @@ function detectAppSequences(activities: DbActivity[]): RepetitivePattern[] {
 
   for (const [employeeId, acts] of byEmployee) {
     // Filter out ignored apps and very short activities (< 5 seconds)
-    const filteredActs = acts.filter(a => 
-      !isIgnoredApp(a.app_name) && 
+    const filteredActs = acts.filter(a =>
+      !isIgnoredApp(a.app_name) &&
       a.duration_seconds > 5
     );
 
@@ -126,7 +137,7 @@ function detectAppSequences(activities: DbActivity[]): RepetitivePattern[] {
 
       const seq = `${app1}→${app2}→${app3}`;
       const key = `${employeeId}:${seq}`;
-      
+
       const existing = sequences.get(key) || { count: 0, totalTime: 0 };
       existing.count++;
       existing.totalTime += (acts[i].duration_seconds || 0) / 60;
@@ -139,7 +150,7 @@ function detectAppSequences(activities: DbActivity[]): RepetitivePattern[] {
     if (data.count >= 3) {
       const [employeeId, sequence] = key.split(':');
       const apps = sequence.split('→');
-      
+
       // Score based on frequency and time
       const frequency = Math.round(data.count / 7); // per day
       const avgDuration = data.totalTime / data.count;
@@ -174,7 +185,7 @@ function detectDataEntryPatterns(activities: DbActivity[]): RepetitivePattern[] 
   const byEmployee = groupBy(activities, 'employee_id');
 
   for (const [employeeId, acts] of byEmployee) {
-    const dataEntryActs = acts.filter(a => 
+    const dataEntryActs = acts.filter(a =>
       dataEntryApps.some(app => a.app_name.toLowerCase().includes(app.toLowerCase()))
     );
 
@@ -216,8 +227,8 @@ function detectReportPatterns(activities: DbActivity[]): RepetitivePattern[] {
   const byEmployee = groupBy(activities, 'employee_id');
 
   for (const [employeeId, acts] of byEmployee) {
-    const reportActs = acts.filter(a => 
-      reportIndicators.some(indicator => 
+    const reportActs = acts.filter(a =>
+      reportIndicators.some(indicator =>
         a.window_title.toLowerCase().includes(indicator.toLowerCase())
       )
     );
@@ -252,20 +263,20 @@ function detectReportPatterns(activities: DbActivity[]): RepetitivePattern[] {
  */
 function calculateSequenceScore(apps: string[], frequency: number, avgDuration: number): number {
   let score = 30; // Base score
-  
+
   // Higher frequency = more automatable
   score += Math.min(30, frequency * 3);
-  
+
   // Longer sessions = more time saved
   score += Math.min(20, avgDuration / 5);
-  
+
   // Bonus for common automation targets
   const automationTargets = ['Excel', 'Email', 'Slack', 'Chrome', 'Safari'];
-  const hasTarget = apps.some(app => 
+  const hasTarget = apps.some(app =>
     automationTargets.some(target => app.toLowerCase().includes(target.toLowerCase()))
   );
   if (hasTarget) score += 20;
-  
+
   return Math.min(100, Math.round(score));
 }
 
@@ -296,11 +307,11 @@ function groupBy<T>(array: T[], key: keyof T): Map<string, T[]> {
 }
 
 /**
- * Get top agent opportunities across all employees
+ * Get top agent opportunities for a single org
  */
-export async function getTopAgentOpportunities(limit: number = 5): Promise<AgentOpportunity[]> {
-  const patterns = await detectRepetitivePatterns(undefined, 14); // 2 weeks of data
-  
+export async function getTopAgentOpportunities(limit: number = 5, orgId: string): Promise<AgentOpportunity[]> {
+  const patterns = await detectRepetitivePatterns(undefined, 14, orgId); // 2 weeks of data
+
   return patterns
     .filter(p => p.automationPotential === 'high')
     .slice(0, limit)

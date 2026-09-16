@@ -1,0 +1,12 @@
+packages:
+  - 'admin'
+  - 'desktop'
+  - 'desktop-admin'
+  - 'shared'
+
+# pnpm 11: explicit allowlist for dependency lifecycle scripts
+allowBuilds:
+  electron: true
+  esbuild: true
+  sqlite3: true
+  active-win: true

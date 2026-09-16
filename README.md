@@ -158,7 +158,9 @@ Go back to your dashboard at [YOUR_DOMAIN](https://YOUR_DOMAIN). Within a minute
 
 ## Self-Hosting (Optional)
 
-Want to self-host on your own VPS? Deploy to any Ubuntu server:
+TeamTracker stays a **single-VPS** product: Node.js + SQLite + nginx + PM2. No PostgreSQL, Redis, or Kubernetes required.
+
+Full production guide (data layout, env vars, HTTPS, backups, rollback): **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)**.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/hamdymohamedak/TeamTracker/main/deploy.sh | bash
@@ -168,6 +170,12 @@ Works on DigitalOcean ($6/month droplet), AWS, or any VPS. Add a custom domain +
 ```bash
 certbot --nginx -d yourdomain.com
 ```
+
+After deploy, confirm liveness and readiness:
+- `GET /api/health` — process up
+- `GET /api/ready` — database + storage usable
+
+Related: [docs/BACKUP_RESTORE.md](./docs/BACKUP_RESTORE.md) · [docs/PRIVACY.md](./docs/PRIVACY.md) · [docs/DESKTOP_SIGNING.md](./docs/DESKTOP_SIGNING.md)
 
 ---
 
@@ -365,7 +373,8 @@ checks the active window every 10 seconds and syncs every 60 seconds.
 ```
 
 - **Admin dashboard:** React SPA served by Express
-- **API:** Express + SQLite (upgradeable to Postgres)
+- **API:** Express + SQLite on a **single VPS** (no Postgres/Redis/K8s required for production)
+- **Persistent data:** `/var/lib/teamtracker` (DB, uploads, backups) — app code under `/opt/teamtracker/application`
 - **Desktop tracker:** Electron app — samples the active window every **10
   seconds**, batches them, and syncs to the server every **60 seconds**.
 - **Productivity math:** Dashboard and Reports share one formula —
@@ -383,11 +392,13 @@ checks the active window every 10 seconds and syncs every 60 seconds.
 
 ## Updating
 
-SSH into your server (or use DigitalOcean Console) and run:
+Prefer the production-safe update script (does not wipe `/var/lib/teamtracker`):
 
 ```bash
-cd /opt/teamtracker && git pull && cd admin && npm install --no-package-lock && npx tsc -p tsconfig.server.json && npx vite build && pm2 restart teamtracker
+bash /opt/teamtracker/application/deploy-enterprise.sh
 ```
+
+Or see **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** for manual update / rollback steps.
 
 ---
 

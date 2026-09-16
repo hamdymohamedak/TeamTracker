@@ -48,9 +48,16 @@ jobs:
         working-directory: ${{ runner.temp }}/tt-build
         run: npm run dist:mac
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # Unsigned/ad-hoc when secrets absent; real signing when CSC_* / APPLE_* set
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' && 'true' || 'false' }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Ad-hoc re-sign
+      - name: Ad-hoc re-sign (unsigned builds only)
+        if: ${{ secrets.CSC_LINK == '' }}
         working-directory: ${{ runner.temp }}/tt-build
         run: |
           for dir in "release/mac-arm64/${{ matrix.app_bundle }}" "release/mac/${{ matrix.app_bundle }}"; do

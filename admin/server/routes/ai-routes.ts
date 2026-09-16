@@ -1,8 +1,22 @@
 import { Router } from 'express';
-import { getDatabase } from '../database.js';
+import { getDatabase, getEmployeeById } from '../database.js';
 import { detectRepetitivePatterns, getTopAgentOpportunities } from '../ai-analytics.js';
+import { requireAuth } from '../auth.js';
+import { rateLimit } from '../rate-limit.js';
 
-const router = Router();
+const router: import('express').Router = Router();
+
+// All AI routes require dashboard auth (sets req.orgId)
+router.use(requireAuth);
+router.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    keyPrefix: 'ai',
+    keyFn: (req) => req.orgId || req.ip || 'unknown',
+    message: 'AI rate limit exceeded. Please wait a moment.',
+  })
+);
 
 interface ChatRequest {
   question: string;
@@ -26,7 +40,11 @@ router.post('/chat', async (req, res) => {
       return res.status(400).json({ error: 'Question is required' });
     }
 
-    const response = await processNaturalLanguageQuery(question);
+    const orgId = req.orgId!;
+    if (!orgId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const response = await processNaturalLanguageQuery(question, orgId);
     res.json(response);
   } catch (error) {
     console.error('AI chat error:', error);
@@ -41,10 +59,22 @@ router.post('/chat', async (req, res) => {
  */
 router.get('/patterns', async (req, res) => {
   try {
+    const orgId = req.orgId!;
+    if (!orgId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const { employeeId, days } = req.query;
+    let scopedEmployeeId = employeeId as string | undefined;
+    if (scopedEmployeeId) {
+      const emp = await getEmployeeById(orgId, scopedEmployeeId);
+      if (!emp) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+    }
     const patterns = await detectRepetitivePatterns(
-      employeeId as string | undefined,
-      days ? parseInt(days as string) : 7
+      scopedEmployeeId,
+      days ? parseInt(days as string) : 7,
+      orgId
     );
     res.json(patterns);
   } catch (error) {
@@ -58,9 +88,14 @@ router.get('/patterns', async (req, res) => {
  */
 router.get('/opportunities', async (req, res) => {
   try {
+    const orgId = req.orgId!;
+    if (!orgId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const { limit } = req.query;
     const opportunities = await getTopAgentOpportunities(
-      limit ? parseInt(limit as string) : 5
+      limit ? parseInt(limit as string) : 5,
+      orgId
     );
     res.json(opportunities);
   } catch (error) {
@@ -72,8 +107,11 @@ router.get('/opportunities', async (req, res) => {
 /**
  * Extract employee name from question
  */
-async function extractEmployeeName(question: string, db: any): Promise<{ id: string; name: string } | null> {
-  const employees = await db.all('SELECT id, name FROM employees');
+async function extractEmployeeName(question: string, db: any, orgId: string): Promise<{ id: string; name: string } | null> {
+  const employees = await db.all(
+    'SELECT id, name FROM employees WHERE org_id = ? AND is_active = 1',
+    [orgId]
+  );
   // Sort by longest name first to avoid partial matches
   const sorted = employees.sort((a: any, b: any) => b.name.length - a.name.length);
   return sorted.find((e: any) => question.toLowerCase().includes(e.name.toLowerCase())) || null;
@@ -96,81 +134,81 @@ function extractTimeframe(question: string): { days: number; label: string } {
 /**
  * Process natural language queries and convert to data analysis
  */
-async function processNaturalLanguageQuery(question: string): Promise<ChatResponse> {
+async function processNaturalLanguageQuery(question: string, orgId: string): Promise<ChatResponse> {
   const lowerQuestion = question.toLowerCase();
   const db = getDatabase();
 
   // Pattern 0: Personal improvement/advice queries (highest priority)
   if (lowerQuestion.includes('do better') || lowerQuestion.includes('improve') || lowerQuestion.includes('help') || lowerQuestion.includes('advice')) {
-    return handleImprovementQuery(lowerQuestion, db);
+    return handleImprovementQuery(lowerQuestion, db, orgId);
   }
 
   // Pattern 0.5: Architecture firm owner specific queries
   if (lowerQuestion.includes('slacking') || lowerQuestion.includes('slacker') || (lowerQuestion.includes('not working') && !lowerQuestion.includes('slack'))) {
-    return handleSlackingQuery(lowerQuestion, db);
+    return handleSlackingQuery(lowerQuestion, db, orgId);
   }
 
   if (lowerQuestion.includes('overtime') || lowerQuestion.includes('working late') || lowerQuestion.includes('long hours')) {
-    return handleOvertimeQuery(lowerQuestion, db);
+    return handleOvertimeQuery(lowerQuestion, db, orgId);
   }
 
   if (lowerQuestion.includes('non-work') || lowerQuestion.includes('wasting time') || lowerQuestion.includes('goofing off') || lowerQuestion.includes('personal time')) {
-    return handleNonWorkQuery(lowerQuestion, db);
+    return handleNonWorkQuery(lowerQuestion, db, orgId);
   }
 
   if (lowerQuestion.includes('burnout') || lowerQuestion.includes('overworked') || lowerQuestion.includes('stressed')) {
-    return handleBurnoutQuery(lowerQuestion, db);
+    return handleBurnoutQuery(lowerQuestion, db, orgId);
   }
 
   if (lowerQuestion.includes('capacity') || lowerQuestion.includes('bandwidth') || lowerQuestion.includes('who can take') || lowerQuestion.includes('new project')) {
-    return handleCapacityQuery(lowerQuestion, db);
+    return handleCapacityQuery(lowerQuestion, db, orgId);
   }
 
   if (lowerQuestion.includes('best') || lowerQuestion.includes('top performer') || lowerQuestion.includes('star employee') || lowerQuestion.includes('most efficient')) {
-    return handleTopPerformerQuery(lowerQuestion, db);
+    return handleTopPerformerQuery(lowerQuestion, db, orgId);
   }
 
   // Pattern 1: Specific app queries (YouTube, email, etc.)
   if (lowerQuestion.includes('youtube') || lowerQuestion.includes('email') || lowerQuestion.includes('slack') || lowerQuestion.includes('chrome')) {
-    return handleSpecificAppQuery(lowerQuestion, db);
+    return handleSpecificAppQuery(lowerQuestion, db, orgId);
   }
 
   // Pattern 2: "How is [name] doing" - status check
   if ((lowerQuestion.includes('how is') || lowerQuestion.includes('how\'s')) && lowerQuestion.includes('doing')) {
-    return handleStatusQuery(lowerQuestion, db);
+    return handleStatusQuery(lowerQuestion, db, orgId);
   }
 
   // Pattern 3: Time spent queries
   if (lowerQuestion.includes('time') && (lowerQuestion.includes('spend') || lowerQuestion.includes('spent'))) {
-    return handleTimeSpentQuery(lowerQuestion, db);
+    return handleTimeSpentQuery(lowerQuestion, db, orgId);
   }
 
   // Pattern 4: Productivity queries
   if (lowerQuestion.includes('productive') || lowerQuestion.includes('productivity')) {
-    return handleProductivityQuery(lowerQuestion, db);
+    return handleProductivityQuery(lowerQuestion, db, orgId);
   }
 
   // Pattern 5: Repetitive tasks / automation
   if (lowerQuestion.includes('repetitive') || lowerQuestion.includes('automation') || lowerQuestion.includes('automate')) {
-    return handleRepetitiveTasksQuery(db);
+    return handleRepetitiveTasksQuery(db, orgId);
   }
 
   // Pattern 6: Employee-specific queries
   if (lowerQuestion.includes('employee') || lowerQuestion.includes('who')) {
-    return handleEmployeeQuery(lowerQuestion, db);
+    return handleEmployeeQuery(lowerQuestion, db, orgId);
   }
 
   // Pattern 7: App/website queries
   if (lowerQuestion.includes('app') || lowerQuestion.includes('website')) {
-    return handleAppQuery(lowerQuestion, db);
+    return handleAppQuery(lowerQuestion, db, orgId);
   }
 
   // Default: General summary
-  return handleGeneralQuery(db);
+  return handleGeneralQuery(db, orgId);
 }
 
-async function handleImprovementQuery(question: string, db: any): Promise<ChatResponse> {
-  const employee = await extractEmployeeName(question, db);
+async function handleImprovementQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
+  const employee = await extractEmployeeName(question, db, orgId);
   const timeframe = extractTimeframe(question);
 
   if (!employee) {
@@ -192,10 +230,11 @@ async function handleImprovementQuery(question: string, db: any): Promise<ChatRe
       COUNT(*) as total_activities
     FROM activities
     WHERE employee_id = ?
+    AND org_id = ?
     AND timestamp > datetime('now', ?)
   `;
 
-  const stats = await db.get(statsSql, [employee.id, `-${timeframe.days} days`]);
+  const stats = await db.get(statsSql, [employee.id, orgId, `-${timeframe.days} days`]);
 
   // Get top unproductive apps
   const appsSql = `
@@ -205,6 +244,7 @@ async function handleImprovementQuery(question: string, db: any): Promise<ChatRe
       AVG(productivity_score) as avg_score
     FROM activities
     WHERE employee_id = ?
+    AND org_id = ?
     AND timestamp > datetime('now', ?)
     AND (productivity_level = 'unproductive' OR productivity_level = 'idle')
     GROUP BY app_name
@@ -212,7 +252,7 @@ async function handleImprovementQuery(question: string, db: any): Promise<ChatRe
     LIMIT 5
   `;
 
-  const unproductiveApps = await db.all(appsSql, [employee.id, `-${timeframe.days} days`]);
+  const unproductiveApps = await db.all(appsSql, [employee.id, orgId, `-${timeframe.days} days`]);
 
   // Get category breakdown
   const categorySql = `
@@ -222,12 +262,13 @@ async function handleImprovementQuery(question: string, db: any): Promise<ChatRe
       AVG(productivity_score) as avg_score
     FROM activities
     WHERE employee_id = ?
+    AND org_id = ?
     AND timestamp > datetime('now', ?)
     GROUP BY category_name
     ORDER BY hours DESC
   `;
 
-  const categories = await db.all(categorySql, [employee.id, `-${timeframe.days} days`]);
+  const categories = await db.all(categorySql, [employee.id, orgId, `-${timeframe.days} days`]);
 
   // Build personalized advice
   let answer = `**${employee.name}'s Productivity Analysis (${timeframe.label})**\n\n`;
@@ -281,12 +322,12 @@ async function handleImprovementQuery(question: string, db: any): Promise<ChatRe
   };
 }
 
-async function handleStatusQuery(question: string, db: any): Promise<ChatResponse> {
-  const employee = await extractEmployeeName(question, db);
+async function handleStatusQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
+  const employee = await extractEmployeeName(question, db, orgId);
   const timeframe = extractTimeframe(question);
 
   if (!employee) {
-    return handleGeneralQuery(db);
+    return handleGeneralQuery(db, orgId);
   }
 
   // Get today's specific data
@@ -299,31 +340,34 @@ async function handleStatusQuery(question: string, db: any): Promise<ChatRespons
       MAX(timestamp) as last_activity
     FROM activities
     WHERE employee_id = ?
+    AND org_id = ?
     AND timestamp > datetime('now', ?)
   `;
 
-  const today = await db.get(todaySql, [employee.id, `-${timeframe.days} days`]);
+  const today = await db.get(todaySql, [employee.id, orgId, `-${timeframe.days} days`]);
 
   // Get current activity
   const currentSql = `
     SELECT app_name, window_title, category_name, productivity_score
     FROM activities
     WHERE employee_id = ?
+    AND org_id = ?
     ORDER BY timestamp DESC
     LIMIT 1
   `;
 
-  const current = await db.get(currentSql, [employee.id]);
+  const current = await db.get(currentSql, [employee.id, orgId]);
 
   // Get comparison to their average
   const avgSql = `
     SELECT AVG(productivity_score) as overall_avg
     FROM activities
     WHERE employee_id = ?
+    AND org_id = ?
     AND timestamp > datetime('now', '-30 days')
   `;
 
-  const overall = await db.get(avgSql, [employee.id]);
+  const overall = await db.get(avgSql, [employee.id, orgId]);
 
   let answer = `**${employee.name}'s Status (${timeframe.label})**\n\n`;
 
@@ -353,8 +397,8 @@ async function handleStatusQuery(question: string, db: any): Promise<ChatRespons
   };
 }
 
-async function handleSpecificAppQuery(question: string, db: any): Promise<ChatResponse> {
-  const employee = await extractEmployeeName(question, db);
+async function handleSpecificAppQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
+  const employee = await extractEmployeeName(question, db, orgId);
   const timeframe = extractTimeframe(question);
 
   // Detect which app
@@ -388,12 +432,13 @@ async function handleSpecificAppQuery(question: string, db: any): Promise<ChatRe
         window_title
       FROM activities
       WHERE employee_id = ?
+      AND org_id = ?
       AND (LOWER(app_name) LIKE LOWER(?))
       AND timestamp > datetime('now', ?)
       GROUP BY app_name
       ORDER BY hours DESC
     `;
-    params = [employee.id, `%${appName}%`, `-${timeframe.days} days`];
+    params = [employee.id, orgId, `%${appName}%`, `-${timeframe.days} days`];
   } else {
     sql = `
       SELECT 
@@ -403,13 +448,14 @@ async function handleSpecificAppQuery(question: string, db: any): Promise<ChatRe
         COUNT(*) as sessions,
         AVG(a.productivity_score) as avg_score
       FROM activities a
-      JOIN employees e ON a.employee_id = e.id
+      JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
       WHERE LOWER(a.app_name) LIKE LOWER(?)
+      AND a.org_id = ?
       AND a.timestamp > datetime('now', ?)
       GROUP BY a.employee_id, a.app_name
       ORDER BY hours DESC
     `;
-    params = [`%${appName}%`, `-${timeframe.days} days`];
+    params = [`%${appName}%`, orgId, `-${timeframe.days} days`];
   }
 
   const data = await db.all(sql, params);
@@ -450,8 +496,8 @@ async function handleSpecificAppQuery(question: string, db: any): Promise<ChatRe
   };
 }
 
-async function handleTimeSpentQuery(question: string, db: any): Promise<ChatResponse> {
-  const employee = await extractEmployeeName(question, db);
+async function handleTimeSpentQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
+  const employee = await extractEmployeeName(question, db, orgId);
   const timeframe = extractTimeframe(question);
 
   let sql: string;
@@ -465,6 +511,7 @@ async function handleTimeSpentQuery(question: string, db: any): Promise<ChatResp
         COUNT(*) as sessions
       FROM activities
       WHERE employee_id = ?
+      AND org_id = ?
       AND timestamp > datetime('now', ?)
       AND app_name COLLATE NOCASE NOT IN ('loginwindow', 'window server', 'kernel', 'system', 
                                   'lockscreen', 'screensaver', 'securityagent', 
@@ -478,7 +525,7 @@ async function handleTimeSpentQuery(question: string, db: any): Promise<ChatResp
       ORDER BY hours DESC
       LIMIT 10
     `;
-    params = [employee.id, `-${timeframe.days} days`];
+    params = [employee.id, orgId, `-${timeframe.days} days`];
   } else {
     sql = `
       SELECT 
@@ -494,12 +541,13 @@ async function handleTimeSpentQuery(question: string, db: any): Promise<ChatResp
           ELSE 0 
         END) / 3600 as hours
       FROM activities a
-      JOIN employees e ON a.employee_id = e.id
-      WHERE a.timestamp > datetime('now', ?)
+      JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
+      WHERE a.org_id = ?
+      AND a.timestamp > datetime('now', ?)
       GROUP BY a.employee_id
       ORDER BY hours DESC
     `;
-    params = [`-${timeframe.days} days`];
+    params = [orgId, `-${timeframe.days} days`];
   }
 
   const data = await db.all(sql, params);
@@ -522,7 +570,7 @@ async function handleTimeSpentQuery(question: string, db: any): Promise<ChatResp
   };
 }
 
-async function handleProductivityQuery(question: string, db: any): Promise<ChatResponse> {
+async function handleProductivityQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
   const timeframe = extractTimeframe(question);
 
   // FIX: Filter out system apps from productivity calculations
@@ -561,13 +609,14 @@ async function handleProductivityQuery(question: string, db: any): Promise<ChatR
         ELSE 0 
       END) / 3600 as total_hours
     FROM activities a
-    JOIN employees e ON a.employee_id = e.id
-    WHERE a.timestamp > datetime('now', ?)
+    JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
+    WHERE a.org_id = ?
+    AND a.timestamp > datetime('now', ?)
     GROUP BY a.employee_id
     ORDER BY avg_score DESC
   `;
 
-  const data = await db.all(sql, [`-${timeframe.days} days`]);
+  const data = await db.all(sql, [orgId, `-${timeframe.days} days`]);
 
   const answer = `Productivity rankings ${timeframe.label}:\n\n` +
     data.map((row: any, idx: number) => {
@@ -584,8 +633,8 @@ async function handleProductivityQuery(question: string, db: any): Promise<ChatR
   };
 }
 
-async function handleRepetitiveTasksQuery(db: any): Promise<ChatResponse> {
-  const patterns = await detectRepetitivePatterns(undefined, 14);
+async function handleRepetitiveTasksQuery(db: any, orgId: string): Promise<ChatResponse> {
+  const patterns = await detectRepetitivePatterns(undefined, 14, orgId);
   
   // Filter out nonsense patterns
   const validPatterns = patterns.filter(p => {
@@ -604,8 +653,9 @@ async function handleRepetitiveTasksQuery(db: any): Promise<ChatResponse> {
         COUNT(*) as activity_count,
         COUNT(DISTINCT DATE(timestamp)) as days_tracked
       FROM activities 
-      WHERE timestamp > datetime('now', '-14 days')
-    `);
+      WHERE org_id = ?
+      AND timestamp > datetime('now', '-14 days')
+    `, [orgId]);
     
     let answer = "**No Automation Patterns Detected Yet** 🤖\n\n";
     
@@ -661,7 +711,7 @@ async function handleRepetitiveTasksQuery(db: any): Promise<ChatResponse> {
   };
 }
 
-async function handleEmployeeQuery(question: string, db: any): Promise<ChatResponse> {
+async function handleEmployeeQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
   // FIX: Filter out system apps from employee productivity calculations
   const sql = `
     SELECT 
@@ -700,13 +750,14 @@ async function handleEmployeeQuery(question: string, db: any): Promise<ChatRespo
         ELSE 0 
       END) as suspicious_count
     FROM employees e
-    LEFT JOIN activities a ON e.id = a.employee_id
-    WHERE a.timestamp > datetime('now', '-7 days')
+    LEFT JOIN activities a ON e.id = a.employee_id AND a.org_id = e.org_id
+    WHERE e.org_id = ?
+    AND a.timestamp > datetime('now', '-7 days')
     GROUP BY e.id
     ORDER BY total_hours DESC
   `;
 
-  const data = await db.all(sql);
+  const data = await db.all(sql, [orgId]);
 
   const answer = `**Employee Activity Summary (Last 7 Days)**\n\n` +
     data.map((row: any) => {
@@ -724,7 +775,7 @@ async function handleEmployeeQuery(question: string, db: any): Promise<ChatRespo
   };
 }
 
-async function handleAppQuery(question: string, db: any): Promise<ChatResponse> {
+async function handleAppQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
   const timeframe = extractTimeframe(question);
 
   // FIX: Filter out system apps from top apps query
@@ -736,7 +787,8 @@ async function handleAppQuery(question: string, db: any): Promise<ChatResponse> 
       COUNT(DISTINCT employee_id) as users,
       AVG(productivity_score) as avg_score
     FROM activities
-    WHERE timestamp > datetime('now', ?)
+    WHERE org_id = ?
+    AND timestamp > datetime('now', ?)
     AND app_name COLLATE NOCASE NOT IN ('loginwindow', 'window server', 'kernel', 'system', 
                                 'lockscreen', 'screensaver', 'securityagent', 
                                 'usernotificationcenter', 'finder', 'dock', 'launchd', 'idle')
@@ -752,7 +804,7 @@ async function handleAppQuery(question: string, db: any): Promise<ChatResponse> 
     LIMIT 10
   `;
 
-  const data = await db.all(sql, [`-${timeframe.days} days`]);
+  const data = await db.all(sql, [orgId, `-${timeframe.days} days`]);
 
   const answer = `**Top 10 Apps ${timeframe.label}**\n\n` +
     data.map((row: any, idx: number) => {
@@ -769,7 +821,7 @@ async function handleAppQuery(question: string, db: any): Promise<ChatResponse> 
   };
 }
 
-async function handleGeneralQuery(db: any): Promise<ChatResponse> {
+async function handleGeneralQuery(db: any, orgId: string): Promise<ChatResponse> {
   // FIX: Filter out system apps and system-induced suspicious activities
   // Using COLLATE NOCASE for case-insensitive comparison
   const sql = `
@@ -807,14 +859,15 @@ async function handleGeneralQuery(db: any): Promise<ChatResponse> {
         ELSE 0 
       END) as suspicious_activities
     FROM activities
-    WHERE timestamp > datetime('now', '-7 days')
+    WHERE org_id = ?
+    AND timestamp > datetime('now', '-7 days')
   `;
 
-  const data = await db.all(sql);
+  const data = await db.all(sql, [orgId]);
   const row = data[0];
 
   // Get employee list for personalized suggestions
-  const employees = await db.all('SELECT name FROM employees WHERE is_active = 1 ORDER BY name');
+  const employees = await db.all('SELECT name FROM employees WHERE is_active = 1 AND org_id = ? ORDER BY name', [orgId]);
   const employeeNames = employees.map((e: any) => e.name);
 
   // Build dynamic suggestions based on data
@@ -862,7 +915,7 @@ async function handleGeneralQuery(db: any): Promise<ChatResponse> {
 
 // ========== ARCHITECTURE FIRM OWNER QUERY HANDLERS ==========
 
-async function handleSlackingQuery(question: string, db: any): Promise<ChatResponse> {
+async function handleSlackingQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
   const timeframe = extractTimeframe(question);
 
   const sql = `
@@ -875,14 +928,15 @@ async function handleSlackingQuery(question: string, db: any): Promise<ChatRespo
       SUM(a.duration_seconds) / 3600 as total_hours,
       COUNT(CASE WHEN a.is_idle = 1 THEN 1 END) as idle_count
     FROM employees e
-    JOIN activities a ON e.id = a.employee_id
-    WHERE a.timestamp > datetime('now', ?)
+    JOIN activities a ON e.id = a.employee_id AND a.org_id = e.org_id
+    WHERE e.org_id = ?
+    AND a.timestamp > datetime('now', ?)
     GROUP BY e.id
     HAVING avg_score < 40 OR idle_hours > 2
     ORDER BY avg_score ASC, idle_hours DESC
   `;
 
-  const data = await db.all(sql, [`-${timeframe.days} days`]);
+  const data = await db.all(sql, [orgId, `-${timeframe.days} days`]);
 
   if (data.length === 0) {
     return {
@@ -910,7 +964,7 @@ async function handleSlackingQuery(question: string, db: any): Promise<ChatRespo
   };
 }
 
-async function handleOvertimeQuery(question: string, db: any): Promise<ChatResponse> {
+async function handleOvertimeQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
   const timeframe = extractTimeframe(question);
   const threshold = 40;
 
@@ -923,14 +977,15 @@ async function handleOvertimeQuery(question: string, db: any): Promise<ChatRespo
       COUNT(DISTINCT DATE(a.timestamp)) as days_worked,
       MAX(a.timestamp) as last_activity
     FROM employees e
-    JOIN activities a ON e.id = a.employee_id
-    WHERE a.timestamp > datetime('now', ?)
+    JOIN activities a ON e.id = a.employee_id AND a.org_id = e.org_id
+    WHERE e.org_id = ?
+    AND a.timestamp > datetime('now', ?)
     GROUP BY e.id
     HAVING total_hours > ?
     ORDER BY total_hours DESC
   `;
 
-  const data = await db.all(sql, [`-${timeframe.days} days`, threshold]);
+  const data = await db.all(sql, [orgId, `-${timeframe.days} days`, threshold]);
 
   if (data.length === 0) {
     return {
@@ -959,8 +1014,8 @@ async function handleOvertimeQuery(question: string, db: any): Promise<ChatRespo
   };
 }
 
-async function handleNonWorkQuery(question: string, db: any): Promise<ChatResponse> {
-  const employee = await extractEmployeeName(question, db);
+async function handleNonWorkQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
+  const employee = await extractEmployeeName(question, db, orgId);
   const timeframe = extractTimeframe(question);
 
   const unproductiveCategories = ['entertainment', 'social_media', 'shopping_personal'];
@@ -978,26 +1033,28 @@ async function handleNonWorkQuery(question: string, db: any): Promise<ChatRespon
         COUNT(*) as sessions
       FROM activities
       WHERE employee_id = ?
+      AND org_id = ?
       AND (${categoryFilter})
       AND timestamp > datetime('now', ?)
       GROUP BY app_name
       ORDER BY hours DESC
       LIMIT 10
     `;
-    params = [employee.id, `-${timeframe.days} days`];
+    params = [employee.id, orgId, `-${timeframe.days} days`];
   } else {
     sql = `
       SELECT
         e.name as employee_name,
         SUM(a.duration_seconds) / 3600 as hours
       FROM activities a
-      JOIN employees e ON a.employee_id = e.id
-      WHERE (${categoryFilter})
+      JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
+      WHERE a.org_id = ?
+      AND (${categoryFilter})
       AND a.timestamp > datetime('now', ?)
       GROUP BY a.employee_id
       ORDER BY hours DESC
     `;
-    params = [`-${timeframe.days} days`];
+    params = [orgId, `-${timeframe.days} days`];
   }
 
   const data = await db.all(sql, params);
@@ -1037,8 +1094,8 @@ async function handleNonWorkQuery(question: string, db: any): Promise<ChatRespon
   };
 }
 
-async function handleBurnoutQuery(question: string, db: any): Promise<ChatResponse> {
-  const employee = await extractEmployeeName(question, db);
+async function handleBurnoutQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
+  const employee = await extractEmployeeName(question, db, orgId);
 
   const sql = `
     SELECT 
@@ -1049,15 +1106,16 @@ async function handleBurnoutQuery(question: string, db: any): Promise<ChatRespon
       AVG(CASE WHEN a.timestamp > datetime('now', '-7 days') THEN a.productivity_score END) as recent_score,
       AVG(CASE WHEN a.timestamp <= datetime('now', '-7 days') AND a.timestamp > datetime('now', '-14 days') THEN a.productivity_score END) as previous_score
     FROM employees e
-    JOIN activities a ON e.id = a.employee_id
-    WHERE a.timestamp > datetime('now', '-14 days')
+    JOIN activities a ON e.id = a.employee_id AND a.org_id = e.org_id
+    WHERE e.org_id = ?
+    AND a.timestamp > datetime('now', '-14 days')
     ${employee ? 'AND e.id = ?' : ''}
     GROUP BY e.id
     ${employee ? '' : 'HAVING recent_hours > 45 OR (recent_score < previous_score - 15)'}
     ORDER BY recent_hours DESC
   `;
 
-  const params = employee ? [employee.id] : [];
+  const params = employee ? [orgId, employee.id] : [orgId];
   const data = await db.all(sql, params);
 
   if (data.length === 0) {
@@ -1093,7 +1151,7 @@ async function handleBurnoutQuery(question: string, db: any): Promise<ChatRespon
   };
 }
 
-async function handleCapacityQuery(question: string, db: any): Promise<ChatResponse> {
+async function handleCapacityQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
   const timeframe = extractTimeframe(question);
   const standardHours = timeframe.days * 8;
 
@@ -1104,13 +1162,14 @@ async function handleCapacityQuery(question: string, db: any): Promise<ChatRespo
       SUM(a.duration_seconds) / 3600 as hours_worked,
       AVG(a.productivity_score) as avg_score
     FROM employees e
-    LEFT JOIN activities a ON e.id = a.employee_id
+    LEFT JOIN activities a ON e.id = a.employee_id AND a.org_id = e.org_id
       AND a.timestamp > datetime('now', ?)
+    WHERE e.org_id = ?
     GROUP BY e.id
     ORDER BY hours_worked ASC
   `;
 
-  const data = await db.all(sql, [`-${timeframe.days} days`]);
+  const data = await db.all(sql, [`-${timeframe.days} days`, orgId]);
 
   let answer = `**Employee Capacity Analysis ${timeframe.label}**\n\n`;
   answer += `Standard: **${standardHours} hours**\n\n`;
@@ -1144,7 +1203,7 @@ async function handleCapacityQuery(question: string, db: any): Promise<ChatRespo
   };
 }
 
-async function handleTopPerformerQuery(question: string, db: any): Promise<ChatResponse> {
+async function handleTopPerformerQuery(question: string, db: any, orgId: string): Promise<ChatResponse> {
   const timeframe = extractTimeframe(question);
 
   const sql = `
@@ -1154,15 +1213,16 @@ async function handleTopPerformerQuery(question: string, db: any): Promise<ChatR
       AVG(a.productivity_score) as avg_score,
       SUM(a.duration_seconds) / 3600 as total_hours
     FROM employees e
-    JOIN activities a ON e.id = a.employee_id
-    WHERE a.timestamp > datetime('now', ?)
+    JOIN activities a ON e.id = a.employee_id AND a.org_id = e.org_id
+    WHERE e.org_id = ?
+    AND a.timestamp > datetime('now', ?)
     GROUP BY e.id
     HAVING avg_score > 60 AND total_hours > 10
     ORDER BY avg_score DESC
     LIMIT 5
   `;
 
-  const data = await db.all(sql, [`-${timeframe.days} days`]);
+  const data = await db.all(sql, [orgId, `-${timeframe.days} days`]);
 
   if (data.length === 0) {
     return {
@@ -1184,4 +1244,4 @@ async function handleTopPerformerQuery(question: string, db: any): Promise<ChatR
   };
 }
 
-export default router;
+export default router as import('express').Router;

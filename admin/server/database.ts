@@ -8,6 +8,8 @@ import { computeProductivityStats } from '../shared-types.js';
 import { runMigrations } from './migrations.js';
 import { getLocalDayBounds, resolveTimezone } from './timezone.js';
 import { annotateOutsideHours, hasBusinessHours } from './business-hours.js';
+import { getPaths, ensureDataDirectories } from './paths.js';
+import { logger } from './logger.js';
 
 // ES module compatibility
 const __filename = fileURLToPath(import.meta.url);
@@ -18,21 +20,35 @@ let db: Database<sqlite3.Database, sqlite3.Statement> | null = null;
 export async function initDatabase(): Promise<Database<sqlite3.Database, sqlite3.Statement>> {
   if (db) return db;
 
-  const dbDir = path.join(__dirname, '../../data');
+  ensureDataDirectories();
+  const { databasePath } = getPaths();
+  const dbDir = path.dirname(databasePath);
   if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+    fs.mkdirSync(dbDir, { recursive: true, mode: 0o750 });
   }
 
-  const dbPath = path.join(dbDir, 'admin.db');
+  logger.info('Opening SQLite database', { path: databasePath });
 
   db = await open({
-    filename: dbPath,
+    filename: databasePath,
     driver: sqlite3.Database
   });
 
+  // Reliability pragmas for single-VPS concurrent access
+  await db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA synchronous = NORMAL;
+  `);
+
   await createTables();
   await runMigrations(db);
-  await seedTestData();
+
+  // Never seed demo data in production — only when explicitly requested in development
+  if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA === '1') {
+    await seedTestData();
+  }
 
   return db;
 }
@@ -304,11 +320,15 @@ function mapEmployee(row: any): Employee {
     role: row.role,
     department: row.department,
     hourlyRate: row.hourly_rate,
-    currency: row.currency || undefined,
-    timezone: row.timezone || undefined,
-    businessHoursStart: row.business_hours_start || undefined,
-    businessHoursEnd: row.business_hours_end || undefined,
-    businessHoursDays: row.business_hours_days || undefined,
+    currency: row.currency,
+    timezone: row.timezone,
+    businessHoursStart: row.business_hours_start,
+    businessHoursEnd: row.business_hours_end,
+    businessHoursDays: row.business_hours_days,
+    isActive: row.is_active === 1,
+    orgId: row.org_id,
+    activeProjectId: row.active_project_id || undefined,
+    activeTaskId: row.active_task_id || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -451,8 +471,9 @@ export async function createActivity(orgId: string, activity: Activity): Promise
     `INSERT INTO activities (
       id, org_id, employee_id, timestamp, app_name, window_title,
       category, category_name, productivity_score, productivity_level,
-      is_suspicious, suspicious_reason, is_idle, idle_time_seconds, duration_seconds, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      is_suspicious, suspicious_reason, is_idle, idle_time_seconds, duration_seconds,
+      project_id, task_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       activity.id,
       orgId,
@@ -469,6 +490,8 @@ export async function createActivity(orgId: string, activity: Activity): Promise
       activity.isIdle ? 1 : 0,
       activity.idleTimeSeconds,
       activity.durationSeconds,
+      activity.projectId || null,
+      activity.taskId || null,
       activity.createdAt
     ]
   );
@@ -628,6 +651,8 @@ function mapActivity(row: any): Activity {
     isIdle: row.is_idle === 1,
     idleTimeSeconds: row.idle_time_seconds,
     durationSeconds: row.duration_seconds,
+    projectId: row.project_id || undefined,
+    taskId: row.task_id || undefined,
     createdAt: row.created_at
   };
 }
@@ -676,9 +701,9 @@ export async function getTimeEntriesByEmployee(orgId: string, employeeId: string
 export async function createTimeEntry(orgId: string, entry: TimeEntry): Promise<void> {
   const db = getDatabase();
   await db.run(
-    `INSERT INTO time_entries (id, employee_id, task_id, project_id, description, start_time, end_time, duration, is_billable, idle_time, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [entry.id, entry.employeeId, entry.taskId, entry.projectId, entry.description, entry.startTime, entry.endTime, entry.duration, entry.isBillable ? 1 : 0, entry.idleTime, entry.createdAt, entry.updatedAt]
+    `INSERT INTO time_entries (id, org_id, employee_id, task_id, project_id, description, start_time, end_time, duration, is_billable, idle_time, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [entry.id, orgId, entry.employeeId, entry.taskId, entry.projectId, entry.description, entry.startTime, entry.endTime, entry.duration, entry.isBillable ? 1 : 0, entry.idleTime, entry.createdAt, entry.updatedAt]
   );
 }
 
