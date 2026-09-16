@@ -4,6 +4,8 @@ import type { Employee } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { HelpTip } from '../components/HelpTip';
+import { EmptyIcon, StatusLine } from '../components/Icon';
+import { Camera } from 'lucide-react';
 
 interface ScreenshotRow {
   id: string;
@@ -310,12 +312,14 @@ export const Screenshots: React.FC = () => {
       )}
 
       {error && (
-        <div style={styles.errorBanner}>⚠️ {error}</div>
+        <div style={styles.errorBanner}>
+          <StatusLine variant="error">{error}</StatusLine>
+        </div>
       )}
 
       {!loading && shots.length === 0 && (
         <div style={styles.empty}>
-          <div style={{ fontSize: '40px' }}>📷</div>
+          <EmptyIcon icon={Camera} size={40} />
           <h3 style={{ margin: '12px 0 4px', color: 'var(--tt-text)' }}>{t('screenshots.emptyTitle')}</h3>
           <p style={{ color: 'var(--tt-text-muted)', fontSize: '14px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.5 }}>
             {t('screenshots.emptyHint')}

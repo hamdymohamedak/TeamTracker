@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
 import { RecoveryCodesPanel } from '../components/RecoveryCodesPanel';
+import { StatusLine } from '../components/Icon';
 
 // Multi-admin team management page.
 //
@@ -175,8 +176,16 @@ export const Team: React.FC = () => {
         </div>
       </header>
 
-      {flash && <div style={styles.flash}>✅ {flash}</div>}
-      {error && <div style={styles.error}>⚠️ {error}</div>}
+      {flash && (
+        <div style={styles.flash}>
+          <StatusLine variant="success">{flash}</StatusLine>
+        </div>
+      )}
+      {error && (
+        <div style={styles.error}>
+          <StatusLine variant="error">{error}</StatusLine>
+        </div>
+      )}
 
       <section style={styles.card}>
         <h2 style={styles.cardTitle}>{t('team.recoverySection')}</h2>

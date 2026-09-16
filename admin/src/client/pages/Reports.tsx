@@ -9,6 +9,8 @@ import {
 } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
+import { EmptyIcon } from '../components/Icon';
+import { AlertTriangle, Clock, Download, TrendingUp } from 'lucide-react';
 
 function getBrowserTz(): string {
   try {
@@ -166,7 +168,10 @@ export const Reports: React.FC = () => {
           style={{ ...styles.button, backgroundColor: 'var(--tt-success)' }}
           title="Download raw activity rows as CSV (for payroll, invoicing, or external analysis)"
         >
-          📥 Export CSV
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Download size={16} strokeWidth={2} aria-hidden />
+            Export CSV
+          </span>
         </button>
       </div>
 
@@ -178,7 +183,7 @@ export const Reports: React.FC = () => {
           borderRadius: 'var(--tt-radius)',
           boxShadow: 'var(--tt-shadow-sm)',
         }}>
-          <div style={{ fontSize: '40px', marginBottom: '16px' }}>📈</div>
+          <EmptyIcon icon={TrendingUp} size={40} />
           <p style={{ fontSize: '15px', color: 'var(--tt-text-muted)', margin: 0, maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.6' }}>
             Select an employee and date range, then click <strong>Generate Report</strong> to see productivity data.
           </p>
@@ -267,7 +272,10 @@ export const Reports: React.FC = () => {
               border: '1px dashed var(--tt-amber)',
               backgroundColor: '#fffaf0'
             }}>
-              <h3 style={styles.sectionTitle}>🕘 Outside Business Hours</h3>
+              <h3 style={{ ...styles.sectionTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock size={18} strokeWidth={2} aria-hidden />
+                Outside Business Hours
+              </h3>
               <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 8px' }}>
                 {formatDurationSeconds(outsideHoursSeconds)} was tracked outside of this employee's
                 configured working hours and is <strong>not</strong> counted in their total, productive,
@@ -278,8 +286,9 @@ export const Reports: React.FC = () => {
 
           {report.suspiciousActivities.length > 0 && (
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>
-                ⚠️ Suspicious Activities ({report.suspiciousActivities.length})
+              <h3 style={{ ...styles.sectionTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertTriangle size={18} strokeWidth={2} aria-hidden />
+                Suspicious Activities ({report.suspiciousActivities.length})
               </h3>
               <div style={styles.activityList}>
                 {paginatedSuspiciousActivities.map((activity: Activity) => (

@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import type { Employee } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
+import { StatusLine } from '../components/Icon';
 
 // Per-org / per-employee classification overrides admin page.
 //
@@ -142,8 +143,16 @@ export const Overrides: React.FC = () => {
         <p style={styles.subtitle}>{t('overrides.subtitle')}</p>
       </header>
 
-      {flash && <div style={styles.flash}>✅ {flash}</div>}
-      {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
+      {flash && (
+        <div style={styles.flash}>
+          <StatusLine variant="success">{flash}</StatusLine>
+        </div>
+      )}
+      {error && (
+        <div style={styles.errorBanner}>
+          <StatusLine variant="error">{error}</StatusLine>
+        </div>
+      )}
 
       <section style={styles.card}>
         <h2 style={styles.cardTitle}>Add a new override</h2>
@@ -230,7 +239,9 @@ export const Overrides: React.FC = () => {
           </table>
         )}
         <p style={styles.note}>
-          ℹ️ Overrides apply to <strong>new activities only</strong>. Existing activity records keep their original classification.
+          <StatusLine variant="info">
+            Overrides apply to <strong>new activities only</strong>. Existing activity records keep their original classification.
+          </StatusLine>
         </p>
       </section>
     </div>
