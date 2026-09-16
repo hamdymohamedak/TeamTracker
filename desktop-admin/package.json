@@ -2,6 +2,7 @@
   "name": "@teamtracker/desktop-admin",
   "version": "1.0.0",
   "description": "TeamTracker Admin desktop shell — opens the admin dashboard with an option to launch the website in a browser",
+  "license": "MIT",
   "author": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
   "homepage": "https://github.com/hamdymohamedak/TeamTracker",
   "type": "module",
@@ -62,7 +63,7 @@
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
       "icon": "assets/icon.png",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
@@ -71,7 +72,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "TeamTracker Admin",
-      "artifactName": "TeamTracker-Admin-Setup-${version}.${ext}"
+      "artifactName": "TeamTracker-Admin-Setup-${version}.${ext}",
+      "include": "installer.nsh"
     },
     "linux": {
       "category": "Office",

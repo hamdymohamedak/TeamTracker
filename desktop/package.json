@@ -2,6 +2,7 @@
   "name": "@teamtracker/desktop",
   "version": "1.0.4",
   "description": "Desktop activity tracker for TeamTracker",
+  "license": "MIT",
   "author": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
   "homepage": "https://github.com/hamdymohamedak/TeamTracker",
   "type": "module",
@@ -96,7 +97,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "TeamTracker"
+      "shortcutName": "TeamTracker",
+      "include": "installer.nsh"
     },
     "linux": {
       "category": "Utility",

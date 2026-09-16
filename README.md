@@ -51,9 +51,9 @@ Download the latest DMG (Mac), EXE (Windows), or AppImage/`.deb` (Linux) from [G
 4. TeamTracker runs silently in the background (no Dock icon, no menu bar)
 
 **Windows:**
-1. Run the `.exe` installer, follow the wizard
-2. TeamTracker starts automatically — no permission prompts needed
-3. SmartScreen may show "Windows protected your PC" on first run — click **More info → Run anyway**
+1. Run the `.exe` installer, follow the wizard (Setup may show SmartScreen once — **More info → Run anyway**)
+2. The installer trusts the TeamTracker publisher cert for your user automatically — no separate PowerShell step
+3. TeamTracker starts automatically — no permission prompts needed
 
 **Linux:**
 1. Download the `.AppImage` (or `.deb` for Debian/Ubuntu) from [GitHub Releases](https://github.com/hamdymohamedak/TeamTracker/releases)
@@ -217,11 +217,14 @@ Windows does not require an explicit permission for reading window titles —
 the tracker uses standard user-level APIs (`GetForegroundWindow`). However,
 you may see friction on first run:
 
-1. **SmartScreen warning** — because the tracker binary isn't signed yet, the
-   first launch may show "Windows protected your PC". Click **More info →
-   Run anyway**. This only happens once per machine.
+1. **SmartScreen warning** — the first download of **Setup.exe** may show
+   "Windows protected your PC" (Mark-of-the-Web). Click **More info →
+   Run anyway**. During install, TeamTracker adds its public publisher cert
+   to your user trust store so the installed app is treated as a known
+   publisher. A paid Authenticode cert is still required to avoid SmartScreen
+   for strangers on the open internet without that one click.
 2. **Microsoft Defender / corporate AV** — some EDR products (CrowdStrike,
-   SentinelOne, etc.) quarantine unsigned Electron apps by default. If the
+   SentinelOne, etc.) quarantine new Electron apps by default. If the
    tracker exits immediately, add an exclusion for the TeamTracker folder or
    work with IT to whitelist the binary.
 3. **Group Policy** — in locked-down enterprise environments, policy may
@@ -473,6 +476,12 @@ per-OS first-run setup. On Linux, install a window-title backend
 
 ## License
 
-MIT License — free to use, modify, and sell.
+[MIT License](./LICENSE) — free to use, modify, and sell.
+
+## Privacy Policy
+
+[Privacy Policy](./PRIVACY_POLICY.md) — public URL for store / release listings:
+
+https://github.com/hamdymohamedak/TeamTracker/blob/main/PRIVACY_POLICY.md
 
 Built for small business owners who deserve big tools.

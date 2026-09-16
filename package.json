@@ -2,6 +2,7 @@
   "name": "teamtracker",
   "version": "1.0.0",
   "description": "TeamTracker — employee time tracking and admin dashboard",
+  "license": "MIT",
   "private": true,
   "workspaces": [
     "admin",

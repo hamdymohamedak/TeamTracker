@@ -124,7 +124,19 @@ jobs:
       - name: Install, build, package
         shell: bash
         working-directory: ${{ runner.temp }}/tt-build
+        env:
+          # Windows Authenticode only — do not reuse Mac CSC_LINK (.p12)
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          # Empty values make electron-builder treat "" as a cert file path → "not a file".
+          if [ -z "${WIN_CSC_LINK:-}" ]; then
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD || true
+            echo "No WIN_CSC_LINK secret — building unsigned Windows installers."
+          else
+            echo "WIN_CSC_LINK present — Authenticode signing enabled."
+          fi
           npm install
           npm run dist:win
 

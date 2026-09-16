@@ -39,3 +39,11 @@ Thumbs.db
 # Electron
 /dist-electron/
 /out/
+
+# Code-signing material (use GitHub Secrets — never commit)
+.secrets/
+*.pfx
+*.p12
+*.p8
+*.key
+!**/entitlements*.plist
