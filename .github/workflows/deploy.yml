@@ -13,28 +13,99 @@ jobs:
   deploy:
     name: Deploy to production
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
 
     steps:
+      - name: Validate deploy secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in DEPLOY_SSH_KEY DEPLOY_HOST DEPLOY_USER SSH_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret: $name"
+              missing=1
+            else
+              echo "OK: $name is set"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Add secrets under Settings → Secrets and variables → Actions."
+            echo "DEPLOY_SSH_KEY = private key whose public key is in VPS ~/.ssh/authorized_keys"
+            echo "GitHub Deploy keys (read-only) are only for the VPS to git pull — not for Actions→VPS SSH."
+            exit 1
+          fi
+
       - name: Setup SSH
         shell: bash
         run: |
           set -euo pipefail
 
           install -m 700 -d ~/.ssh
+          KEY_FILE="$HOME/.ssh/id_ed25519"
 
-          printf '%s\n' '${{ secrets.DEPLOY_SSH_KEY }}' > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          # Normalize key: handle secrets pasted with literal \n
+          printf '%s\n' "$DEPLOY_SSH_KEY" | sed 's/\r$//' > "$KEY_FILE"
+          if ! grep -q 'BEGIN .*PRIVATE KEY' "$KEY_FILE"; then
+            python3 -c "
+          from pathlib import Path
+          p = Path.home() / '.ssh' / 'id_ed25519'
+          t = p.read_text()
+          if r'\\n' in t:
+              p.write_text(bytes(t, 'utf-8').decode('unicode_escape'))
+          "
+          fi
+          chmod 600 "$KEY_FILE"
 
-          printf '%s\n' '${{ secrets.SSH_KNOWN_HOSTS }}' > ~/.ssh/known_hosts
+          if ! grep -q 'BEGIN .*PRIVATE KEY' "$KEY_FILE"; then
+            echo "::error::DEPLOY_SSH_KEY does not look like a PEM private key."
+            exit 1
+          fi
+
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
+
+          eval "$(ssh-agent -s)"
+          ssh-add "$KEY_FILE"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
 
       - name: Deploy to VPS
         shell: bash
         run: |
           set -euo pipefail
 
-          ssh \
+          echo "Connecting as ${DEPLOY_USER}@${DEPLOY_HOST} …"
+
+          if ! ssh \
+            -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             -o IdentitiesOnly=yes \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "true"
+            -o ConnectTimeout=15 \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            'echo connected && whoami && hostname'; then
+            echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST} failed (Permission denied)."
+            echo "On the VPS, ensure the matching public key is in authorized_keys for ${DEPLOY_USER}."
+            echo "Put that key's PRIVATE half in Actions secret DEPLOY_SSH_KEY."
+            echo "Repo Settings → Deploy keys is unrelated (used by the server to git pull)."
+            exit 255
+          fi
+
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            'set -euo pipefail
+             if [ -x /opt/teamtracker/deploy.sh ]; then
+               if sudo -n true 2>/dev/null; then sudo /opt/teamtracker/deploy.sh; else /opt/teamtracker/deploy.sh; fi
+             elif [ -x /opt/teamtracker/application/deploy.sh ]; then
+               if sudo -n true 2>/dev/null; then sudo /opt/teamtracker/application/deploy.sh; else /opt/teamtracker/application/deploy.sh; fi
+             else
+               echo "deploy.sh not found under /opt/teamtracker — finish first install on the VPS"
+               exit 1
+             fi'
