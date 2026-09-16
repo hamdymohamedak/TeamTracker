@@ -1,383 +1,250 @@
 #!/bin/bash
-# TeamTracker Production Deploy
+# TeamTracker Production Deploy (first install + update)
 #
-# First install:
+# Layout:
+#   /opt/teamtracker/application/   — git checkout (safe to replace)
+#   /var/lib/teamtracker/           — persistent data (NEVER wiped)
+#
+# Usage (as root):
 #   bash deploy.sh
+#   # or after clone:
+#   bash /opt/teamtracker/application/deploy.sh
 #
-# Update:
-#   bash deploy.sh
-#
-# Production:
-#   https://tracker.hostly-eg.com
+# Optional env: APP_ROOT, APP_DIR, DATA_DIR, ENV_FILE, BRANCH, PORT, DOMAIN, PUBLIC_BASE_URL, REPO_SSH
 
 set -Eeuo pipefail
 
-APP_DIR="/opt/teamtracker"
-ADMIN_DIR="$APP_DIR/admin"
-
-REPO_SSH="git@github.com:hamdymohamedak/TeamTracker.git"
-BRANCH="main"
-
-DOMAIN="tracker.hostly-eg.com"
-PORT="3001"
+APP_ROOT="${APP_ROOT:-/opt/teamtracker}"
+APP_DIR="${APP_DIR:-$APP_ROOT/application}"
+DATA_DIR="${DATA_DIR:-/var/lib/teamtracker}"
+ENV_FILE="${ENV_FILE:-$DATA_DIR/.env}"
+REPO_SSH="${REPO_SSH:-git@github.com:hamdymohamedak/TeamTracker.git}"
+REPO_HTTPS="${REPO_HTTPS:-https://github.com/hamdymohamedak/TeamTracker.git}"
+BRANCH="${BRANCH:-main}"
+DOMAIN="${DOMAIN:-tracker.hostly-eg.com}"
+PORT="${PORT:-3001}"
+PM2_NAME="${PM2_NAME:-teamtracker}"
+PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-https://${DOMAIN}}"
 
 echo ""
 echo "========================================="
-echo "  TeamTracker SaaS — Production Deploy"
+echo "  TeamTracker — Production Deploy"
 echo "========================================="
 echo ""
 
-# -----------------------------------------
-# Helpers
-# -----------------------------------------
-
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
-}
-
-fail() {
-    echo ""
-    echo " ERROR: $1"
-    echo ""
-    exit 1
-}
-
-# -----------------------------------------
-# 1. Check root
-# -----------------------------------------
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
+fail() { echo ""; echo " ERROR: $1"; echo ""; exit 1; }
 
 if [ "$(id -u)" -ne 0 ]; then
-    fail "This script must be run as root."
+  fail "This script must be run as root."
 fi
 
 # -----------------------------------------
-# 2. Install Node.js if missing
+# Resolve existing checkout (legacy-friendly)
 # -----------------------------------------
+resolve_app_dir() {
+  if [ -d "$APP_DIR/.git" ]; then
+    return 0
+  fi
+  if [ -d "$APP_ROOT/application/.git" ]; then
+    APP_DIR="$APP_ROOT/application"
+    return 0
+  fi
+  if [ -d "$APP_ROOT/.git" ] && [ -d "$APP_ROOT/admin" ]; then
+    # Legacy: repo cloned directly at /opt/teamtracker
+    APP_DIR="$APP_ROOT"
+    log "Using legacy checkout at $APP_DIR (prefer $APP_ROOT/application going forward)"
+    return 0
+  fi
+  if [ -d "$APP_ROOT/teamtracker/.git" ]; then
+    APP_DIR="$APP_ROOT/teamtracker"
+    return 0
+  fi
+  return 1
+}
 
+# -----------------------------------------
+# Dependencies
+# -----------------------------------------
 if ! command -v node >/dev/null 2>&1; then
-    log "Installing Node.js 20..."
-
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y nodejs
+  log "Installing Node.js 20..."
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
 fi
-
 log "Node.js: $(node -v)"
-log "npm: $(npm -v)"
-
-# -----------------------------------------
-# 3. Install Git if missing
-# -----------------------------------------
 
 if ! command -v git >/dev/null 2>&1; then
-    log "Installing Git..."
-
-    apt-get update
-    apt-get install -y git
+  log "Installing Git..."
+  apt-get update
+  apt-get install -y git
 fi
-
-log "Git: $(git --version)"
-
-# -----------------------------------------
-# 4. Install PM2 if missing
-# -----------------------------------------
 
 if ! command -v pm2 >/dev/null 2>&1; then
-    log "Installing PM2..."
-
-    npm install -g pm2
+  log "Installing PM2..."
+  npm install -g pm2
 fi
 
-log "PM2: $(pm2 -v)"
+if ! command -v openssl >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y openssl
+fi
 
 # -----------------------------------------
-# 5. Clone or update repository
+# Clone or update
 # -----------------------------------------
-
-if [ ! -d "$APP_DIR/.git" ]; then
-
-    log "TeamTracker repository not found."
-    log "Cloning from GitHub..."
-
-    mkdir -p "$(dirname "$APP_DIR")"
-
-    git clone \
-        --branch "$BRANCH" \
-        "$REPO_SSH" \
-        "$APP_DIR"
-
+if resolve_app_dir; then
+  log "Updating repository at $APP_DIR..."
+  cd "$APP_DIR"
+  git fetch origin "$BRANCH"
+  git checkout "$BRANCH" >/dev/null 2>&1 || true
+  git reset --hard "origin/$BRANCH"
 else
-
-    log "Existing TeamTracker repository found."
-    log "Updating repository..."
-
-    cd "$APP_DIR"
-
-    git fetch origin "$BRANCH"
-
-    git reset --hard "origin/$BRANCH"
-
+  log "Cloning into $APP_DIR..."
+  mkdir -p "$(dirname "$APP_DIR")"
+  if ! git clone --branch "$BRANCH" "$REPO_SSH" "$APP_DIR" 2>/dev/null; then
+    log "SSH clone failed — trying HTTPS..."
+    git clone --branch "$BRANCH" "$REPO_HTTPS" "$APP_DIR" || fail "git clone failed"
+  fi
 fi
 
 cd "$APP_DIR"
-
+ADMIN_DIR="$APP_DIR/admin"
+[ -d "$ADMIN_DIR" ] || fail "Missing admin/ under $APP_DIR"
 log "Current commit: $(git rev-parse --short HEAD)"
 
-# -----------------------------------------
-# 6. Create .env if missing
-# -----------------------------------------
+# Load shared helpers from the checkout we just updated
+# shellcheck disable=SC1091
+source "$APP_DIR/scripts/deploy-lib.sh"
 
-if [ ! -f "$ADMIN_DIR/.env" ]; then
-
-    log "Creating production .env..."
-
-    mkdir -p "$ADMIN_DIR/data"
-    mkdir -p "$ADMIN_DIR/data/uploads"
-
-    JWT_SECRET=$(openssl rand -hex 32)
-
-    cat > "$ADMIN_DIR/.env" << ENVEOF
-DATABASE_PATH=./data/admin.db
-PORT=3001
-NODE_ENV=production
-JWT_SECRET=$JWT_SECRET
-WS_HEARTBEAT_INTERVAL=30000
-ENVEOF
-
-    chmod 600 "$ADMIN_DIR/.env"
-
-    log "Production .env created."
-
-else
-
-    log "Existing .env found."
-    log "Keeping current environment configuration."
-
-fi
+tt_ensure_data_dirs "$DATA_DIR"
+tt_ensure_production_env "$ENV_FILE"
+tt_migrate_legacy_database
+tt_migrate_legacy_uploads
 
 # -----------------------------------------
-# 7. Create data directories
+# Build
 # -----------------------------------------
-
-mkdir -p "$ADMIN_DIR/data"
-mkdir -p "$ADMIN_DIR/data/uploads"
-
-# -----------------------------------------
-# 8. Install dependencies
-# -----------------------------------------
-
 cd "$APP_DIR"
-
 log "Installing project dependencies..."
-
-npm install
-
-# -----------------------------------------
-# 9. Fix Rollup Linux native dependency
-# -----------------------------------------
-#
-# npm can sometimes skip Rollup's optional
-# Linux native dependency.
-#
-# We install it without modifying
-# package.json or package-lock.json.
-
-log "Ensuring Rollup Linux native dependency..."
-
-npm install \
-    --no-save \
-    --package-lock=false \
-    "@rollup/rollup-linux-x64-gnu@4.59.0"
-
-# -----------------------------------------
-# 10. Build application
-# -----------------------------------------
+if [ -f package.json ]; then
+  npm install
+fi
 
 cd "$ADMIN_DIR"
+log "Installing admin dependencies..."
+npm install --include=dev
 
-log "Building TeamTracker..."
-
-npm run build
-
-log "Build completed successfully."
-
-# -----------------------------------------
-# 11. Install nginx if missing
-# -----------------------------------------
-
-if ! command -v nginx >/dev/null 2>&1; then
-
-    log "Installing nginx..."
-
-    apt-get update
-    apt-get install -y nginx
-
+# Optional Rollup native binary (Linux x64) — ignore failures on other arches
+if [ "$(uname -m)" = "x86_64" ]; then
+  log "Ensuring Rollup Linux native dependency..."
+  npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@4.59.0" 2>/dev/null || true
 fi
 
-# -----------------------------------------
-# 12. Configure nginx
-# -----------------------------------------
+log "Building TeamTracker..."
+npm run build
+log "Build completed."
 
-NGINX_CONFIG="/etc/nginx/sites-available/tracker.hostly-eg.com.conf"
-NGINX_ENABLED="/etc/nginx/sites-enabled/tracker.hostly-eg.com.conf"
+# -----------------------------------------
+# nginx
+# -----------------------------------------
+if ! command -v nginx >/dev/null 2>&1; then
+  log "Installing nginx..."
+  apt-get update
+  apt-get install -y nginx
+fi
+
+NGINX_CONFIG="/etc/nginx/sites-available/${DOMAIN}.conf"
+NGINX_ENABLED="/etc/nginx/sites-enabled/${DOMAIN}.conf"
 
 if [ ! -f "$NGINX_CONFIG" ]; then
-
-    log "Creating nginx configuration..."
-
-    cat > "$NGINX_CONFIG" << 'NGINXEOF'
+  log "Creating nginx configuration..."
+  cat > "$NGINX_CONFIG" << NGINXEOF
 server {
     listen 80;
     listen [::]:80;
-
-    server_name tracker.hostly-eg.com;
+    server_name ${DOMAIN};
 
     client_max_body_size 50M;
 
     location / {
-        proxy_pass http://127.0.0.1:3001;
-
+        proxy_pass http://127.0.0.1:${PORT};
         proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
-
         proxy_read_timeout 86400;
         proxy_send_timeout 86400;
     }
 }
 NGINXEOF
-
 else
-
-    log "Existing nginx configuration found."
-    log "Keeping existing configuration to preserve SSL/Certbot settings."
-
+  log "Keeping existing nginx config (preserves SSL/Certbot)."
 fi
 
-ln -sfn \
-    "$NGINX_CONFIG" \
-    "$NGINX_ENABLED"
+ln -sfn "$NGINX_CONFIG" "$NGINX_ENABLED"
 
-# -----------------------------------------
-# 13. Validate nginx
-# -----------------------------------------
-
-log "Testing nginx configuration..."
-
-if ! nginx -t; then
-    fail "Nginx configuration test failed. Nginx was NOT reloaded."
-fi
-
+log "Testing nginx..."
+nginx -t || fail "Nginx configuration test failed."
 systemctl reload nginx
 
-log "Nginx reloaded successfully."
-
 # -----------------------------------------
-# 14. Start / restart PM2
+# PM2 (load env so DATABASE_PATH / JWT_SECRET apply)
 # -----------------------------------------
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
 
 cd "$ADMIN_DIR"
-
-if pm2 describe teamtracker >/dev/null 2>&1; then
-
-    log "Restarting TeamTracker with PM2..."
-
-    pm2 restart teamtracker
-
+if pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
+  log "Restarting PM2 ($PM2_NAME)..."
+  pm2 restart "$PM2_NAME" --update-env
 else
-
-    log "Starting TeamTracker with PM2..."
-
-    pm2 start dist/server/index.js \
-        --name teamtracker \
-        --cwd "$ADMIN_DIR"
-
+  log "Starting PM2 ($PM2_NAME)..."
+  pm2 start dist/server/index.js --name "$PM2_NAME" --cwd "$ADMIN_DIR" --update-env
 fi
-
-# -----------------------------------------
-# 15. Save PM2 process list
-# -----------------------------------------
-
 pm2 save
-
-log "PM2 process list saved."
-
-# -----------------------------------------
-# 16. Ensure PM2 startup
-# -----------------------------------------
-
 pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
 
 # -----------------------------------------
-# 17. Wait for application
+# Health
 # -----------------------------------------
+log "Waiting for application..."
+HEALTH_OK=0
+READY_OK=0
+for _ in $(seq 1 30); do
+  curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 && HEALTH_OK=1
+  if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/ready" >/dev/null 2>&1; then
+    READY_OK=1
+    break
+  fi
+  sleep 1
+done
 
-log "Waiting for application to start..."
+[ "$HEALTH_OK" -eq 1 ] || fail "Local /api/health failed — see: pm2 logs $PM2_NAME"
+[ "$READY_OK" -eq 1 ] || fail "Local /api/ready failed — check DATABASE_PATH under $DATA_DIR"
 
-sleep 3
-
-# -----------------------------------------
-# 18. Local health check
-# -----------------------------------------
-
-log "Checking application health..."
-
-HEALTH_RESPONSE=$(curl -fsS \
-    "http://127.0.0.1:${PORT}/api/health" \
-    2>/dev/null) || fail "Application health check failed."
-
-echo ""
-echo "Health response:"
-echo "$HEALTH_RESPONSE"
-echo ""
-
-# -----------------------------------------
-# 19. HTTPS health check
-# -----------------------------------------
-
-log "Checking HTTPS endpoint..."
-
-if curl -fsS \
-    "https://${DOMAIN}/api/health" \
-    >/dev/null 2>&1; then
-
-    log "HTTPS endpoint is healthy."
-
+if curl -fsS "https://${DOMAIN}/api/health" >/dev/null 2>&1; then
+  log "HTTPS endpoint is healthy."
 else
-
-    log "WARNING: HTTPS endpoint check failed."
-    log "The local application is healthy, but check DNS/SSL/nginx if needed."
-
+  log "WARNING: HTTPS check failed (DNS/SSL may still be pending)."
 fi
 
-# -----------------------------------------
-# 20. Final status
-# -----------------------------------------
-
 echo ""
 echo "========================================="
-echo "  ✅ TeamTracker deployed successfully"
+echo "  TeamTracker deployed successfully"
 echo "========================================="
 echo ""
-echo "  Dashboard:"
-echo "  https://${DOMAIN}"
+echo "  Dashboard:  https://${DOMAIN}"
+echo "  Health:     https://${DOMAIN}/api/health"
+echo "  Data dir:   ${DATA_DIR}"
+echo "  Env file:   ${ENV_FILE}"
+echo "  App code:   ${APP_DIR}"
+echo "  Commit:     $(git -C "$APP_DIR" rev-parse --short HEAD)"
 echo ""
-echo "  Health:"
-echo "  https://${DOMAIN}/api/health"
-echo ""
-echo "  Commit:"
-echo "  $(git rev-parse --short HEAD)"
-echo ""
-echo "  PM2:"
-echo "  pm2 status"
-echo ""
-echo "  Logs:"
-echo "  pm2 logs teamtracker"
-echo ""
+echo "  pm2 status | pm2 logs $PM2_NAME"
 echo "========================================="
 echo ""

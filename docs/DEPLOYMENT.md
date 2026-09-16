@@ -216,6 +216,7 @@ Privacy / monitoring behavior: **[PRIVACY.md](./PRIVACY.md)**.
 | Deploy exits on health | `pm2 logs teamtracker`; ensure port free; `JWT_SECRET` ≥32 chars |
 | `/api/ready` 503 | DB path exists/writable; `DATA_DIR` permissions (`chmod 750`); disk full |
 | Login tokens fail after redeploy | `JWT_SECRET` was regenerated — restore previous `.env` |
+| Password login fails after update (account “gone”) | Path switch left an empty DB; deploy scripts + runtime now migrate `admin/data/admin.db` → `/var/lib/teamtracker/database/` **without overwrite**. On the VPS: `ls` both paths and `sqlite3 … "SELECT email FROM users;"` |
 | Employees offline | Desktop `serverUrl` must match public HTTPS URL; nginx WebSocket headers |
 | Screenshots missing | Org setting enabled; tracker permissions; disk under `UPLOADS_DIR` |
 | Email never sends | Set `RESEND_API_KEY` or `SMTP_*`; check PM2 env after edit (`pm2 restart --update-env`) |

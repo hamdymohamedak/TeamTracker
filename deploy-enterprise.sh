@@ -1,7 +1,7 @@
 #!/bin/bash
 # TeamTracker Enterprise / update deploy
 # Pulls latest code into APP_DIR, rebuilds, restarts PM2.
-# NEVER deletes /var/lib/teamtracker or rm -rf /opt/teamtracker.
+# NEVER deletes /var/lib/teamtracker. NEVER rotates JWT_SECRET if present.
 #
 # Usage (as root on the VPS):
 #   bash deploy-enterprise.sh
@@ -49,7 +49,7 @@ elif [ -d "$APP_ROOT/application/.git" ]; then
 elif [ -d "$APP_ROOT/teamtracker/.git" ]; then
   APP_DIR="$APP_ROOT/teamtracker"
   warn "Using legacy path $APP_DIR — prefer /opt/teamtracker/application"
-elif [ -d "$APP_ROOT/.git" ]; then
+elif [ -d "$APP_ROOT/.git" ] && [ -d "$APP_ROOT/admin" ]; then
   APP_DIR="$APP_ROOT"
   warn "Using legacy git root $APP_DIR — prefer /opt/teamtracker/application"
 else
@@ -58,8 +58,11 @@ fi
 
 ADMIN_DIR="$APP_DIR/admin"
 [ -d "$ADMIN_DIR" ] || die "Missing admin/ under $APP_DIR"
+[ -f "$APP_DIR/scripts/deploy-lib.sh" ] || die "Missing scripts/deploy-lib.sh — pull latest code"
 
-mkdir -p "$DATA_DIR"/{database,uploads,backups}
+# shellcheck disable=SC1091
+source "$APP_DIR/scripts/deploy-lib.sh"
+
 ok "App: $APP_DIR"
 ok "Data: $DATA_DIR"
 
@@ -70,45 +73,15 @@ git fetch --depth 1 origin "$BRANCH"
 git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH" || warn "ff-only pull failed; using current tree"
 
-# Ensure persistent env exists and is linked
-if [ ! -f "$ENV_FILE" ]; then
-  if [ -f "$ADMIN_DIR/.env" ] && [ ! -L "$ADMIN_DIR/.env" ]; then
-    cp "$ADMIN_DIR/.env" "$ENV_FILE"
-    ok "Copied admin/.env → $ENV_FILE"
-  else
-    die "Missing $ENV_FILE — run deploy.sh once to create production env."
-  fi
-fi
-chmod 600 "$ENV_FILE"
+# Re-source after pull in case helpers updated
+# shellcheck disable=SC1091
+source "$APP_DIR/scripts/deploy-lib.sh"
 
-# Keep path keys correct; never rotate JWT_SECRET
-upsert() {
-  local key="$1" value="$2"
-  if grep -qE "^${key}=" "$ENV_FILE"; then
-    sed -i.bak "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
-    rm -f "${ENV_FILE}.bak"
-  else
-    printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
-  fi
-}
-upsert "DATA_DIR" "$DATA_DIR"
-upsert "DATABASE_PATH" "$DATA_DIR/database/admin.db"
-upsert "UPLOADS_DIR" "$DATA_DIR/uploads"
-upsert "BACKUPS_DIR" "$DATA_DIR/backups"
-upsert "NODE_ENV" "production"
-
-if [ -n "${PUBLIC_BASE_URL:-}" ]; then
-  upsert "PUBLIC_BASE_URL" "$PUBLIC_BASE_URL"
-fi
-
-if [ -L "$ADMIN_DIR/.env" ] || [ ! -e "$ADMIN_DIR/.env" ]; then
-  ln -sfn "$ENV_FILE" "$ADMIN_DIR/.env"
-elif [ ! -L "$ADMIN_DIR/.env" ]; then
-  cp "$ADMIN_DIR/.env" "$ADMIN_DIR/.env.enterprise-bak.$(date +%s)" 2>/dev/null || true
-  rm -f "$ADMIN_DIR/.env"
-  ln -sfn "$ENV_FILE" "$ADMIN_DIR/.env"
-fi
-ok "admin/.env → $ENV_FILE"
+tt_ensure_data_dirs "$DATA_DIR"
+# Migrate BEFORE rewriting DATABASE_PATH so we don't open an empty DB
+tt_migrate_legacy_database
+tt_migrate_legacy_uploads
+tt_ensure_production_env "$ENV_FILE"
 
 echo ""
 echo "🔨 Building..."
@@ -123,9 +96,9 @@ set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
-# Prefer PORT from env file if set
 if grep -qE '^PORT=' "$ENV_FILE"; then
-  PORT="$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+  PORT="$(tt_env_get "$ENV_FILE" PORT)"
+  PORT="${PORT:-3001}"
 fi
 
 pm2 describe "$PM2_NAME" >/dev/null 2>&1 && pm2 restart "$PM2_NAME" --update-env \
@@ -137,7 +110,7 @@ echo ""
 echo "⏳ Health checks..."
 HEALTH_OK=0
 READY_OK=0
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 && HEALTH_OK=1
   if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/ready" >/dev/null 2>&1; then
     READY_OK=1
@@ -152,9 +125,8 @@ ok "/api/health"
 ok "/api/ready"
 
 HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
-# Prefer PUBLIC_BASE_URL from env file, then override, then hostname
-if [ -z "${PUBLIC_BASE_URL:-}" ] && grep -qE '^PUBLIC_BASE_URL=' "$ENV_FILE"; then
-  PUBLIC_BASE_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+if [ -z "${PUBLIC_BASE_URL:-}" ]; then
+  PUBLIC_BASE_URL="$(tt_env_get "$ENV_FILE" PUBLIC_BASE_URL)"
 fi
 PUBLIC_HINT="${PUBLIC_BASE_URL:-http://${HOSTNAME_FQDN}}"
 
@@ -164,4 +136,5 @@ echo -e "${GREEN}✓ Deployment complete${NC}"
 echo "Dashboard: $PUBLIC_HINT"
 echo "Health:    $PUBLIC_HINT/api/health"
 echo "Ready:     $PUBLIC_HINT/api/ready"
+echo "Data:      $DATA_DIR"
 echo "=================================="

@@ -126,7 +126,7 @@ function scheduleReconnect(): void {
 function connectSocket(): void {
   const token = getTokenFn();
   if (!token) {
-    scheduleReconnect();
+    // Not enrolled (or signed out) — do not spin reconnect forever.
     return;
   }
 

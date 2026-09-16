@@ -8,7 +8,12 @@ import { computeProductivityStats } from '../shared-types.js';
 import { runMigrations } from './migrations.js';
 import { getLocalDayBounds, resolveTimezone } from './timezone.js';
 import { annotateOutsideHours, hasBusinessHours } from './business-hours.js';
-import { getPaths, ensureDataDirectories } from './paths.js';
+import {
+  getPaths,
+  ensureDataDirectories,
+  listLegacyDatabaseCandidates,
+  replaceDatabaseWithLegacy,
+} from './paths.js';
 import { logger } from './logger.js';
 
 // ES module compatibility
@@ -16,6 +21,82 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let db: Database<sqlite3.Database, sqlite3.Statement> | null = null;
+
+async function openWithPragmas(databasePath: string): Promise<Database<sqlite3.Database, sqlite3.Statement>> {
+  const opened = await open({
+    filename: databasePath,
+    driver: sqlite3.Database,
+  });
+  await opened.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA synchronous = NORMAL;
+  `);
+  return opened;
+}
+
+async function countUsersSafe(
+  handle: Database<sqlite3.Database, sqlite3.Statement>
+): Promise<number | null> {
+  try {
+    const table = await handle.get<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='users'`
+    );
+    if (!table) return 0;
+    const row = await handle.get<{ c: number }>('SELECT COUNT(*) AS c FROM users');
+    return row?.c ?? 0;
+  } catch {
+    return null;
+  }
+}
+
+/** If current DB has no users, adopt a legacy SQLite that does (never overwrite populated DBs). */
+async function recoverUsersFromLegacyIfNeeded(databasePath: string): Promise<boolean> {
+  // Only heal production path-switch incidents — never in test/dev
+  if (process.env.NODE_ENV !== 'production') return false;
+  const current = db;
+  if (!current) return false;
+  const currentUsers = await countUsersSafe(current);
+  if (currentUsers === null || currentUsers > 0) return false;
+
+  for (const legacy of listLegacyDatabaseCandidates(databasePath)) {
+    if (!fs.existsSync(legacy)) continue;
+    let legacyDb: Database<sqlite3.Database, sqlite3.Statement> | null = null;
+    try {
+      legacyDb = await open({ filename: legacy, driver: sqlite3.Database, mode: sqlite3.OPEN_READONLY });
+      const legacyUsers = await countUsersSafe(legacyDb);
+      await legacyDb.close();
+      legacyDb = null;
+      if (!legacyUsers || legacyUsers <= 0) continue;
+
+      await current.close();
+      db = null;
+      const ok = replaceDatabaseWithLegacy(databasePath, legacy);
+      if (!ok) {
+        db = await openWithPragmas(databasePath);
+        return false;
+      }
+      logger.warn('Recovered production database from legacy path', {
+        from: legacy,
+        to: databasePath,
+        users: legacyUsers,
+      });
+      db = await openWithPragmas(databasePath);
+      return true;
+    } catch (err) {
+      if (legacyDb) {
+        try {
+          await legacyDb.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      logger.warn('Skipped legacy DB candidate', { path: legacy, err });
+    }
+  }
+  return false;
+}
 
 export async function initDatabase(): Promise<Database<sqlite3.Database, sqlite3.Statement>> {
   if (db) return db;
@@ -29,21 +110,17 @@ export async function initDatabase(): Promise<Database<sqlite3.Database, sqlite3
 
   logger.info('Opening SQLite database', { path: databasePath });
 
-  db = await open({
-    filename: databasePath,
-    driver: sqlite3.Database
-  });
-
-  // Reliability pragmas for single-VPS concurrent access
-  await db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-    PRAGMA busy_timeout = 5000;
-    PRAGMA synchronous = NORMAL;
-  `);
+  db = await openWithPragmas(databasePath);
 
   await createTables();
   await runMigrations(db);
+
+  // Heal path-switch incidents: new empty DB + old admin/data/admin.db with accounts
+  const recovered = await recoverUsersFromLegacyIfNeeded(databasePath);
+  if (recovered && db) {
+    await createTables();
+    await runMigrations(db);
+  }
 
   // Never seed demo data in production — only when explicitly requested in development
   if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA === '1') {
