@@ -1,13 +1,14 @@
 name: Build Desktop Apps
 
 # Employee tracker + Admin desktop shell.
-# - Push to main → build & upload artifacts
-# - Tag v* → build, upload, and publish a GitHub Release
+# Trigger: create/push a version tag (e.g. v0.0.1, v1.2.3)
+# Builds Mac, Windows, and Linux for both desktop apps, then publishes a GitHub Release.
+# Manual: Actions → Build Desktop Apps → Run workflow
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
