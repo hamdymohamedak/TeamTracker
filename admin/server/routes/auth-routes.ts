@@ -6,12 +6,13 @@ import {
   hashPassword,
   verifyPassword,
   generateDashboardToken,
-  generateDeviceToken,
   generateRefreshToken,
   generateSetupToken,
   hashToken,
   requireAuth,
-  requireRole
+  requireRole,
+  issueDeviceSession,
+  revokeEmployeeDeviceSessions,
 } from '../auth.js';
 import { rateLimit } from '../rate-limit.js';
 import { logger } from '../logger.js';
@@ -327,11 +328,11 @@ export function setupAuthRoutes(app: Express): void {
         [now, tokenRecord.id]
       );
 
-      // Generate device JWT
-      const accessToken = generateDeviceToken({
-        employeeId: tokenRecord.employee_id,
-        orgId: tokenRecord.org_id
-      });
+      // Durable device session — stays valid until admin revokes or employee is deleted
+      const { accessToken } = await issueDeviceSession(
+        tokenRecord.org_id,
+        tokenRecord.employee_id
+      );
 
       res.json({
         success: true,
@@ -342,6 +343,32 @@ export function setupAuthRoutes(app: Express): void {
           orgId: tokenRecord.org_id,
           orgName: tokenRecord.org_name
         }
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Admin: revoke all desktop sessions for an employee (force re-enroll)
+  app.post('/api/auth/revoke-devices', requireAuth, async (req, res) => {
+    try {
+      const { employeeId } = req.body;
+      if (!employeeId) {
+        return res.status(400).json({ success: false, error: 'employeeId is required' });
+      }
+
+      const employee = await db().get(
+        'SELECT id, name FROM employees WHERE id = ? AND org_id = ?',
+        [employeeId, req.orgId]
+      );
+      if (!employee) {
+        return res.status(404).json({ success: false, error: 'Employee not found in your organization' });
+      }
+
+      const revoked = await revokeEmployeeDeviceSessions(req.orgId!, employeeId);
+      res.json({
+        success: true,
+        data: { employeeId, employeeName: employee.name, revokedSessions: revoked },
       });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });

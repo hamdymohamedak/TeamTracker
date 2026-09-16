@@ -573,10 +573,12 @@ async function syncToServer(): Promise<void> {
         syncBackoffMs = SYNC_BACKOFF_INITIAL_MS;
         nextSyncAllowedAt = 0;
       } else if (response.status === 401) {
-        // Token expired or invalid — stop retrying
-        console.error('Device token expired. Please re-enroll.');
-        isOnline = false;
+        // Revoked / inactive employee / expired legacy token — clear local auth
+        // so the employee UI returns to setup (needs a new one-time setup token).
+        console.error('Device access revoked or invalid. Please re-enroll with a new setup token.');
         offlineQueue.unshift(...batch);
+        clearDeviceAuth('sync received HTTP 401');
+        isOnline = false;
         break;
       } else if (response.status === 429) {
         offlineQueue.unshift(...batch);
@@ -802,6 +804,8 @@ function saveConfig(): void {
         toSave.deviceToken = config.deviceToken;
       }
     }
+    // When signed out, omit token fields so a previous deviceTokenEnc is not
+    // reloaded on next launch.
 
     fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2));
   } catch (err) {
@@ -892,6 +896,34 @@ export function isEnrolled(): boolean {
   return !!config.deviceToken;
 }
 
+/**
+ * Sign out this device: drop the device JWT and employee identity so the
+ * employee can re-enroll with a new setup token. Keeps serverUrl so reconnect
+ * is one field (token) for most installs.
+ */
+export function logoutDevice(): { success: boolean } {
+  clearDeviceAuth('user signed out');
+  return { success: true };
+}
+
+function clearDeviceAuth(reason: string): void {
+  if (!config.deviceToken && !config.employeeId) return;
+  console.log(`[auth] clearing device credentials (${reason})`);
+  config.deviceToken = '';
+  config.employeeId = TEAMTRACKER_CONFIG.defaults.employeeId;
+  config.employeeName = TEAMTRACKER_CONFIG.defaults.employeeName;
+  config.activeProjectId = undefined;
+  config.activeTaskId = undefined;
+  saveConfig();
+
+  // Queued rows belong to the previous identity — drop them to avoid
+  // uploading under a different employee after re-enroll.
+  offlineQueue.length = 0;
+  queueOverflow = false;
+  queueDropCount = 0;
+  saveOfflineQueue();
+}
+
 export function setupIpcHandlers(): void {
   ipcMain.handle('tracker:getStatus', () => {
     return {
@@ -905,15 +937,21 @@ export function setupIpcHandlers(): void {
       config: {
         ...config,
         deviceToken: config.deviceToken ? '***' : '',
+        // Never expose server URL to the employee UI status surface.
+        serverUrl: undefined,
         activeProjectId: config.activeProjectId,
         activeTaskId: config.activeTaskId,
-      }
+      },
+      // Setup form only — prefilled default, not shown after enroll.
+      defaultServerUrl: config.serverUrl || getServerUrl(),
     };
   });
 
   ipcMain.handle('tracker:enroll', async (_, setupToken: string, serverUrl?: string) => {
     return enrollWithSetupToken(setupToken, serverUrl);
   });
+
+  ipcMain.handle('tracker:logout', () => logoutDevice());
 
   ipcMain.handle('tracker:getStats', () => {
     const today = new Date();

@@ -34,6 +34,9 @@ const {
   requireDeviceAuth,
   verifyToken,
   hashPassword,
+  issueDeviceSession,
+  revokeEmployeeDeviceSessions,
+  assertDeviceAccess,
 } = await import('../auth.js');
 const { createSqliteBackup } = await import('../backup.js');
 const { getPaths, resolveScreenshotAbsolutePath, ensureDataDirectories } = await import('../paths.js');
@@ -136,11 +139,50 @@ describe('auth middleware types', () => {
       },
     };
     let nextCalled = false;
-    requireDeviceAuth(req, res, () => {
+    await requireDeviceAuth(req, res, () => {
       nextCalled = true;
     });
     assert.equal(nextCalled, false);
     assert.equal(res.statusCode, 403);
+  });
+
+  it('device session stays valid until revoked', async () => {
+    const a = await createOrgUser('sess1');
+    const { accessToken, sessionId } = await issueDeviceSession(a.orgId, a.empId);
+    const payload = verifyToken(accessToken);
+    assert.equal(payload.type, 'device');
+    if (payload.type === 'device') {
+      assert.equal(payload.sid, sessionId);
+      const ok = await assertDeviceAccess(payload);
+      assert.equal(ok.ok, true);
+    }
+
+    await revokeEmployeeDeviceSessions(a.orgId, a.empId);
+    if (payload.type === 'device') {
+      const denied = await assertDeviceAccess(payload);
+      assert.equal(denied.ok, false);
+      if (!denied.ok) assert.equal(denied.code, 'DEVICE_REVOKED');
+    }
+
+    const req: any = { headers: { authorization: `Bearer ${accessToken}` } };
+    const res: any = {
+      statusCode: 200,
+      body: null as unknown,
+      status(c: number) {
+        this.statusCode = c;
+        return this;
+      },
+      json(b: unknown) {
+        this.body = b;
+        return this;
+      },
+    };
+    let nextCalled = false;
+    await requireDeviceAuth(req, res, () => {
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, false);
+    assert.equal(res.statusCode, 401);
   });
 });
 
@@ -198,12 +240,14 @@ describe('backup', () => {
 });
 
 describe('migrations', () => {
-  it('applies team_invites migration', async () => {
+  it('applies team_invites and device_sessions migrations', async () => {
     const db = getDatabase();
-    const row = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='team_invites'`);
-    assert.ok(row);
+    const invites = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='team_invites'`);
+    assert.ok(invites);
+    const sessions = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='device_sessions'`);
+    assert.ok(sessions);
     const ver = await db.get(`SELECT MAX(version) as v FROM _migrations`);
-    assert.ok((ver?.v || 0) >= 6);
+    assert.ok((ver?.v || 0) >= 7);
   });
 });
 

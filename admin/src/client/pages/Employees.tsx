@@ -258,6 +258,26 @@ export const Employees: React.FC = () => {
     }
   };
 
+  const handleRevokeDevices = async (employee: Employee) => {
+    const ok = window.confirm(
+      `Reset device access for ${employee.name}? Their tracker will sign out and need a new setup token.`
+    );
+    if (!ok) return;
+    try {
+      const res = await api.post('/api/auth/revoke-devices', { employeeId: employee.id });
+      const data = res.data || res;
+      const count = data.revokedSessions ?? 0;
+      alert(
+        count > 0
+          ? `Revoked ${count} device session(s) for ${employee.name}.`
+          : `${employee.name} had no active device sessions.`
+      );
+    } catch (err) {
+      console.error('Error revoking devices:', err);
+      alert(err instanceof Error ? err.message : 'Failed to reset device access');
+    }
+  };
+
   /**
    * Zero-friction install flow for non-technical admins: clicked while the
    * admin is physically at the employee's laptop. Generates a setup token,
@@ -585,10 +605,10 @@ export const Employees: React.FC = () => {
                 marginBottom: '12px',
               }}>
                 <p style={{ fontSize: '13px', color: 'var(--tt-text)', margin: '0 0 8px', lineHeight: '1.5' }}>
-                  Share this token with <strong>{setupToken.employeeName}</strong>. They will need it to connect their desktop app.
+                  Share this token with <strong>{setupToken.employeeName}</strong>. They use it once to connect their desktop app.
                 </p>
                 <p style={{ fontSize: '12px', color: 'var(--tt-text-muted)', margin: 0, lineHeight: '1.5' }}>
-                  The token expires in 7 days and can only be used once.
+                  {t('employees.tokenExpiry')}
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
@@ -747,6 +767,13 @@ export const Employees: React.FC = () => {
               </button>
               <button onClick={() => handleGenerateSetupToken(employee)} style={styles.setupButton}>
                 {t('employees.setupToken')}
+              </button>
+              <button
+                onClick={() => handleRevokeDevices(employee)}
+                style={styles.revokeButton}
+                title={t('employees.revokeDevicesHint')}
+              >
+                {t('employees.revokeDevices')}
               </button>
               <button onClick={() => handleDelete(employee.id)} style={styles.deleteButton}>
                 Delete
@@ -943,7 +970,8 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   cardActions: {
     display: 'flex',
-    gap: '8px'
+    gap: '8px',
+    flexWrap: 'wrap' as const,
   },
   editButton: {
     flex: 1,
@@ -961,6 +989,16 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     backgroundColor: '#8e44ad',
     color: '#fff',
     border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '13px'
+  },
+  revokeButton: {
+    flex: 1,
+    padding: '8px',
+    backgroundColor: 'var(--tt-surface-muted)',
+    color: 'var(--tt-text)',
+    border: '1px solid var(--tt-border-strong)',
     borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '13px'

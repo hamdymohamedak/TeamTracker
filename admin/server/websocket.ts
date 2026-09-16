@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { URL } from 'url';
 import { randomUUID } from 'crypto';
 import { createTimeEntry, updateTimeEntry, createActivity, getActivityById, updateActivity } from './database.js';
-import { verifyToken } from './auth.js';
+import { verifyToken, assertDeviceAccess, type DeviceTokenPayload } from './auth.js';
 import {
   enqueueRemoteCommand,
   markCommandDelivered,
@@ -38,6 +38,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
   wss.on('connection', (ws: WebSocket, req: any) => {
     console.log('🔌 New WebSocket connection');
 
+    void (async () => {
     let orgId: string | undefined;
     let employeeId: string | undefined;
     let isAdmin = false;
@@ -53,6 +54,11 @@ export function setupWebSocket(wss: WebSocketServer): void {
       const payload = verifyToken(token);
       orgId = payload.orgId;
       if (payload.type === 'device') {
+        const access = await assertDeviceAccess(payload as DeviceTokenPayload);
+        if (!access.ok) {
+          ws.close(4003, access.error);
+          return;
+        }
         employeeId = payload.employeeId;
         isAdmin = false;
         tokenType = 'device';
@@ -129,6 +135,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
     ws.on('error', (err) => {
       console.error('WebSocket error:', err);
     });
+    })();
   });
 }
 

@@ -309,6 +309,29 @@ export async function runMigrations(db: DB): Promise<void> {
         }
         console.log('  Migration 6: team_invites + employee active_project/task');
       }
+    },
+    {
+      version: 7,
+      name: 'device_sessions — persistent desktop auth until admin revoke',
+      up: async (db: DB) => {
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS device_sessions (
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            employee_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            revoked_at TEXT,
+            FOREIGN KEY (org_id) REFERENCES organizations(id),
+            FOREIGN KEY (employee_id) REFERENCES employees(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_device_sessions_employee
+            ON device_sessions(org_id, employee_id);
+          CREATE INDEX IF NOT EXISTS idx_device_sessions_active
+            ON device_sessions(employee_id, revoked_at);
+        `);
+        console.log('  Migration 7: device_sessions table created');
+      }
     }
   ];
 

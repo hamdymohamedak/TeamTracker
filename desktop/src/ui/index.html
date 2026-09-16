@@ -6,116 +6,274 @@
   <title>TeamTracker</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --ink: #141414;
+      --muted: #6b6b6b;
+      --faint: #9a9a9a;
+      --line: rgba(0, 0, 0, 0.08);
+      --surface: #ffffff;
+      --page: #f3f2f0;
+      --ok: #2f6b45;
+      --ok-bg: rgba(47, 107, 69, 0.1);
+      --bad: #b54a3f;
+      --bad-bg: rgba(181, 74, 63, 0.08);
+    }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f5f4;
-      color: #1a1a1a;
+      font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--page);
+      color: var(--ink);
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: stretch;
       justify-content: center;
-      padding: 24px;
+      -webkit-font-smoothing: antialiased;
     }
-    .card {
+    .shell {
       width: 100%;
-      max-width: 420px;
-      background: #fff;
-      border: 1px solid rgba(0,0,0,0.08);
-      border-radius: 12px;
-      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
     }
     .header {
-      padding: 24px 24px 20px;
-      background: #1a1a1a;
+      padding: 28px 28px 22px;
+      background: var(--ink);
       color: #fff;
     }
-    .header h1 { font-size: 1.25rem; font-weight: 650; }
-    .header p { margin-top: 6px; font-size: 0.875rem; color: #a3a3a3; }
-    .body { padding: 24px; }
+    .brand {
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+    .status-line {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8125rem;
+      color: #a8a8a8;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #666;
+      flex-shrink: 0;
+    }
+    .dot.on { background: #5cbf7a; box-shadow: 0 0 0 3px rgba(92, 191, 122, 0.2); }
+    .dot.off { background: #d1746a; }
+    .body {
+      padding: 24px 28px 28px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
     label {
       display: block;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
-      color: #6b6b6b;
+      color: var(--muted);
       margin-bottom: 6px;
+      letter-spacing: 0.01em;
     }
     input {
       width: 100%;
-      padding: 10px 12px;
-      border: 1px solid rgba(0,0,0,0.12);
+      padding: 11px 12px;
+      border: 1px solid var(--line);
       border-radius: 8px;
       font-size: 14px;
       margin-bottom: 14px;
+      background: #fafafa;
+      color: var(--ink);
     }
-    input:focus { outline: none; border-color: #1a1a1a; }
-    button {
+    input:focus {
+      outline: none;
+      border-color: var(--ink);
+      background: #fff;
+    }
+    .btn {
       width: 100%;
-      padding: 11px;
+      padding: 12px;
       border: none;
       border-radius: 8px;
-      background: #1a1a1a;
+      background: var(--ink);
       color: #fff;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
     }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .hint { font-size: 12px; color: #9a9a9a; line-height: 1.5; margin-bottom: 16px; }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      margin-top: auto;
+    }
+    .btn-ghost:hover { color: var(--ink); border-color: rgba(0,0,0,0.18); }
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
     .error {
-      background: rgba(181, 74, 63, 0.08);
+      background: var(--bad-bg);
       border: 1px solid rgba(181, 74, 63, 0.2);
-      color: #b54a3f;
+      color: var(--bad);
       padding: 10px 12px;
       border-radius: 8px;
       font-size: 13px;
       margin-bottom: 14px;
       display: none;
     }
-    .status-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-      font-size: 14px;
-    }
-    .status-row:last-child { border-bottom: none; }
-    .status-label { color: #6b6b6b; }
-    .status-value { font-weight: 600; text-align: right; max-width: 60%; word-break: break-word; }
-    .online { color: #4a7c59; }
-    .offline { color: #b54a3f; }
-    .footer-note {
-      margin-top: 16px;
+    .advanced-toggle {
+      background: none;
+      border: none;
+      color: var(--faint);
       font-size: 12px;
-      color: #9a9a9a;
+      cursor: pointer;
+      padding: 0;
+      margin: 4px 0 12px;
+      text-align: left;
+      width: auto;
+    }
+    .advanced-toggle:hover { color: var(--muted); }
+    #advanced-fields { display: none; }
+    .profile {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: var(--ink);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      flex-shrink: 0;
+    }
+    .profile-meta { min-width: 0; }
+    .profile-name {
+      font-size: 1.125rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .profile-role {
+      margin-top: 3px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 14px 12px;
+      background: #fafafa;
+    }
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--faint);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .stat-value {
+      margin-top: 6px;
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+    }
+    .sync-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: var(--ok-bg);
+      margin-bottom: 18px;
+      font-size: 13px;
+    }
+    .sync-row.warn { background: rgba(180, 140, 40, 0.1); }
+    .sync-row.bad { background: var(--bad-bg); }
+    .sync-label { color: var(--muted); }
+    .sync-value { font-weight: 600; color: var(--ok); }
+    .sync-row.warn .sync-value { color: #8a6a12; }
+    .sync-row.bad .sync-value { color: var(--bad); }
+    .footer-note {
+      font-size: 12px;
+      color: var(--faint);
       text-align: center;
       line-height: 1.5;
+      margin-bottom: 16px;
     }
     #setup-view, #status-view { display: none; }
+    #status-view {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+    }
   </style>
 </head>
 <body>
-  <div class="card">
+  <div class="shell">
     <div class="header">
-      <h1>TeamTracker</h1>
-      <p id="subtitle">Employee activity tracker</p>
+      <div class="brand">TeamTracker</div>
+      <div class="status-line">
+        <span class="dot" id="header-dot"></span>
+        <span id="subtitle">Employee activity tracker</span>
+      </div>
     </div>
     <div class="body">
       <div id="setup-view">
-        <p class="hint">Enter the setup token from your admin (Employees → Setup Token). The tracker runs quietly after setup.</p>
+        <p class="hint">Paste the one-time setup token from your administrator. After you connect once, you stay signed in until they reset access.</p>
         <div id="error" class="error"></div>
-        <label for="server">Admin server URL</label>
-        <input id="server" type="url" placeholder="http://localhost:3001" />
         <label for="token">Setup token</label>
         <input id="token" type="text" placeholder="Paste your setup token" autocomplete="off" />
-        <button id="connect-btn" type="button">Connect</button>
+        <button type="button" class="advanced-toggle" id="advanced-toggle">Advanced settings</button>
+        <div id="advanced-fields">
+          <label for="server">Server URL</label>
+          <input id="server" type="url" placeholder="https://track.yourcompany.com" />
+        </div>
+        <button class="btn" id="connect-btn" type="button">Connect</button>
       </div>
       <div id="status-view">
-        <div class="status-row"><span class="status-label">Employee</span><span class="status-value" id="emp-name">—</span></div>
-        <div class="status-row"><span class="status-label">Server</span><span class="status-value" id="emp-server">—</span></div>
-        <div class="status-row"><span class="status-label">Connection</span><span class="status-value" id="emp-online">—</span></div>
-        <div class="status-row"><span class="status-label">Activities today</span><span class="status-value" id="emp-activities">—</span></div>
-        <div class="status-row"><span class="status-label">Queued</span><span class="status-value" id="emp-queued">—</span></div>
-        <p class="footer-note">Tracking runs in the background. You can close this window — TeamTracker stays in your menu bar.</p>
+        <div class="profile">
+          <div class="avatar" id="emp-avatar">—</div>
+          <div class="profile-meta">
+            <div class="profile-name" id="emp-name">—</div>
+            <div class="profile-role">Signed in</div>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">Today</div>
+            <div class="stat-value" id="emp-activities">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Pending</div>
+            <div class="stat-value" id="emp-queued">0</div>
+          </div>
+        </div>
+        <div class="sync-row" id="sync-row">
+          <span class="sync-label">Connection</span>
+          <span class="sync-value" id="emp-online">—</span>
+        </div>
+        <p class="footer-note">You stay signed in on this device. Tracking runs in the background — close this window anytime; TeamTracker stays in your menu bar.</p>
+        <button class="btn btn-ghost" id="logout-btn" type="button">Sign out</button>
       </div>
     </div>
   </div>
@@ -126,10 +284,29 @@
     const serverInput = document.getElementById('server');
     const tokenInput = document.getElementById('token');
     const connectBtn = document.getElementById('connect-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const advancedToggle = document.getElementById('advanced-toggle');
+    const advancedFields = document.getElementById('advanced-fields');
+    const headerDot = document.getElementById('header-dot');
+
+    let advancedOpen = false;
+
+    advancedToggle.addEventListener('click', () => {
+      advancedOpen = !advancedOpen;
+      advancedFields.style.display = advancedOpen ? 'block' : 'none';
+      advancedToggle.textContent = advancedOpen ? 'Hide advanced settings' : 'Advanced settings';
+    });
 
     function showError(msg) {
       errorEl.textContent = msg;
       errorEl.style.display = msg ? 'block' : 'none';
+    }
+
+    function initials(name) {
+      const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return '?';
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
 
     function renderStatus(data) {
@@ -139,19 +316,38 @@
         setupView.style.display = 'block';
         statusView.style.display = 'none';
         document.getElementById('subtitle').textContent = 'Connect with your setup token';
-        if (cfg.serverUrl) serverInput.value = cfg.serverUrl;
+        headerDot.className = 'dot';
+        if (data.defaultServerUrl) serverInput.value = data.defaultServerUrl;
         return;
       }
+
       setupView.style.display = 'none';
-      statusView.style.display = 'block';
-      document.getElementById('subtitle').textContent = 'Connected and tracking';
-      document.getElementById('emp-name').textContent = cfg.employeeName || cfg.employeeId || '—';
-      document.getElementById('emp-server').textContent = cfg.serverUrl || '—';
-      const onlineEl = document.getElementById('emp-online');
-      onlineEl.textContent = data.isOnline ? 'Online' : 'Offline';
-      onlineEl.className = 'status-value ' + (data.isOnline ? 'online' : 'offline');
+      statusView.style.display = 'flex';
+      const name = cfg.employeeName || cfg.employeeId || 'Employee';
+      document.getElementById('emp-name').textContent = name;
+      document.getElementById('emp-avatar').textContent = initials(name);
       document.getElementById('emp-activities').textContent = String(data.activitiesCount ?? 0);
       document.getElementById('emp-queued').textContent = String(data.queuedCount ?? 0);
+
+      const online = !!data.isOnline;
+      const queued = Number(data.queuedCount || 0);
+      const syncRow = document.getElementById('sync-row');
+      const onlineEl = document.getElementById('emp-online');
+      headerDot.className = 'dot ' + (online ? 'on' : 'off');
+
+      if (!online) {
+        document.getElementById('subtitle').textContent = 'Working offline';
+        syncRow.className = 'sync-row bad';
+        onlineEl.textContent = 'Offline — will sync later';
+      } else if (queued > 0) {
+        document.getElementById('subtitle').textContent = 'Connected and syncing';
+        syncRow.className = 'sync-row warn';
+        onlineEl.textContent = 'Syncing…';
+      } else {
+        document.getElementById('subtitle').textContent = 'Connected and tracking';
+        syncRow.className = 'sync-row';
+        onlineEl.textContent = 'All synced';
+      }
     }
 
     async function refresh() {
@@ -172,7 +368,10 @@
         return;
       }
       if (!serverUrl) {
-        showError('Please enter the admin server URL.');
+        showError('Open Advanced settings and enter the server URL.');
+        advancedOpen = true;
+        advancedFields.style.display = 'block';
+        advancedToggle.textContent = 'Hide advanced settings';
         return;
       }
       connectBtn.disabled = true;
@@ -186,10 +385,25 @@
         tokenInput.value = '';
         await refresh();
       } catch (e) {
-        showError('Connection failed. Check the server URL and token.');
+        showError('Connection failed. Check your token and try again.');
       } finally {
         connectBtn.disabled = false;
         connectBtn.textContent = 'Connect';
+      }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+      const ok = window.confirm('Sign out of TeamTracker on this device? You will need a new setup token to reconnect.');
+      if (!ok) return;
+      logoutBtn.disabled = true;
+      try {
+        await window.teamtracker.logout();
+        showError('');
+        await refresh();
+      } catch (e) {
+        showError('Could not sign out. Try again.');
+      } finally {
+        logoutBtn.disabled = false;
       }
     });
 

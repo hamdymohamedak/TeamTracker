@@ -37,7 +37,7 @@ import {
   getRoleStatus,
   ROLE_PROFILES
 } from './role-detector.js';
-import { requireAuth, requireDeviceAuth, requireAnyAuth } from './auth.js';
+import { requireAuth, requireDeviceAuth, requireAnyAuth, revokeEmployeeDeviceSessions } from './auth.js';
 import { getConnectedEmployees } from './websocket.js';
 import { fixActivityClassification } from './server-classifier-fixer.js';
 
@@ -161,6 +161,7 @@ export function setupRoutes(app: Express): void {
   app.delete('/api/employees/:id', requireAuth, async (req, res) => {
     try {
       await deleteEmployee(req.orgId!, req.params.id);
+      await revokeEmployeeDeviceSessions(req.orgId!, req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
