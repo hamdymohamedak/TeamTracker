@@ -21,6 +21,7 @@ import { useWebSocket } from '../contexts/WebSocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip, SectionTitle } from '../components/HelpTip';
+import { EmptyIcon } from '../components/Icon';
 
 import type { Employee } from '../../../shared-types';
 import { formatDurationSeconds } from '../../../shared-types';
@@ -579,7 +580,7 @@ export const Dashboard: React.FC = () => {
     return (
       <div style={styles.container}>
         <div style={errorStyles.container}>
-          <div style={errorStyles.icon}>⚠️</div>
+          <EmptyIcon icon={AlertTriangle} size={48} color="var(--tt-danger)" />
           <h2 style={errorStyles.title}>{t('dashboard.failedLoad')}</h2>
           <p style={errorStyles.message}>{error}</p>
           <button onClick={loadData} style={errorStyles.retryButton}>

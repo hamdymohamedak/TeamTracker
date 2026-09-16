@@ -2,7 +2,7 @@
 // Live frames are sent ONLY while an admin has started a live-view session.
 
 import WebSocket from 'ws';
-import { getServerUrl } from './config.js';
+import { getEffectiveServerUrl } from './config.js';
 import { captureNow, refreshOrgCapturePolicy } from './screenshot.js';
 import {
   configureLiveViewSender,
@@ -94,7 +94,7 @@ async function pollCommands(): Promise<void> {
   const token = getTokenFn();
   if (!token) return;
   try {
-    const res = await fetch(`${getServerUrl()}/api/screenshots/commands`, {
+    const res = await fetch(`${getEffectiveServerUrl()}/api/screenshots/commands`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return;
@@ -140,7 +140,7 @@ function connectSocket(): void {
     ws = null;
   }
 
-  const url = toWsUrl(getServerUrl(), token);
+  const url = toWsUrl(getEffectiveServerUrl(), token);
   try {
     ws = new WebSocket(url);
   } catch (err) {

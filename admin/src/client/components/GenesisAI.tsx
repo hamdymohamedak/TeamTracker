@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Bot, Lightbulb, X } from 'lucide-react';
 import { api } from '../lib/api';
 import './GenesisAI.css';
 
@@ -138,7 +139,7 @@ export function GenesisAI() {
         onClick={() => setIsOpen(true)}
         title="Ask Genesis AI"
       >
-        <span className="genesis-fab-icon">🤖</span>
+        <span className="genesis-fab-icon"><Bot size={20} strokeWidth={2} aria-hidden /></span>
         <span className="genesis-fab-text">Genesis AI</span>
       </button>
     );
@@ -148,7 +149,7 @@ export function GenesisAI() {
     <div className="genesis-panel">
       <div className="genesis-header">
         <div className="genesis-title">
-          <span className="genesis-icon">🤖</span>
+          <span className="genesis-icon"><Bot size={24} strokeWidth={2} aria-hidden /></span>
           <div>
             <h3>Genesis AI</h3>
             <span className="genesis-subtitle">
@@ -165,11 +166,13 @@ export function GenesisAI() {
             />
             <span>LLM Mode</span>
           </label>
-          <button 
+          <button
+            type="button"
             className="genesis-close"
             onClick={() => setIsOpen(false)}
+            aria-label="Close"
           >
-            ×
+            <X size={20} strokeWidth={2} aria-hidden />
           </button>
         </div>
       </div>
@@ -177,17 +180,20 @@ export function GenesisAI() {
       <div className="genesis-messages">
         {messages.length === 0 && (
           <div className="genesis-welcome">
-            <h4>👋 Hi! I'm Genesis, your AI analytics assistant.</h4>
+            <h4>Hi! I'm Genesis, your AI analytics assistant.</h4>
             <p>I can help you understand your team's productivity data.</p>
             <div className="genesis-quick-actions">
-              <button onClick={() => handleSuggestionClick('Who was most productive today?')}>
-                💡 Who was most productive today?
+              <button type="button" onClick={() => handleSuggestionClick('Who was most productive today?')}>
+                <Lightbulb size={14} strokeWidth={2} aria-hidden />
+                Who was most productive today?
               </button>
-              <button onClick={() => handleSuggestionClick('Show repetitive tasks')}>
-                💡 Show repetitive tasks
+              <button type="button" onClick={() => handleSuggestionClick('Show repetitive tasks')}>
+                <Lightbulb size={14} strokeWidth={2} aria-hidden />
+                Show repetitive tasks
               </button>
-              <button onClick={() => handleSuggestionClick('Time spent on meetings')}>
-                💡 Time spent on meetings
+              <button type="button" onClick={() => handleSuggestionClick('Time spent on meetings')}>
+                <Lightbulb size={14} strokeWidth={2} aria-hidden />
+                Time spent on meetings
               </button>
             </div>
           </div>
@@ -196,7 +202,9 @@ export function GenesisAI() {
         {messages.map((message) => (
           <div key={message.id} className={`genesis-message ${message.role}`}>
             <div className="genesis-message-content">
-              {message.role === 'assistant' && <span className="genesis-avatar">🤖</span>}
+              {message.role === 'assistant' && (
+                <span className="genesis-avatar"><Bot size={16} strokeWidth={2} aria-hidden /></span>
+              )}
               <div className="genesis-bubble">
                 <div className="genesis-text" dangerouslySetInnerHTML={{ __html: formatMarkdown(message.content) }} />
                 
@@ -205,10 +213,12 @@ export function GenesisAI() {
                     {message.suggestions.map((suggestion, idx) => (
                       <button
                         key={idx}
+                        type="button"
                         className="genesis-suggestion"
                         onClick={() => handleSuggestionClick(suggestion)}
                       >
-                        💡 {suggestion}
+                        <Lightbulb size={14} strokeWidth={2} aria-hidden />
+                        {suggestion}
                       </button>
                     ))}
                   </div>
@@ -221,7 +231,7 @@ export function GenesisAI() {
         {isLoading && (
           <div className="genesis-message assistant">
             <div className="genesis-message-content">
-              <span className="genesis-avatar">🤖</span>
+              <span className="genesis-avatar"><Bot size={16} strokeWidth={2} aria-hidden /></span>
               <div className="genesis-bubble">
                 <div className="genesis-typing">
                   <span></span>

@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { SUPPORTED_CURRENCIES } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
+import { ModalCloseButton, StatusLine } from './Icon';
 
 // Small IANA timezone picker — mirrors the list in Employees.tsx.
 const COMMON_TIMEZONES = [
@@ -207,7 +208,7 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
       >
         <div className="tt-modal-header">
           <h2 className="tt-modal-title">{t('org.title')}</h2>
-          <button type="button" className="tt-modal-close" onClick={closeModal} aria-label={t('common.close')}>✕</button>
+          <ModalCloseButton onClick={closeModal} label={t('common.close')} />
         </div>
 
         <div className="tt-modal-body">
@@ -221,7 +222,7 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
             marginBottom: '12px',
             fontSize: '13px'
           }}>
-            ⚠️ {error}
+            <StatusLine variant="error">{error}</StatusLine>
           </div>
         )}
 
@@ -236,7 +237,7 @@ export const OrgSettingsModal: React.FC<Props> = ({ onClose }) => {
             fontSize: '13px',
             fontWeight: 500
           }}>
-            ✅ {flash}
+            <StatusLine variant="success">{flash}</StatusLine>
           </div>
         )}
 

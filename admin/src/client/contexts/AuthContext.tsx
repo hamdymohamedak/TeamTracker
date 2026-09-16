@@ -25,7 +25,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, orgName: string) => Promise<void>;
+  signup: (email: string, password: string, name: string, orgName: string) => Promise<string[] | undefined>;
   logout: () => void;
   updateOrg: (patch: Partial<Org>) => void;
 }
@@ -102,6 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(d.user);
     setOrg(d.org || null);
+    return Array.isArray(d.recoveryCodes) ? (d.recoveryCodes as string[]) : undefined;
   };
 
   const updateOrg = useCallback((patch: Partial<Org>) => {

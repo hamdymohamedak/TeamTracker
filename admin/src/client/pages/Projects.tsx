@@ -5,6 +5,8 @@ import { SUPPORTED_CURRENCIES, formatCurrency } from '../../../shared-types';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
+import { EmptyIcon, IconLabel, ModalCloseButton, StatusLine } from '../components/Icon';
+import { AlertTriangle, Briefcase, Calendar, DollarSign, User } from 'lucide-react';
 
 export const Projects: React.FC = () => {
   const { t } = useI18n();
@@ -124,7 +126,7 @@ export const Projects: React.FC = () => {
     return (
       <div style={styles.container}>
         <div style={errorStyles.container}>
-          <div style={errorStyles.icon}>⚠️</div>
+          <EmptyIcon icon={AlertTriangle} size={48} color="var(--tt-danger)" />
           <h2 style={errorStyles.title}>Error Loading Projects</h2>
           <p style={errorStyles.message}>{error}</p>
           <button onClick={loadProjects} style={errorStyles.retryButton}>
@@ -167,13 +169,13 @@ export const Projects: React.FC = () => {
               <h2 id="modal-title" className="tt-modal-title">
                 {editingProject ? t('projects.edit') : t('projects.addTitle')}
               </h2>
-              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
+              <ModalCloseButton onClick={() => setShowForm(false)} />
             </div>
             <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
               <div className="tt-modal-body">
                 {formError && (
                   <div style={styles.errorBanner}>
-                    ⚠️ {formError}
+                    <StatusLine variant="error">{formError}</StatusLine>
                   </div>
                 )}
                 <div className="tt-modal-form tt-modal-form--2col">
@@ -241,7 +243,7 @@ export const Projects: React.FC = () => {
           borderRadius: 'var(--tt-radius)',
           boxShadow: 'var(--tt-shadow-sm)',
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>💼</div>
+          <EmptyIcon icon={Briefcase} size={48} />
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
             No projects yet
           </h2>
@@ -284,15 +286,19 @@ export const Projects: React.FC = () => {
                 <p style={styles.description}>{project.description}</p>
               )}
               {project.clientName && (
-                <p style={styles.info}>👤 {project.clientName}</p>
+                <p style={styles.info}><IconLabel icon={User}>{project.clientName}</IconLabel></p>
               )}
               {project.budget ? (
                 <p style={styles.info}>
-                  💰 Budget: {formatCurrency(project.budget, defaultCurrency)}
+                  <IconLabel icon={DollarSign}>
+                    Budget: {formatCurrency(project.budget, defaultCurrency)}
+                  </IconLabel>
                 </p>
               ) : null}
               <p style={styles.info}>
-                📅 Started: {new Date(project.startDate).toLocaleDateString()}
+                <IconLabel icon={Calendar}>
+                  Started: {new Date(project.startDate).toLocaleDateString()}
+                </IconLabel>
               </p>
             </div>
             <div style={styles.cardActions}>

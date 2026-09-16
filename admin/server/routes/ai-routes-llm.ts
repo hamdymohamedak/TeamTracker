@@ -1,35 +1,46 @@
 import { Router } from 'express';
 import { getDatabase } from '../database.js';
-import { detectRepetitivePatterns, getTopAgentOpportunities } from '../ai-analytics.js';
 import { computeProductivityStats } from '../../shared-types.js';
 import { requireAuth } from '../auth.js';
+import { rateLimit } from '../rate-limit.js';
+
+const router: import('express').Router = Router();
+router.use(requireAuth);
+router.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    keyPrefix: 'ai-llm',
+    keyFn: (req) => req.orgId || req.ip || 'unknown',
+    message: 'AI rate limit exceeded. Please wait a moment.',
+  })
+);
 
 /**
  * Helper that mirrors the unified productivity formula used by the Dashboard
- * and Reports endpoints. The Genesis AI prompt previously quoted
- * AVG(productivity_score) which gave a different (diluted) number than what
- * the admin saw on the Dashboard, leading to e.g. "Mohammed at 54%" while
- * the Dashboard said 99%. Computing it here from the activity rows
- * guarantees Genesis sees the same numbers as the human-facing pages.
- *
- * `orgFilter` is the WHERE-clause fragment used elsewhere in this file —
- * something like `AND org_id = 'xxx'` or `AND a.org_id = 'xxx'`. We accept
- * either by stripping the alias and re-prefixing.
+ * and Reports endpoints. Computes score from activity rows so Genesis matches
+ * human-facing pages. Always org-scoped via parameterized org_id.
  */
-async function unifiedScoreFor(db: any, orgFilter: string, employeeFilter: string, daysBack: number): Promise<{ score: number; productiveSec: number; totalSec: number; }> {
-  // Normalize the orgFilter to use the `a.` alias since this query selects
-  // FROM activities a. The caller may pass either form.
-  let normalizedOrgFilter = '';
-  if (orgFilter) {
-    const stripped = orgFilter.replace(/^AND\s*/i, '').replace(/^a\./, '');
-    normalizedOrgFilter = `AND a.${stripped}`;
+async function unifiedScoreFor(
+  db: any,
+  orgId: string,
+  employeeId: string | null,
+  daysBack: number
+): Promise<{ score: number; productiveSec: number; totalSec: number }> {
+  const days = Math.max(1, Math.min(90, Math.floor(Number(daysBack) || 7)));
+  const params: any[] = [`-${days} days`, orgId];
+  let employeeClause = '';
+  if (employeeId) {
+    employeeClause = 'AND a.employee_id = ?';
+    params.push(employeeId);
   }
   const rows = await db.all(
     `SELECT a.category, a.category_name, a.productivity_level, a.is_idle, a.duration_seconds
      FROM activities a
-     WHERE a.timestamp > datetime('now', '-${daysBack} days')
-       ${normalizedOrgFilter}
-       ${employeeFilter}`
+     WHERE a.timestamp > datetime('now', ?)
+       AND a.org_id = ?
+       ${employeeClause}`,
+    params
   );
   const stats = computeProductivityStats(
     rows.map((r: any) => ({
@@ -47,8 +58,6 @@ async function unifiedScoreFor(db: any, orgFilter: string, employeeFilter: strin
   };
 }
 
-const router = Router();
-
 interface ChatRequest {
   question: string;
   conversationId?: string;
@@ -62,8 +71,9 @@ interface ChatResponse {
   conversationId: string;
 }
 
-// Conversation memory store (in production, use Redis)
-const conversations = new Map<string, Array<{role: 'user' | 'assistant', content: string}>>();
+// Conversation memory store (in production, use Redis).
+// Keys are always `${orgId}:${convId}` so tenants cannot share history.
+const conversations = new Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>();
 
 // DeepSeek API configuration (works from US servers)
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
@@ -72,7 +82,7 @@ const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 /**
  * Call DeepSeek LLM API
  */
-async function callLLM(messages: Array<{role: string, content: string}>, temperature = 0.7): Promise<string> {
+async function callLLM(messages: Array<{ role: string; content: string }>, temperature = 0.7): Promise<string> {
   if (!DEEPSEEK_API_KEY) {
     return 'LLM not configured. Please set DEEPSEEK_API_KEY environment variable.';
   }
@@ -107,13 +117,9 @@ async function callLLM(messages: Array<{role: string, content: string}>, tempera
 }
 
 /**
- * Generate system prompt with current data context
+ * Generate system prompt with current data context (org-scoped, parameterized).
  */
-async function generateSystemPrompt(db: any, orgId?: string): Promise<string> {
-  const orgFilter = orgId ? `AND org_id = '${orgId}'` : '';
-  const orgFilterWhere = orgId ? `WHERE org_id = '${orgId}'` : '';
-  const orgFilterAnd = orgId ? `AND a.org_id = '${orgId}'` : '';
-
+async function generateSystemPrompt(db: any, orgId: string): Promise<string> {
   // Helper: format duration smartly
   const fmt = (totalSeconds: number) => {
     if (!totalSeconds || totalSeconds <= 0) return '0m';
@@ -123,17 +129,16 @@ async function generateSystemPrompt(db: any, orgId?: string): Promise<string> {
     return `${hrs}h`;
   };
 
-  // Get current team stats — count + raw seconds via SQL, but compute the
-  // PRODUCTIVITY SCORE in JS so it matches what Dashboard + Reports show.
-  const teamCounts = await db.get(`
-    SELECT
+  const teamCounts = await db.get(
+    `SELECT
       COUNT(DISTINCT employee_id) as employee_count,
       COUNT(*) as total_activities,
       SUM(duration_seconds) as total_seconds
     FROM activities
-    WHERE timestamp > datetime('now', '-7 days') ${orgFilter}
-  `);
-  const team7d = await unifiedScoreFor(db, orgFilter, '', 7);
+    WHERE timestamp > datetime('now', '-7 days') AND org_id = ?`,
+    [orgId]
+  );
+  const team7d = await unifiedScoreFor(db, orgId, null, 7);
   const stats = {
     employee_count: teamCounts?.employee_count || 0,
     total_activities: teamCounts?.total_activities || 0,
@@ -141,30 +146,26 @@ async function generateSystemPrompt(db: any, orgId?: string): Promise<string> {
     avg_productivity: team7d.score
   };
 
-  // Get employee list
-  const employees = await db.all(`SELECT name, department, hourly_rate FROM employees WHERE is_active = 1 ${orgFilter}`);
+  const employees = await db.all(
+    `SELECT name, department, hourly_rate FROM employees WHERE is_active = 1 AND org_id = ?`,
+    [orgId]
+  );
 
-  // Per-employee daily summary using the unified formula. We pull the
-  // candidate employees first, then compute their score in JS.
-  // org filter on the employees table is `e.org_id = '...'`; on activities
-  // it's `a.org_id = '...'`. Building both directly here avoids the brittle
-  // string-rewriting that the previous version had.
-  const empOrgFilter = orgId ? `AND e.org_id = '${orgId}'` : '';
-  const todayEmpRows = await db.all(`
-    SELECT e.id, e.name, COUNT(a.id) as activities, SUM(a.duration_seconds) as total_seconds
+  const todayEmpRows = await db.all(
+    `SELECT e.id, e.name, COUNT(a.id) as activities, SUM(a.duration_seconds) as total_seconds
     FROM employees e
     LEFT JOIN activities a ON a.employee_id = e.id
       AND a.timestamp > datetime('now', '-1 day')
-      ${orgFilterAnd}
-    WHERE e.is_active = 1 ${empOrgFilter}
+      AND a.org_id = ?
+    WHERE e.is_active = 1 AND e.org_id = ?
     GROUP BY e.id
     ORDER BY activities DESC
-    LIMIT 5
-  `);
+    LIMIT 5`,
+    [orgId, orgId]
+  );
   const recentActivity: any[] = [];
   for (const row of todayEmpRows) {
-    const empFilter = ` AND a.employee_id = '${row.id}'`;
-    const empStats = await unifiedScoreFor(db, orgFilter, empFilter, 1);
+    const empStats = await unifiedScoreFor(db, orgId, row.id, 1);
     recentActivity.push({
       name: row.name,
       activities: row.activities,
@@ -173,10 +174,8 @@ async function generateSystemPrompt(db: any, orgId?: string): Promise<string> {
     });
   }
 
-  // Get top apps by time spent. We also pull category-aware buckets so the
-  // prompt can list each app's productive contribution honestly.
-  const topApps = await db.all(`
-    SELECT
+  const topApps = await db.all(
+    `SELECT
       app_name,
       category_name,
       SUM(duration_seconds) as total_seconds,
@@ -184,33 +183,32 @@ async function generateSystemPrompt(db: any, orgId?: string): Promise<string> {
       SUM(CASE WHEN productivity_level = 'productive' AND is_idle = 0 THEN duration_seconds ELSE 0 END) as productive_seconds,
       SUM(CASE WHEN productivity_level = 'unproductive' AND is_idle = 0 THEN duration_seconds ELSE 0 END) as unproductive_seconds
     FROM activities
-    WHERE timestamp > datetime('now', '-7 days') ${orgFilter}
+    WHERE timestamp > datetime('now', '-7 days') AND org_id = ?
       AND app_name NOT IN ('loginwindow', 'Window Server', 'kernel', 'system', 'Finder', 'Dock')
     GROUP BY app_name
     ORDER BY total_seconds DESC
-    LIMIT 10
-  `);
-  // Compute the unified score (productive / (productive + unproductive)) per app.
+    LIMIT 10`,
+    [orgId]
+  );
   for (const a of topApps) {
     const active = (a.productive_seconds || 0) + (a.unproductive_seconds || 0);
     a.avg_score = active > 0 ? Math.round((a.productive_seconds / active) * 100) : 0;
   }
 
-  // Get productivity breakdown by category
-  const categoryBreakdown = await db.all(`
-    SELECT
+  const categoryBreakdown = await db.all(
+    `SELECT
       category_name,
       SUM(duration_seconds) as total_seconds,
       COUNT(*) as activities
     FROM activities
-    WHERE timestamp > datetime('now', '-7 days') ${orgFilter}
+    WHERE timestamp > datetime('now', '-7 days') AND org_id = ?
     GROUP BY category
-    ORDER BY total_seconds DESC
-  `);
+    ORDER BY total_seconds DESC`,
+    [orgId]
+  );
 
-  // Get employee app usage patterns — also using the unified bucket math.
-  const employeePatterns = await db.all(`
-    SELECT
+  const employeePatterns = await db.all(
+    `SELECT
       e.name,
       a.app_name,
       a.category_name,
@@ -219,68 +217,59 @@ async function generateSystemPrompt(db: any, orgId?: string): Promise<string> {
       SUM(CASE WHEN a.productivity_level = 'productive' AND a.is_idle = 0 THEN a.duration_seconds ELSE 0 END) as productive_seconds,
       SUM(CASE WHEN a.productivity_level = 'unproductive' AND a.is_idle = 0 THEN a.duration_seconds ELSE 0 END) as unproductive_seconds
     FROM activities a
-    JOIN employees e ON a.employee_id = e.id
-    WHERE a.timestamp > datetime('now', '-7 days') ${orgFilterAnd}
+    JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
+    WHERE a.timestamp > datetime('now', '-7 days') AND a.org_id = ?
       AND a.app_name NOT IN ('loginwindow', 'Window Server', 'kernel', 'system', 'Finder', 'Dock')
     GROUP BY e.id, a.app_name
     HAVING times_used > 5
     ORDER BY times_used DESC
-    LIMIT 15
-  `);
+    LIMIT 15`,
+    [orgId]
+  );
   for (const p of employeePatterns) {
     const active = (p.productive_seconds || 0) + (p.unproductive_seconds || 0);
     p.avg_productivity = active > 0 ? Math.round((p.productive_seconds / active) * 100) : 0;
   }
 
-  // Top window titles per employee for TODAY. The 2026-04-07 audit caught
-  // Genesis saying "I cannot identify any Wix work" while the DB had 100+
-  // snapshots with title "Wix Studio | Overflow Plumbing & Drain". The
-  // prompt only had app names, so it was structurally blind to anything
-  // running inside a browser. This pulls the top 8 distinct window titles
-  // per employee from today so Genesis can answer "how much time on X
-  // today" for X = whatever the title says.
-  const todayTitles = await db.all(`
-    SELECT
+  const todayTitles = await db.all(
+    `SELECT
       e.name as employee_name,
       a.window_title,
       COUNT(*) as snapshots,
       SUM(a.duration_seconds) as total_seconds
     FROM activities a
-    JOIN employees e ON a.employee_id = e.id
-    WHERE a.timestamp > datetime('now', '-1 day') ${orgFilterAnd}
+    JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
+    WHERE a.timestamp > datetime('now', '-1 day') AND a.org_id = ?
       AND a.window_title IS NOT NULL
       AND a.window_title != ''
       AND a.app_name NOT IN ('loginwindow', 'Window Server', 'kernel', 'system', 'Finder', 'Dock')
     GROUP BY e.id, a.window_title
     ORDER BY snapshots DESC
-    LIMIT 40
-  `);
+    LIMIT 40`,
+    [orgId]
+  );
 
-  // First/last activity timestamp + biggest tracking gap per employee for
-  // TODAY. The audit also caught Genesis being unable to call out the 9h
-  // 45m work-day gap (laptop slept). With first/last + biggest-gap minutes
-  // in the prompt, Genesis can say "Mohammed had a 9h gap from 9:09am to
-  // 6:54pm — likely a sleeping laptop" instead of "I have no time data".
-  const todayBoundsRows = await db.all(`
-    SELECT
+  const todayBoundsRows = await db.all(
+    `SELECT
       e.name as employee_name,
       MIN(a.timestamp) as first_ts,
       MAX(a.timestamp) as last_ts
     FROM activities a
-    JOIN employees e ON a.employee_id = e.id
-    WHERE a.timestamp > datetime('now', '-1 day') ${orgFilterAnd}
+    JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
+    WHERE a.timestamp > datetime('now', '-1 day') AND a.org_id = ?
     GROUP BY e.id
-    HAVING COUNT(a.id) > 0
-  `);
-  // Compute biggest-gap (in seconds) by walking each employee's snapshots.
+    HAVING COUNT(a.id) > 0`,
+    [orgId]
+  );
+
   const employeeGaps: Array<{ name: string; firstTs: string; lastTs: string; biggestGapSec: number; gapStart?: string; gapEnd?: string }> = [];
   for (const row of todayBoundsRows) {
     const stamps = await db.all(
       `SELECT timestamp FROM activities a
-       JOIN employees e ON a.employee_id = e.id
-       WHERE e.name = ? AND a.timestamp > datetime('now', '-1 day') ${orgFilterAnd}
+       JOIN employees e ON a.employee_id = e.id AND e.org_id = a.org_id
+       WHERE e.name = ? AND a.timestamp > datetime('now', '-1 day') AND a.org_id = ?
        ORDER BY timestamp ASC`,
-      [row.employee_name]
+      [row.employee_name, orgId]
     );
     let biggestGapSec = 0;
     let gapStart: string | undefined;
@@ -372,13 +361,9 @@ TONE: Professional, helpful, like a smart analyst presenting findings to a busin
 
 /**
  * Main chat endpoint with LLM. Requires auth so we can scope all of the
- * stats queries to the caller's org. Without this, req.orgId is undefined
- * and the system prompt was being generated with no org filter, which made
- * Genesis hallucinate "0 snapshots, 0m tracked" because the query result
- * structure (when called from an unauthenticated context) didn't match the
- * employee row Genesis was being asked about.
+ * stats queries to the caller's org.
  */
-router.post('/chat', requireAuth, async (req, res) => {
+router.post('/chat', async (req, res) => {
   try {
     const { question, conversationId }: ChatRequest = req.body;
 
@@ -386,45 +371,53 @@ router.post('/chat', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Question is required' });
     }
 
+    const orgId = req.orgId;
+    if (!orgId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const db = getDatabase();
-    const convId = conversationId || generateConversationId();
 
-    // Get or create conversation history. Conversations are keyed by ID +
-    // org so two orgs can never see each other's history even if they
-    // somehow guess the same convId.
-    let history = conversations.get(convId) || [];
+    // Reject conversation IDs that claim another org's composite key
+    if (conversationId && conversationId.includes(':')) {
+      const prefix = conversationId.split(':')[0];
+      if (prefix !== orgId) {
+        return res.status(403).json({ error: 'Invalid conversation' });
+      }
+    }
 
-    // Generate system prompt with current data (scoped to org)
-    const orgId = (req as any).orgId as string;
+    const convId =
+      conversationId && conversationId.startsWith(`${orgId}:`)
+        ? conversationId.slice(orgId.length + 1)
+        : conversationId || generateConversationId();
+    const memoryKey = `${orgId}:${convId}`;
+
+    let history = conversations.get(memoryKey) || [];
+
     const systemPrompt = await generateSystemPrompt(db, orgId);
-    
-    // Build messages array
+
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...history.slice(-6), // Keep last 6 messages for context
+      ...history.slice(-6),
       { role: 'user', content: question }
     ];
 
-    // Call LLM
-    let answer = await callLLM(messages);
-    
-    // Update conversation history
+    const answer = await callLLM(messages);
+
     history.push({ role: 'user', content: question });
     history.push({ role: 'assistant', content: answer });
-    conversations.set(convId, history);
+    conversations.set(memoryKey, history);
 
-    // Generate contextual suggestions based on the conversation
-    const suggestions = await generateSuggestions(question, answer, db);
+    const suggestions = await generateSuggestions(question, answer, db, orgId);
 
     res.json({
       answer,
       suggestions,
       conversationId: convId
     });
-
   } catch (error) {
     console.error('AI chat error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       answer: 'Sorry, I encountered an error processing your question. Please try again.',
       conversationId: generateConversationId()
     });
@@ -432,28 +425,27 @@ router.post('/chat', requireAuth, async (req, res) => {
 });
 
 /**
- * Generate contextual suggestions based on conversation
+ * Generate contextual suggestions based on conversation (org-scoped).
  */
-async function generateSuggestions(question: string, answer: string, db: any): Promise<string[]> {
+async function generateSuggestions(question: string, answer: string, db: any, orgId: string): Promise<string[]> {
   const suggestions: string[] = [];
-  
-  // Extract employee names mentioned
-  const employees = await db.all('SELECT name FROM employees WHERE is_active = 1');
-  const mentionedEmployee = employees.find((e: any) => 
+
+  const employees = await db.all(
+    'SELECT name FROM employees WHERE is_active = 1 AND org_id = ?',
+    [orgId]
+  );
+  const mentionedEmployee = employees.find((e: any) =>
     question.toLowerCase().includes(e.name.toLowerCase())
   );
-  
+
   if (mentionedEmployee) {
-    // If an employee was discussed, suggest related queries
     suggestions.push(`What can ${mentionedEmployee.name} improve?`);
     suggestions.push(`Show ${mentionedEmployee.name}'s app usage`);
-  } else {
-    // Otherwise suggest checking on a random employee
+  } else if (employees.length > 0) {
     const randomEmployee = employees[Math.floor(Math.random() * employees.length)];
     suggestions.push(`How is ${randomEmployee.name} doing?`);
   }
-  
-  // Add diverse analytical suggestions
+
   const analyticalSuggestions = [
     'Compare team productivity this week vs last week',
     'What are the top time-wasting apps?',
@@ -462,11 +454,10 @@ async function generateSuggestions(question: string, answer: string, db: any): P
     'What times of day is the team most productive?',
     'Show department comparison'
   ];
-  
-  // Pick 2 random analytical suggestions
+
   const shuffled = analyticalSuggestions.sort(() => 0.5 - Math.random());
   suggestions.push(...shuffled.slice(0, 2));
-  
+
   return suggestions.slice(0, 3);
 }
 
@@ -476,10 +467,8 @@ async function generateSuggestions(question: string, answer: string, db: any): P
 function enhanceResponseWithActions(answer: string, question: string): string {
   const lowerQuestion = question.toLowerCase();
   const lowerAnswer = answer.toLowerCase();
-  
-  // Add specific actions based on question type (always add, don't check for existing)
+
   if (lowerQuestion.includes('repetitive') || lowerQuestion.includes('automate')) {
-    // Don't add if already has Quick Wins section
     if (!lowerAnswer.includes('quick wins') && !lowerAnswer.includes('do these today')) {
       return answer + '\n\n**Quick Wins (Do These Today):**\n' +
         '1. **Chrome users**: Install Toby extension (toby.tab) — organize tabs in 5 minutes\n' +
@@ -491,7 +480,7 @@ function enhanceResponseWithActions(answer: string, question: string): string {
         '- Use VS Code Remote-SSH to edit server files directly';
     }
   }
-  
+
   if (lowerQuestion.includes('productive') || lowerQuestion.includes('focus') || lowerQuestion.includes('distraction')) {
     if (!lowerAnswer.includes('immediate actions') && !lowerAnswer.includes('cold turkey')) {
       return answer + '\n\n**Immediate Actions:**\n' +
@@ -504,7 +493,7 @@ function enhanceResponseWithActions(answer: string, question: string): string {
         '- Review weekly: Is productive time increasing?';
     }
   }
-  
+
   if (lowerQuestion.includes('burnout') || lowerQuestion.includes('overtime') || lowerQuestion.includes('stress')) {
     if (!lowerAnswer.includes('immediate actions')) {
       return answer + '\n\n**Immediate Actions:**\n' +
@@ -517,7 +506,7 @@ function enhanceResponseWithActions(answer: string, question: string): string {
         '- Consider hiring if team is consistently overloaded';
     }
   }
-  
+
   if (lowerQuestion.includes('slack') || lowerQuestion.includes('email') || lowerQuestion.includes('meeting') || lowerQuestion.includes('communication')) {
     if (!lowerAnswer.includes('reduce communication overhead')) {
       return answer + '\n\n**Reduce Communication Overhead:**\n' +
@@ -530,15 +519,14 @@ function enhanceResponseWithActions(answer: string, question: string): string {
         '- Calendar: Block "focus time" so others can\'t book meetings';
     }
   }
-  
-  // Default enhancement for other queries
+
   if (!answer.includes('**') && answer.length > 200 && !lowerAnswer.includes('next steps')) {
     return answer + '\n\n**Next Steps:**\n' +
       '1. Check this data again in 1 week to see trends\n' +
       '2. Share insights with the employee (transparency builds trust)\n' +
       '3. Set 1 specific goal based on this data';
   }
-  
+
   return answer;
 }
 
@@ -546,4 +534,4 @@ function generateConversationId(): string {
   return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export default router;
+export default router as import('express').Router;

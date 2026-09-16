@@ -25,7 +25,10 @@
 }
 
 .genesis-fab-icon {
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .genesis-panel {
@@ -59,7 +62,10 @@
 }
 
 .genesis-icon {
-  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .genesis-title h3 {
@@ -141,6 +147,9 @@
 }
 
 .genesis-quick-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px 16px;
   background: white;
   border: 1px solid #e0e0e0;
@@ -182,7 +191,7 @@
   justify-content: center;
   background: var(--tt-ink);
   border-radius: 50%;
-  font-size: 16px;
+  color: white;
   flex-shrink: 0;
 }
 
@@ -235,6 +244,9 @@
 }
 
 .genesis-suggestion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 12px;
   background: #f0f0f0;
   border: none;
@@ -361,8 +373,9 @@
     font-size: 11px;
   }
   
-  .genesis-icon {
-    font-size: 20px;
+  .genesis-icon svg {
+    width: 20px;
+    height: 20px;
   }
   
   .genesis-messages {
@@ -381,7 +394,11 @@
   .genesis-avatar {
     width: 28px;
     height: 28px;
-    font-size: 14px;
+  }
+
+  .genesis-avatar svg {
+    width: 14px;
+    height: 14px;
   }
   
   .genesis-bubble {

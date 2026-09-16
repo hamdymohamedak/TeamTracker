@@ -13,7 +13,7 @@
 // Live Activity streaming uses a separate low-res path in live-view.ts.
 
 import { desktopCapturer, screen } from 'electron';
-import { getServerUrl } from './config.js';
+import { getEffectiveServerUrl } from './config.js';
 import { getActiveWindow } from './active-window.js';
 import {
   setCapturePrivacyBlocks,
@@ -120,7 +120,7 @@ export async function captureNow(
       return { ok: false, error: 'No device token' };
     }
 
-    const serverUrl = getServerUrl();
+    const serverUrl = getEffectiveServerUrl();
     const body: Record<string, unknown> = {
       mimeType: 'image/jpeg',
       dataBase64,
@@ -188,7 +188,7 @@ async function fetchSettings(getCurrentToken: () => string): Promise<PolledOrgSe
   try {
     const token = getCurrentToken();
     if (!token) return null;
-    const serverUrl = getServerUrl();
+    const serverUrl = getEffectiveServerUrl();
     const res = await fetch(`${serverUrl}/api/organization`, {
       headers: { Authorization: `Bearer ${token}` }
     });

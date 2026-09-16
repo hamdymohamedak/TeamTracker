@@ -10,16 +10,15 @@
 import { Express } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { requireAuth } from '../auth.js';
+import { requireAuth, requireAnyAuth, requireRole } from '../auth.js';
 import { getDatabase } from '../database.js';
 import { resolveTimezone } from '../timezone.js';
+import { getPaths, ensureDataDirectories } from '../paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// admin/data/uploads — matches the static mount in server/index.ts
-const UPLOADS_DIR = path.join(__dirname, '../../../data/uploads');
+const { uploadsDir: UPLOADS_DIR } = (() => {
+  ensureDataDirectories();
+  return getPaths();
+})();
 
 const MAX_LOGO_BYTES = 1_000_000; // 1 MB
 const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
@@ -39,9 +38,8 @@ export function setupOrgRoutes(app: Express): void {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
 
-  // GET /api/organization - full settings (tz, logo, default currency, name,
-  // daily summary config, screenshots config)
-  app.get('/api/organization', requireAuth, async (req, res) => {
+  // GET /api/organization — dashboard OR device (tracker needs screenshot/privacy settings)
+  app.get('/api/organization', requireAnyAuth, async (req, res) => {
     try {
       const db = getDatabase();
       const row = await db.get(
@@ -99,8 +97,8 @@ export function setupOrgRoutes(app: Express): void {
     }
   });
 
-  // PUT /api/organization - update any of the settings (all optional).
-  app.put('/api/organization', requireAuth, async (req, res) => {
+  // PUT /api/organization - update any of the settings (all optional). Dashboard admins only.
+  app.put('/api/organization', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
     try {
       const {
         name, timezone, defaultCurrency,
@@ -188,7 +186,7 @@ export function setupOrgRoutes(app: Express): void {
   // POST /api/organization/logo - body: { mimeType, dataBase64 }
   // Writes the file to admin/data/uploads/logo-<orgId>.<ext> and stores the
   // public URL at organizations.logo_url.
-  app.post('/api/organization/logo', requireAuth, async (req, res) => {
+  app.post('/api/organization/logo', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
     try {
       const { mimeType, dataBase64 } = req.body || {};
       if (typeof mimeType !== 'string' || !ALLOWED_MIME.has(mimeType)) {
@@ -253,7 +251,7 @@ export function setupOrgRoutes(app: Express): void {
   });
 
   // DELETE /api/organization/logo - remove the current logo
-  app.delete('/api/organization/logo', requireAuth, async (req, res) => {
+  app.delete('/api/organization/logo', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
     try {
       const db = getDatabase();
       const row = await db.get(`SELECT logo_url FROM organizations WHERE id = ?`, [req.orgId!]);

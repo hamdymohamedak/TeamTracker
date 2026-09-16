@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
 import { AuthLayout, AuthFooterLink } from '../components/AuthLayout';
+import { RecoveryCodesPanel } from '../components/RecoveryCodesPanel';
 
 export const Signup: React.FC = () => {
   const [orgName, setOrgName] = useState('');
@@ -11,6 +12,7 @@ export const Signup: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const { signup } = useAuth();
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -21,14 +23,26 @@ export const Signup: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      await signup(email, password, name, orgName);
-      navigate('/');
+      const codes = await signup(email, password, name, orgName);
+      if (codes?.length) {
+        setRecoveryCodes(codes);
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       setError(err.message || t('auth.signupFailed'));
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (recoveryCodes) {
+    return (
+      <AuthLayout title={t('auth.recoveryCodesTitle')} subtitle={t('auth.recoveryCodesSubtitle')}>
+        <RecoveryCodesPanel codes={recoveryCodes} onContinue={() => navigate('/')} />
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout

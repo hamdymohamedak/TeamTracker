@@ -69,6 +69,17 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
+  mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
+    try {
+      const allowedOrigin = new URL(getAdminUrl()).origin;
+      if (new URL(targetUrl).origin !== allowedOrigin) {
+        event.preventDefault();
+      }
+    } catch {
+      event.preventDefault();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });

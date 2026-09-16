@@ -6,18 +6,48 @@ import {
   hashPassword,
   verifyPassword,
   generateDashboardToken,
-  generateDeviceToken,
   generateRefreshToken,
   generateSetupToken,
   hashToken,
-  requireAuth
+  requireAuth,
+  requireRole,
+  issueDeviceSession,
+  revokeEmployeeDeviceSessions,
 } from '../auth.js';
+import {
+  issueRecoveryCodes,
+  consumeRecoveryCode,
+  countUnusedRecoveryCodes,
+  invalidateUserSessions,
+} from '../recovery-codes.js';
+import { rateLimit } from '../rate-limit.js';
+import { logger } from '../logger.js';
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  keyPrefix: 'auth',
+  message: 'Too many authentication attempts. Please try again later.',
+});
+
+const enrollLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyPrefix: 'enroll',
+});
+
+const recoveryResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 8,
+  keyPrefix: 'recovery-reset',
+  message: 'Too many recovery attempts. Please try again later.',
+});
 
 export function setupAuthRoutes(app: Express): void {
   const db = () => getDatabase();
 
   // Sign up: create org + owner account
-  app.post('/api/auth/signup', async (req, res) => {
+  app.post('/api/auth/signup', authLimiter, async (req, res) => {
     try {
       const { email, password, name, orgName, timezone } = req.body;
 
@@ -79,11 +109,14 @@ export function setupAuthRoutes(app: Express): void {
         [uuidv4(), userId, hashToken(refreshToken), refreshExpiry, now]
       );
 
+      const recoveryCodes = await issueRecoveryCodes(userId);
+
       res.json({
         success: true,
         data: {
           accessToken,
           refreshToken,
+          recoveryCodes,
           user: { id: userId, email, name, role: 'owner' },
           org: {
             id: orgId,
@@ -101,7 +134,7 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Login
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
 
@@ -278,7 +311,7 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Desktop tracker enrollment: redeem setup token for device JWT
-  app.post('/api/auth/enroll', async (req, res) => {
+  app.post('/api/auth/enroll', enrollLimiter, async (req, res) => {
     try {
       const { setupToken } = req.body;
       if (!setupToken) {
@@ -305,11 +338,11 @@ export function setupAuthRoutes(app: Express): void {
         [now, tokenRecord.id]
       );
 
-      // Generate device JWT
-      const accessToken = generateDeviceToken({
-        employeeId: tokenRecord.employee_id,
-        orgId: tokenRecord.org_id
-      });
+      // Durable device session — stays valid until admin revokes or employee is deleted
+      const { accessToken } = await issueDeviceSession(
+        tokenRecord.org_id,
+        tokenRecord.employee_id
+      );
 
       res.json({
         success: true,
@@ -320,6 +353,32 @@ export function setupAuthRoutes(app: Express): void {
           orgId: tokenRecord.org_id,
           orgName: tokenRecord.org_name
         }
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Admin: revoke all desktop sessions for an employee (force re-enroll)
+  app.post('/api/auth/revoke-devices', requireAuth, async (req, res) => {
+    try {
+      const { employeeId } = req.body;
+      if (!employeeId) {
+        return res.status(400).json({ success: false, error: 'employeeId is required' });
+      }
+
+      const employee = await db().get(
+        'SELECT id, name FROM employees WHERE id = ? AND org_id = ?',
+        [employeeId, req.orgId]
+      );
+      if (!employee) {
+        return res.status(404).json({ success: false, error: 'Employee not found in your organization' });
+      }
+
+      const revoked = await revokeEmployeeDeviceSessions(req.orgId!, employeeId);
+      res.json({
+        success: true,
+        data: { employeeId, employeeName: employee.name, revokedSessions: revoked },
       });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
@@ -339,8 +398,77 @@ export function setupAuthRoutes(app: Express): void {
     }
   });
 
-  // Forgot password: generate reset token
-  app.post('/api/auth/forgot-password', async (req, res) => {
+  // Offline password reset with a one-time recovery code (no email required)
+  app.post('/api/auth/reset-with-recovery-code', recoveryResetLimiter, async (req, res) => {
+    try {
+      const { email, recoveryCode, newPassword } = req.body || {};
+      if (!email || !recoveryCode || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          error: 'email, recoveryCode, and newPassword are required',
+        });
+      }
+      if (String(newPassword).length < 6) {
+        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+      }
+
+      const user = await db().get('SELECT id, email FROM users WHERE email = ?', [email]);
+      // Same generic error whether email/code is wrong (avoid account enumeration)
+      const fail = () =>
+        res.status(401).json({
+          success: false,
+          error: 'Invalid email or recovery code',
+        });
+
+      if (!user) return fail();
+
+      const ok = await consumeRecoveryCode(user.id, recoveryCode);
+      if (!ok) return fail();
+
+      const passwordHash = await hashPassword(newPassword);
+      await db().run(
+        'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
+        [passwordHash, new Date().toISOString(), user.id]
+      );
+      await invalidateUserSessions(user.id);
+
+      const remaining = await countUnusedRecoveryCodes(user.id);
+      res.json({
+        success: true,
+        message: 'Password updated. You can sign in now.',
+        data: { remainingRecoveryCodes: remaining },
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Authenticated: how many unused recovery codes remain
+  app.get('/api/auth/recovery-codes', requireAuth, async (req, res) => {
+    try {
+      const remaining = await countUnusedRecoveryCodes(req.userId!);
+      res.json({ success: true, data: { remaining } });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Authenticated: regenerate recovery codes (returns plaintext once)
+  app.post('/api/auth/recovery-codes/regenerate', requireAuth, authLimiter, async (req, res) => {
+    try {
+      const codes = await issueRecoveryCodes(req.userId!);
+      res.json({
+        success: true,
+        data: { recoveryCodes: codes },
+        message: 'Save these codes now. They will not be shown again.',
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Optional email-based forgot (only when SMTP/Resend configured). Prefer recovery codes.
+  app.post('/api/auth/forgot-password', recoveryResetLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email) {
@@ -348,37 +476,44 @@ export function setupAuthRoutes(app: Express): void {
       }
 
       const user = await db().get('SELECT id, name, email FROM users WHERE email = ?', [email]);
+      const publicMessage =
+        'If that account exists, use a recovery code on the reset page. Email reset is only sent when mail is configured.';
 
-      // Always return success (don't reveal if email exists)
       if (!user) {
-        return res.json({ success: true, message: 'If that email exists, a reset link has been generated.' });
+        return res.json({ success: true, message: publicMessage });
       }
 
-      // Generate reset token
       const token = generateSetupToken();
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       const now = new Date().toISOString();
 
-      // Store in refresh_tokens table (reuse it for password resets)
       await db().run(
         `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at)
          VALUES (?, ?, ?, ?, ?)`,
-        [uuidv4(), user.id, 'pwreset:' + token, expiresAt, now]
+        [uuidv4(), user.id, 'pwreset:' + hashToken(token), expiresAt, now]
       );
 
-      // In production, you'd email this link. For now, log it to PM2 logs.
-      const resetUrl = `/reset-password?token=${token}`;
-      console.log(`\n=== PASSWORD RESET ===`);
-      console.log(`User: ${user.email}`);
-      console.log(`Reset URL: ${resetUrl}`);
-      console.log(`Expires: ${expiresAt}`);
-      console.log(`======================\n`);
+      const baseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+      const resetUrl = `${baseUrl || ''}/reset-password?token=${token}`;
+
+      let emailed = false;
+      try {
+        const { sendPasswordResetEmail, isEmailConfigured } = await import('../mail.js');
+        if (isEmailConfigured()) {
+          emailed = await sendPasswordResetEmail(user.email, resetUrl, user.name);
+        }
+      } catch {
+        // mail optional
+      }
+
+      if (!emailed && process.env.NODE_ENV !== 'production') {
+        logger.info('Password reset issued (dev, no email)', { email: user.email, resetUrl });
+      }
 
       res.json({
         success: true,
-        message: 'If that email exists, a reset link has been generated.',
-        // Include reset URL in response for MVP (remove this when email is set up)
-        resetUrl
+        message: publicMessage,
+        data: { emailed },
       });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
@@ -405,49 +540,150 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Invite (create) a new admin user. Only an owner or admin can do this.
-  // For MVP we accept a password directly rather than emailing an invite
-  // link — the owner shares it out-of-band. Roles supported: 'admin' or
-  // 'owner'. The created user is scoped to the caller's org.
-  app.post('/api/auth/team', requireAuth, async (req, res) => {
+  // When email is configured, prefer invite tokens; otherwise accept a password
+  // shared out-of-band (legacy). Only owners may grant the 'owner' role.
+  app.post('/api/auth/team', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
     try {
       const { email, password, name, role } = req.body || {};
-      if (!email || !password || !name) {
-        return res.status(400).json({ success: false, error: 'email, password, and name are required' });
+      if (!email || !name) {
+        return res.status(400).json({ success: false, error: 'email and name are required' });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
-      }
-      const allowedRoles = new Set(['admin', 'owner']);
-      const finalRole = allowedRoles.has(role) ? role : 'admin';
 
-      // Caller must already be an admin/owner to add teammates.
       const caller = await db().get(
-        'SELECT role FROM users WHERE id = ? AND org_id = ?',
+        'SELECT role, name FROM users WHERE id = ? AND org_id = ?',
         [req.userId, req.orgId!]
       );
-      if (!caller || (caller.role !== 'owner' && caller.role !== 'admin')) {
+      if (!caller) {
         return res.status(403).json({ success: false, error: 'Only an owner or admin can invite teammates' });
       }
 
-      // Email must be unique across the entire users table (it's the
-      // login identifier and the table has UNIQUE on email).
+      let finalRole: 'admin' | 'owner' = role === 'owner' ? 'owner' : 'admin';
+      if (finalRole === 'owner' && caller.role !== 'owner') {
+        return res.status(403).json({ success: false, error: 'Only an owner can invite another owner' });
+      }
+
       const existing = await db().get('SELECT id FROM users WHERE email = ?', [email]);
       if (existing) {
         return res.status(409).json({ success: false, error: 'A user with that email already exists' });
       }
 
       const now = new Date().toISOString();
-      const userId = uuidv4();
+
+      // Invite-token flow when no password supplied and email is available
+      if (!password) {
+        const { isEmailConfigured, sendInviteEmail } = await import('../mail.js');
+        const inviteToken = generateSetupToken();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        await db().run(
+          `INSERT INTO team_invites (id, org_id, email, name, role, token_hash, invited_by, expires_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            uuidv4(),
+            req.orgId!,
+            email.toLowerCase().trim(),
+            name.trim(),
+            finalRole,
+            hashToken(inviteToken),
+            req.userId!,
+            expiresAt,
+            now,
+          ]
+        );
+
+        const org = await db().get('SELECT name FROM organizations WHERE id = ?', [req.orgId!]);
+        const baseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+        const inviteUrl = `${baseUrl}/accept-invite?token=${inviteToken}`;
+
+        let emailed = false;
+        if (isEmailConfigured()) {
+          emailed = await sendInviteEmail(email, inviteUrl, org?.name || 'your organization', caller.name);
+        }
+
+        if (!emailed && process.env.NODE_ENV !== 'production') {
+          logger.info('Team invite created (dev)', { email, inviteUrl });
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            email,
+            role: finalRole,
+            invitePending: true,
+            emailed,
+            // Only expose invite URL in development when email is not configured
+            ...(process.env.NODE_ENV !== 'production' && !emailed ? { inviteUrl } : {}),
+          },
+        });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+      }
+
       const passwordHash = await hashPassword(password);
+      const userId = uuidv4();
       await db().run(
         `INSERT INTO users (id, org_id, email, password_hash, name, role, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, req.orgId!, email, passwordHash, name, finalRole, now, now]
+        [userId, req.orgId!, email.toLowerCase().trim(), passwordHash, name.trim(), finalRole, now, now]
       );
+
+      const recoveryCodes = await issueRecoveryCodes(userId);
 
       res.json({
         success: true,
-        data: { id: userId, email, name, role: finalRole, created_at: now }
+        data: { id: userId, email, name, role: finalRole, recoveryCodes },
+        message: 'Share the temporary password and recovery codes securely. Codes are shown only once.',
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Owner/admin: set another teammate's password (no email needed)
+  app.post('/api/auth/team/:id/password', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
+    try {
+      const { password } = req.body || {};
+      if (!password || String(password).length < 6) {
+        return res.status(400).json({ success: false, error: 'password (min 6 chars) is required' });
+      }
+
+      const caller = await db().get(
+        'SELECT role FROM users WHERE id = ? AND org_id = ?',
+        [req.userId, req.orgId!]
+      );
+      if (!caller) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      const target = await db().get(
+        'SELECT id, role, email, name FROM users WHERE id = ? AND org_id = ?',
+        [req.params.id, req.orgId!]
+      );
+      if (!target) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      if (target.id === req.userId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Use recovery codes or ask another owner to reset your own password',
+        });
+      }
+      if (target.role === 'owner' && caller.role !== 'owner') {
+        return res.status(403).json({ success: false, error: 'Only an owner can reset another owner’s password' });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await db().run(
+        'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
+        [passwordHash, new Date().toISOString(), target.id]
+      );
+      await invalidateUserSessions(target.id);
+
+      res.json({
+        success: true,
+        message: `Password updated for ${target.email}. Share it securely out of band.`,
+        data: { userId: target.id, email: target.email },
       });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
@@ -456,7 +692,7 @@ export function setupAuthRoutes(app: Express): void {
 
   // Remove a teammate. Refuses to delete the last owner of the org so the
   // org doesn't get locked out.
-  app.delete('/api/auth/team/:id', requireAuth, async (req, res) => {
+  app.delete('/api/auth/team/:id', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
     try {
       const caller = await db().get(
         'SELECT role FROM users WHERE id = ? AND org_id = ?',
@@ -501,7 +737,7 @@ export function setupAuthRoutes(app: Express): void {
   });
 
   // Reset password: validate token and set new password
-  app.post('/api/auth/reset-password', async (req, res) => {
+  app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
       if (!token || !password) {
@@ -517,7 +753,7 @@ export function setupAuthRoutes(app: Express): void {
         `SELECT rt.*, u.email FROM refresh_tokens rt
          JOIN users u ON rt.user_id = u.id
          WHERE rt.token_hash = ? AND rt.expires_at > ?`,
-        ['pwreset:' + token, now]
+        ['pwreset:' + hashToken(token), now]
       );
 
       if (!record) {
@@ -528,10 +764,59 @@ export function setupAuthRoutes(app: Express): void {
       const passwordHash = await hashPassword(password);
       await db().run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, record.user_id]);
 
-      // Delete the reset token
+      // Delete the reset token + all sessions
       await db().run('DELETE FROM refresh_tokens WHERE id = ?', [record.id]);
+      await invalidateUserSessions(record.user_id);
 
       res.json({ success: true, message: 'Password has been reset. You can now log in.' });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // Accept a team invite (public, token-gated)
+  app.post('/api/auth/accept-invite', authLimiter, async (req, res) => {
+    try {
+      const { token, password } = req.body || {};
+      if (!token || !password || String(password).length < 6) {
+        return res.status(400).json({ success: false, error: 'token and password (min 6 chars) are required' });
+      }
+      const now = new Date().toISOString();
+      const invite = await db().get(
+        `SELECT * FROM team_invites WHERE token_hash = ? AND accepted_at IS NULL AND expires_at > ?`,
+        [hashToken(token), now]
+      );
+      if (!invite) {
+        return res.status(400).json({ success: false, error: 'Invalid or expired invitation' });
+      }
+      const existing = await db().get('SELECT id FROM users WHERE email = ?', [invite.email]);
+      if (existing) {
+        return res.status(409).json({ success: false, error: 'A user with that email already exists' });
+      }
+      const userId = uuidv4();
+      const passwordHash = await hashPassword(password);
+      await db().run(
+        `INSERT INTO users (id, org_id, email, password_hash, name, role, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, invite.org_id, invite.email, passwordHash, invite.name, invite.role, now, now]
+      );
+      await db().run(`UPDATE team_invites SET accepted_at = ? WHERE id = ?`, [now, invite.id]);
+
+      const recoveryCodes = await issueRecoveryCodes(userId);
+
+      const accessToken = generateDashboardToken({
+        userId,
+        orgId: invite.org_id,
+        email: invite.email,
+      });
+      res.json({
+        success: true,
+        data: {
+          accessToken,
+          recoveryCodes,
+          user: { id: userId, email: invite.email, name: invite.name, role: invite.role },
+        },
+      });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }

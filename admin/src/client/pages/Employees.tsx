@@ -5,6 +5,8 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
+import { EmptyIcon, IconLabel, ModalCloseButton, StatusLine } from '../components/Icon';
+import { AlertTriangle, Building2, Clock, DollarSign, Globe, Mail, Users } from 'lucide-react';
 
 // Common IANA timezones offered in the per-employee timezone dropdown.
 // Covers North America + Europe + APAC + Middle East — admins can leave it
@@ -258,6 +260,26 @@ export const Employees: React.FC = () => {
     }
   };
 
+  const handleRevokeDevices = async (employee: Employee) => {
+    const ok = window.confirm(
+      `Reset device access for ${employee.name}? Their tracker will sign out and need a new setup token.`
+    );
+    if (!ok) return;
+    try {
+      const res = await api.post('/api/auth/revoke-devices', { employeeId: employee.id });
+      const data = res.data || res;
+      const count = data.revokedSessions ?? 0;
+      alert(
+        count > 0
+          ? `Revoked ${count} device session(s) for ${employee.name}.`
+          : `${employee.name} had no active device sessions.`
+      );
+    } catch (err) {
+      console.error('Error revoking devices:', err);
+      alert(err instanceof Error ? err.message : 'Failed to reset device access');
+    }
+  };
+
   /**
    * Zero-friction install flow for non-technical admins: clicked while the
    * admin is physically at the employee's laptop. Generates a setup token,
@@ -308,7 +330,7 @@ export const Employees: React.FC = () => {
     return (
       <div style={styles.container}>
         <div style={errorStyles.container}>
-          <div style={errorStyles.icon}>⚠️</div>
+          <EmptyIcon icon={AlertTriangle} size={48} color="var(--tt-danger)" />
           <h2 style={errorStyles.title}>Error Loading Employees</h2>
           <p style={errorStyles.message}>{error}</p>
           <button onClick={loadEmployees} style={errorStyles.retryButton}>
@@ -351,13 +373,13 @@ export const Employees: React.FC = () => {
               <h2 id="modal-title" className="tt-modal-title">
                 {editingEmployee ? t('employees.edit') : t('employees.addTitle')}
               </h2>
-              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
+              <ModalCloseButton onClick={() => setShowForm(false)} />
             </div>
             <form onSubmit={handleSubmit} noValidate style={{ display: 'contents' }}>
               <div className="tt-modal-body">
                 {formError && (
                   <div style={styles.errorBanner}>
-                    ⚠️ {formError}
+                    <StatusLine variant="error">{formError}</StatusLine>
                   </div>
                 )}
                 <div className="tt-modal-form tt-modal-form--2col">
@@ -561,7 +583,7 @@ export const Employees: React.FC = () => {
           <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
             <div className="tt-modal-header">
               <h2 className="tt-modal-title">Setup Token for {setupToken.employeeName}</h2>
-              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setSetupToken(null)}>✕</button>
+              <ModalCloseButton onClick={() => setSetupToken(null)} />
             </div>
             <div className="tt-modal-body">
               <div style={{
@@ -585,10 +607,10 @@ export const Employees: React.FC = () => {
                 marginBottom: '12px',
               }}>
                 <p style={{ fontSize: '13px', color: 'var(--tt-text)', margin: '0 0 8px', lineHeight: '1.5' }}>
-                  Share this token with <strong>{setupToken.employeeName}</strong>. They will need it to connect their desktop app.
+                  Share this token with <strong>{setupToken.employeeName}</strong>. They use it once to connect their desktop app.
                 </p>
                 <p style={{ fontSize: '12px', color: 'var(--tt-text-muted)', margin: 0, lineHeight: '1.5' }}>
-                  The token expires in 7 days and can only be used once.
+                  {t('employees.tokenExpiry')}
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
@@ -637,7 +659,7 @@ export const Employees: React.FC = () => {
           <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
             <div className="tt-modal-header">
               <h2 className="tt-modal-title">{t('employees.installDevice')}</h2>
-              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setInstallPrompt(null)}>✕</button>
+              <ModalCloseButton onClick={() => setInstallPrompt(null)} />
             </div>
             <div className="tt-modal-body">
               <p style={{ color: 'var(--tt-text)', margin: '0 0 12px', fontSize: '14px', lineHeight: 1.5 }}>
@@ -678,7 +700,7 @@ export const Employees: React.FC = () => {
           borderRadius: 'var(--tt-radius)',
           boxShadow: 'var(--tt-shadow-sm)',
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>👥</div>
+          <EmptyIcon icon={Users} size={48} />
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
             {t('employees.empty')}
           </h2>
@@ -715,22 +737,28 @@ export const Employees: React.FC = () => {
               <span style={styles.roleBadge(employee.role)}>{employee.role}</span>
             </div>
             <div style={styles.cardBody}>
-              <p style={styles.info}>📧 {employee.email}</p>
-              {employee.department && <p style={styles.info}>🏢 {employee.department}</p>}
+              <p style={styles.info}><IconLabel icon={Mail}>{employee.email}</IconLabel></p>
+              {employee.department && (
+                <p style={styles.info}><IconLabel icon={Building2}>{employee.department}</IconLabel></p>
+              )}
               {employee.hourlyRate ? (
                 <p style={styles.info}>
-                  💰 {formatCurrency(employee.hourlyRate, employee.currency || defaultCurrency)}/hr
+                  <IconLabel icon={DollarSign}>
+                    {formatCurrency(employee.hourlyRate, employee.currency || defaultCurrency)}/hr
+                  </IconLabel>
                 </p>
               ) : null}
               {employee.businessHoursStart && employee.businessHoursEnd && employee.businessHoursDays ? (
                 <p style={styles.info}>
-                  🕘 {employee.businessHoursStart}–{employee.businessHoursEnd}
-                  {' '}({employee.businessHoursDays})
+                  <IconLabel icon={Clock}>
+                    {employee.businessHoursStart}–{employee.businessHoursEnd}
+                    {' '}({employee.businessHoursDays})
+                  </IconLabel>
                 </p>
               ) : null}
               {employee.timezone ? (
                 <p style={{ ...styles.info, fontSize: '12px', color: 'var(--tt-text-faint)' }}>
-                  🌐 {employee.timezone}
+                  <IconLabel icon={Globe}>{employee.timezone}</IconLabel>
                 </p>
               ) : null}
             </div>
@@ -747,6 +775,13 @@ export const Employees: React.FC = () => {
               </button>
               <button onClick={() => handleGenerateSetupToken(employee)} style={styles.setupButton}>
                 {t('employees.setupToken')}
+              </button>
+              <button
+                onClick={() => handleRevokeDevices(employee)}
+                style={styles.revokeButton}
+                title={t('employees.revokeDevicesHint')}
+              >
+                {t('employees.revokeDevices')}
               </button>
               <button onClick={() => handleDelete(employee.id)} style={styles.deleteButton}>
                 Delete
@@ -943,7 +978,8 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   cardActions: {
     display: 'flex',
-    gap: '8px'
+    gap: '8px',
+    flexWrap: 'wrap' as const,
   },
   editButton: {
     flex: 1,
@@ -961,6 +997,16 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     backgroundColor: '#8e44ad',
     color: '#fff',
     border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '13px'
+  },
+  revokeButton: {
+    flex: 1,
+    padding: '8px',
+    backgroundColor: 'var(--tt-surface-muted)',
+    color: 'var(--tt-text)',
+    border: '1px solid var(--tt-border-strong)',
     borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '13px'

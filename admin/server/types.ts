@@ -6,6 +6,9 @@ declare global {
       userId?: string;
       employeeId?: string;
       tokenType?: 'dashboard' | 'device';
+      userRole?: 'owner' | 'admin' | 'viewer';
+      /** device_sessions.id when authenticated as a desktop tracker */
+      deviceSessionId?: string;
     }
   }
 }

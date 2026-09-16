@@ -1,0 +1,40 @@
+name: Deploy TeamTracker
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: teamtracker-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          install -m 700 -d ~/.ssh
+
+          printf '%s\n' '${{ secrets.DEPLOY_SSH_KEY }}' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf '%s\n' '${{ secrets.SSH_KNOWN_HOSTS }}' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh \
+            -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "true"

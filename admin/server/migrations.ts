@@ -275,6 +275,84 @@ export async function runMigrations(db: DB): Promise<void> {
         `);
         console.log('  Migration 5: capture_privacy_blocks table created');
       }
+    },
+    {
+      version: 6,
+      name: 'team_invites + employee active_project/task assignment',
+      up: async (db: DB) => {
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS team_invites (
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'admin',
+            token_hash TEXT UNIQUE NOT NULL,
+            invited_by TEXT,
+            accepted_at TEXT,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (org_id) REFERENCES organizations(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_team_invites_org ON team_invites(org_id);
+          CREATE INDEX IF NOT EXISTS idx_team_invites_token ON team_invites(token_hash);
+        `);
+
+        // Optional active project/task on employees for tracker stamping
+        const empCols = await db.all(`PRAGMA table_info(employees)`);
+        const empColNames = new Set(empCols.map((c: any) => c.name));
+        if (!empColNames.has('active_project_id')) {
+          await db.exec(`ALTER TABLE employees ADD COLUMN active_project_id TEXT`);
+        }
+        if (!empColNames.has('active_task_id')) {
+          await db.exec(`ALTER TABLE employees ADD COLUMN active_task_id TEXT`);
+        }
+        console.log('  Migration 6: team_invites + employee active_project/task');
+      }
+    },
+    {
+      version: 7,
+      name: 'device_sessions — persistent desktop auth until admin revoke',
+      up: async (db: DB) => {
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS device_sessions (
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            employee_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            revoked_at TEXT,
+            FOREIGN KEY (org_id) REFERENCES organizations(id),
+            FOREIGN KEY (employee_id) REFERENCES employees(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_device_sessions_employee
+            ON device_sessions(org_id, employee_id);
+          CREATE INDEX IF NOT EXISTS idx_device_sessions_active
+            ON device_sessions(employee_id, revoked_at);
+        `);
+        console.log('  Migration 7: device_sessions table created');
+      }
+    },
+    {
+      version: 8,
+      name: 'recovery_codes — offline password reset without email',
+      up: async (db: DB) => {
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS recovery_codes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_recovery_codes_user
+            ON recovery_codes(user_id);
+          CREATE INDEX IF NOT EXISTS idx_recovery_codes_hash
+            ON recovery_codes(code_hash);
+        `);
+        console.log('  Migration 8: recovery_codes table created');
+      }
     }
   ];
 

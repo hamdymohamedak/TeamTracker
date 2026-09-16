@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerSaveBlocker, powerMonitor } from 'electron';
 import Store from 'electron-store';
 import * as path from 'path';
-import { startTracking, getTrackingStatus, setupIpcHandlers, onSystemResume, isEnrolled } from './tracker.js';
+import { startTracking, getTrackingStatus, setupIpcHandlers, onSystemResume, isEnrolled, logoutDevice } from './tracker.js';
 
 function assetPath(...parts: string[]): string {
   return path.join(app.getAppPath(), 'dist', ...parts);
@@ -171,19 +171,28 @@ function createEmployeeWindow(): void {
   }
 
   employeeWindow = new BrowserWindow({
-    width: 440,
-    height: 520,
+    width: 400,
+    height: 480,
     minWidth: 360,
-    minHeight: 420,
+    minHeight: 400,
     title: 'TeamTracker',
     show: false,
+    resizable: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: assetPath('preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
+  });
+
+  employeeWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  employeeWindow.webContents.on('will-navigate', (event, url) => {
+    // Local UI only — block any navigation away from the packaged file:// page.
+    if (!url.startsWith('file://')) {
+      event.preventDefault();
+    }
   });
 
   employeeWindow.loadFile(assetPath('ui', 'index.html'));
@@ -214,21 +223,35 @@ function updateTrayMenu(): void {
   if (!tray) return;
 
   const status = getTrackingStatus();
-  const employeeId = store.get('employeeId');
+  const enrolled = isEnrolled();
+  const displayName = status.config.employeeName || status.config.employeeId || 'Employee';
 
-  const contextMenu = Menu.buildFromTemplate([
-    { label: 'TeamTracker v2.1', enabled: false },
+  const items: Electron.MenuItemConstructorOptions[] = [
+    { label: 'TeamTracker', enabled: false },
     { type: 'separator' },
-    { label: `Employee: ${employeeId}`, enabled: false },
-    { label: `Activities: ${status.activitiesCount}`, enabled: false },
-    { label: `Queued: ${status.queuedCount}`, enabled: false },
-    { label: `Status: ${status.isOnline ? '🟢 Online' : '🔴 Offline'}`, enabled: false },
+    { label: enrolled ? `Signed in as ${displayName}` : 'Not signed in', enabled: false },
+    { label: `Status: ${status.isOnline ? 'Online' : 'Offline'}`, enabled: false },
     { type: 'separator' },
-    { label: isEnrolled() ? 'Show Window' : 'Setup…', click: () => createEmployeeWindow() },
-    { label: 'Quit', click: () => app.quit() }
-  ]);
+    { label: enrolled ? 'Show Window' : 'Setup…', click: () => createEmployeeWindow() },
+  ];
 
-  tray.setContextMenu(contextMenu);
+  if (enrolled) {
+    items.push({
+      label: 'Sign Out',
+      click: () => {
+        logoutDevice();
+        createEmployeeWindow();
+        updateTrayMenu();
+      },
+    });
+  }
+
+  items.push(
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  );
+
+  tray.setContextMenu(Menu.buildFromTemplate(items));
 }
 
 app.on('window-all-closed', () => {

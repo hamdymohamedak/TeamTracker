@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { URL } from 'url';
 import { randomUUID } from 'crypto';
 import { createTimeEntry, updateTimeEntry, createActivity, getActivityById, updateActivity } from './database.js';
-import { verifyToken } from './auth.js';
+import { verifyToken, assertDeviceAccess, type DeviceTokenPayload } from './auth.js';
 import {
   enqueueRemoteCommand,
   markCommandDelivered,
@@ -15,6 +15,7 @@ interface ConnectedClient {
   employeeName?: string;
   isAdmin?: boolean;
   orgId?: string;
+  tokenType?: 'dashboard' | 'device';
 }
 
 /** One live screen session: admin watches one employee; frames relay only to that admin. */
@@ -37,9 +38,11 @@ export function setupWebSocket(wss: WebSocketServer): void {
   wss.on('connection', (ws: WebSocket, req: any) => {
     console.log('🔌 New WebSocket connection');
 
+    void (async () => {
     let orgId: string | undefined;
     let employeeId: string | undefined;
     let isAdmin = false;
+    let tokenType: 'dashboard' | 'device' | undefined;
 
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -51,11 +54,18 @@ export function setupWebSocket(wss: WebSocketServer): void {
       const payload = verifyToken(token);
       orgId = payload.orgId;
       if (payload.type === 'device') {
+        const access = await assertDeviceAccess(payload as DeviceTokenPayload);
+        if (!access.ok) {
+          ws.close(4003, access.error);
+          return;
+        }
         employeeId = payload.employeeId;
         isAdmin = false;
+        tokenType = 'device';
       } else if (payload.type === 'dashboard') {
         employeeId = payload.userId;
         isAdmin = true;
+        tokenType = 'dashboard';
       } else {
         ws.close(4002, 'Authentication failed: unsupported token type');
         return;
@@ -66,7 +76,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
       return;
     }
 
-    clients.set(ws, { ws, orgId, employeeId, isAdmin });
+    clients.set(ws, { ws, orgId, employeeId, isAdmin, tokenType });
 
     // Admins get an immediate presence snapshot so already-connected
     // trackers appear Online without waiting for a later register event.
@@ -125,6 +135,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
     ws.on('error', (err) => {
       console.error('WebSocket error:', err);
     });
+    })();
   });
 }
 
@@ -213,11 +224,20 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
 
         for (const entry of message.entries) {
           try {
-            const existing = await getActivityById(client.orgId!, entry.id);
+            // Device tokens may only write their own employee activities
+            const entryEmployeeId =
+              client.tokenType === 'device' ? client.employeeId : entry.employeeId;
+            if (!entryEmployeeId) {
+              errorCount++;
+              lastError = 'Missing employeeId';
+              continue;
+            }
+            const safeEntry = { ...entry, employeeId: entryEmployeeId };
+            const existing = await getActivityById(client.orgId!, safeEntry.id);
             if (existing) {
-              await updateActivity(client.orgId!, entry.id, entry);
+              await updateActivity(client.orgId!, safeEntry.id, safeEntry);
             } else {
-              await createActivity(client.orgId!, entry);
+              await createActivity(client.orgId!, safeEntry);
             }
             successCount++;
           } catch (err: any) {

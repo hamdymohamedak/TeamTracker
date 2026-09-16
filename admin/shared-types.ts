@@ -48,6 +48,9 @@ export interface Employee {
   businessHoursEnd?: string;      // "HH:MM" (exclusive)
   businessHoursDays?: string;     // comma-separated ISO weekday: "1,2,3,4,5"
   isActive?: boolean;
+  /** Optional: stamp new activities with this project/task when set by admin */
+  activeProjectId?: string;
+  activeTaskId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -122,6 +125,9 @@ export interface Activity {
   isIdle: boolean;
   idleTimeSeconds: number;
   durationSeconds: number;
+  /** Optional association — existing rows may be null */
+  projectId?: string;
+  taskId?: string;
   createdAt: string;
 }
 

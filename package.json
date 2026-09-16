@@ -10,13 +10,17 @@
     "shared"
   ],
   "scripts": {
-    "dev:admin": "cd admin && npm run dev",
-    "dev:desktop": "cd desktop && npm run dev",
-    "dev:desktop-admin": "cd desktop-admin && npm run dev",
-    "build:admin": "cd admin && npm run build",
-    "build:desktop": "cd desktop && npm run build",
-    "build:desktop-admin": "cd desktop-admin && npm run build",
-    "install:all": "npm install && cd admin && npm install && cd ../desktop && npm install && cd ../desktop-admin && npm install"
+    "dev:admin": "pnpm -C admin run dev",
+    "dev:desktop": "pnpm -C desktop run dev",
+    "dev:desktop-admin": "pnpm -C desktop-admin run dev",
+    "build:admin": "pnpm -C admin run build",
+    "build:desktop": "pnpm -C desktop run build",
+    "build:desktop-admin": "pnpm -C desktop-admin run build",
+    "typecheck": "pnpm -C admin run typecheck",
+    "test": "pnpm -C admin run test",
+    "test:conformance": "pnpm -C admin run test:conformance",
+    "reset-password": "pnpm -C admin run reset-password",
+    "install:all": "pnpm install"
   },
   "devDependencies": {
     "typescript": "^5.3.0"

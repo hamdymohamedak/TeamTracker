@@ -4,6 +4,8 @@ import { api } from '../lib/api';
 import type { Task, Project, Employee } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
+import { EmptyIcon, IconLabel, ModalCloseButton, StatusLine } from '../components/Icon';
+import { AlertTriangle, CheckSquare, FolderKanban, Timer, User } from 'lucide-react';
 
 export const Tasks: React.FC = () => {
   const { t } = useI18n();
@@ -165,7 +167,7 @@ export const Tasks: React.FC = () => {
     return (
       <div style={styles.container}>
         <div style={errorStyles.container}>
-          <div style={errorStyles.icon}>⚠️</div>
+          <EmptyIcon icon={AlertTriangle} size={48} color="var(--tt-danger)" />
           <h2 style={errorStyles.title}>Error Loading Tasks</h2>
           <p style={errorStyles.message}>{error}</p>
           <button onClick={loadData} style={errorStyles.retryButton}>
@@ -208,13 +210,13 @@ export const Tasks: React.FC = () => {
               <h2 id="modal-title" className="tt-modal-title">
                 {editingTask ? t('tasks.edit') : t('tasks.addTitle')}
               </h2>
-              <button type="button" className="tt-modal-close" aria-label="Close" onClick={() => setShowForm(false)}>✕</button>
+              <ModalCloseButton onClick={() => setShowForm(false)} />
             </div>
             <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
               <div className="tt-modal-body">
                 {formError && (
                   <div style={styles.errorBanner}>
-                    ⚠️ {formError}
+                    <StatusLine variant="error">{formError}</StatusLine>
                   </div>
                 )}
                 <div className="tt-modal-form tt-modal-form--2col">
@@ -325,7 +327,7 @@ export const Tasks: React.FC = () => {
           borderRadius: 'var(--tt-radius)',
           boxShadow: 'var(--tt-shadow-sm)',
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>&#10003;</div>
+          <EmptyIcon icon={CheckSquare} size={48} />
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
             No tasks yet
           </h2>
@@ -397,10 +399,10 @@ export const Tasks: React.FC = () => {
               {task.description && (
                 <p style={styles.description}>{task.description}</p>
               )}
-              <p style={styles.info}>📁 {getProjectName(task.projectId)}</p>
-              <p style={styles.info}>👤 {getEmployeeName(task.assignedTo)}</p>
+              <p style={styles.info}><IconLabel icon={FolderKanban}>{getProjectName(task.projectId)}</IconLabel></p>
+              <p style={styles.info}><IconLabel icon={User}>{getEmployeeName(task.assignedTo)}</IconLabel></p>
               {task.estimatedHours && (
-                <p style={styles.info}>⏱️ Est: {task.estimatedHours}h</p>
+                <p style={styles.info}><IconLabel icon={Timer}>Est: {task.estimatedHours}h</IconLabel></p>
               )}
             </div>
             <div style={styles.cardActions}>

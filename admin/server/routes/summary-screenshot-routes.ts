@@ -17,19 +17,16 @@
 import { Express, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireDeviceAuth } from '../auth.js';
 import { getDatabase, getEmployeeById } from '../database.js';
 import { buildDailySummary, renderDailySummaryHtml, sendDailySummaryEmail } from '../daily-summary.js';
 import { consumeCommand, listCommandsForEmployee } from '../remote-commands.js';
 import { broadcastScreenshotNew, requestScreenshotCommand } from '../websocket.js';
+import { getPaths, ensureDataDirectories, resolveScreenshotAbsolutePath } from '../paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// admin/data/uploads/screenshots — co-located with the logo upload dir.
-const SCREENSHOTS_ROOT = path.join(__dirname, '../../../data/uploads/screenshots');
+ensureDataDirectories();
+const SCREENSHOTS_ROOT = getPaths().screenshotsDir;
 const MAX_SCREENSHOT_BYTES = 4_000_000; // 4 MB hard cap per upload
 
 const ALLOWED_SCREENSHOT_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -251,8 +248,8 @@ export function setupSummaryScreenshotRoutes(app: Express): void {
         );
         for (const row of old) {
           try {
-            const fp = path.join(__dirname, '../../../data', row.file_path.replace(/^\/uploads\//, 'uploads/'));
-            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+            const fp = resolveScreenshotAbsolutePath(row.file_path);
+            if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
           } catch { /* swallow */ }
         }
         if (old.length > 0) {
@@ -360,8 +357,8 @@ export function setupSummaryScreenshotRoutes(app: Express): void {
         return res.status(404).json({ success: false, error: 'Screenshot not found' });
       }
       try {
-        const fp = path.join(__dirname, '../../../data', row.file_path.replace(/^\/uploads\//, 'uploads/'));
-        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        const fp = resolveScreenshotAbsolutePath(row.file_path);
+        if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
       } catch { /* swallow */ }
       await db.run(`DELETE FROM screenshots WHERE id = ? AND org_id = ?`, [req.params.id, req.orgId!]);
       res.json({ success: true });

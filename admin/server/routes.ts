@@ -37,14 +37,26 @@ import {
   getRoleStatus,
   ROLE_PROFILES
 } from './role-detector.js';
-import { requireAuth, requireDeviceAuth, requireAnyAuth } from './auth.js';
+import { requireAuth, requireDeviceAuth, requireAnyAuth, revokeEmployeeDeviceSessions } from './auth.js';
 import { getConnectedEmployees } from './websocket.js';
 import { fixActivityClassification } from './server-classifier-fixer.js';
 
 export function setupRoutes(app: Express): void {
-  // Health check
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  // Server time for clock-skew detection (authenticated)
+  app.get('/api/time', requireAnyAuth, (req, res) => {
+    const serverTime = Date.now();
+    const clientRaw = req.query.clientTime;
+    const clientTime = typeof clientRaw === 'string' ? parseInt(clientRaw, 10) : NaN;
+    const clockOffsetMs = Number.isFinite(clientTime) ? serverTime - clientTime : null;
+    res.json({
+      success: true,
+      data: {
+        serverTime,
+        serverTimeIso: new Date(serverTime).toISOString(),
+        clientTime: Number.isFinite(clientTime) ? clientTime : null,
+        clockOffsetMs,
+      },
+    });
   });
 
   // Dashboard
@@ -118,6 +130,27 @@ export function setupRoutes(app: Express): void {
   app.put('/api/employees/:id', requireAuth, async (req, res) => {
     try {
       await updateEmployee(req.orgId!, req.params.id, req.body);
+      // Optional active project/task assignment for activity stamping
+      if ('activeProjectId' in (req.body || {}) || 'activeTaskId' in (req.body || {})) {
+        const db = getDatabase();
+        let projectId = req.body.activeProjectId ?? null;
+        let taskId = req.body.activeTaskId ?? null;
+        if (projectId) {
+          const p = await getProjectById(req.orgId!, projectId);
+          if (!p) return res.status(400).json({ success: false, error: 'Invalid activeProjectId' });
+        }
+        if (taskId) {
+          const t = await db.get(`SELECT id, project_id FROM tasks WHERE id = ? AND org_id = ?`, [taskId, req.orgId!]);
+          if (!t) return res.status(400).json({ success: false, error: 'Invalid activeTaskId' });
+          if (projectId && t.project_id !== projectId) {
+            return res.status(400).json({ success: false, error: 'activeTaskId does not belong to activeProjectId' });
+          }
+        }
+        await db.run(
+          `UPDATE employees SET active_project_id = ?, active_task_id = ?, updated_at = ? WHERE id = ? AND org_id = ?`,
+          [projectId, taskId, new Date().toISOString(), req.params.id, req.orgId!]
+        );
+      }
       const employee = await getEmployeeById(req.orgId!, req.params.id);
       res.json({ success: true, data: employee });
     } catch (error) {
@@ -128,6 +161,7 @@ export function setupRoutes(app: Express): void {
   app.delete('/api/employees/:id', requireAuth, async (req, res) => {
     try {
       await deleteEmployee(req.orgId!, req.params.id);
+      await revokeEmployeeDeviceSessions(req.orgId!, req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
@@ -339,6 +373,7 @@ export function setupRoutes(app: Express): void {
   // Receive activities from desktop app
   app.post('/api/activity', requireAnyAuth, async (req, res) => {
     try {
+      // Device tokens may only write their own activities; dashboard must specify employeeId
       const employeeId = req.tokenType === 'device' ? req.employeeId! : req.body.employeeId;
       const { activities } = req.body;
 
@@ -349,9 +384,29 @@ export function setupRoutes(app: Express): void {
         });
       }
 
+      // Dashboard: verify employee belongs to org
+      if (req.tokenType === 'dashboard') {
+        const emp = await getEmployeeById(req.orgId!, employeeId);
+        if (!emp) {
+          return res.status(404).json({ success: false, error: 'Employee not found' });
+        }
+      }
+
       const orgId = req.orgId!;
       let suspiciousCount = 0;
       const savedActivities: Activity[] = [];
+
+      // Resolve optional active project/task from employee record (backward compatible)
+      let defaultProjectId: string | null = null;
+      let defaultTaskId: string | null = null;
+      try {
+        const empRow = await getDatabase().get(
+          `SELECT active_project_id, active_task_id FROM employees WHERE id = ? AND org_id = ?`,
+          [employeeId, orgId]
+        );
+        defaultProjectId = empRow?.active_project_id || null;
+        defaultTaskId = empRow?.active_task_id || null;
+      } catch { /* columns may not exist on very old DBs mid-migration */ }
 
       // Get detected role for this employee (for smart reclassification)
       let detectedRole: { roleType: string; status: string } = { roleType: 'unknown', status: 'learning' };
@@ -419,6 +474,23 @@ export function setupRoutes(app: Express): void {
           // Override table may not exist yet on first run
         }
 
+        // Prefer explicit per-activity project/task; else employee's active assignment
+        let projectId = activityData.projectId || defaultProjectId || undefined;
+        let taskId = activityData.taskId || defaultTaskId || undefined;
+        // Validate project/task belong to org when provided
+        if (projectId) {
+          const proj = await getProjectById(orgId, projectId);
+          if (!proj) projectId = undefined;
+        }
+        if (taskId) {
+          const task = await getDatabase().get(
+            `SELECT id FROM tasks WHERE id = ? AND org_id = ?`,
+            [taskId, orgId]
+          );
+          if (!task) taskId = undefined;
+        }
+
+        // Authoritative server receipt time for createdAt; keep client timestamp for activity window
         const activity: Activity = {
           id: activityData.id || uuidv4(),
           employeeId,
@@ -434,6 +506,8 @@ export function setupRoutes(app: Express): void {
           isIdle: activityData.isIdle || false,
           idleTimeSeconds: activityData.idleTimeSeconds || 0,
           durationSeconds: activityData.durationSeconds || 0,
+          projectId,
+          taskId,
           createdAt: new Date().toISOString()
         };
 
@@ -874,6 +948,10 @@ export function setupRoutes(app: Express): void {
   // Get detected role for an employee
   app.get('/api/roles/:employeeId', requireAuth, async (req, res) => {
     try {
+      const employee = await getEmployeeById(req.orgId!, req.params.employeeId);
+      if (!employee) {
+        return res.status(404).json({ success: false, error: 'Employee not found' });
+      }
       const role = await detectEmployeeRole(req.params.employeeId);
       const status = await getRoleStatus(req.params.employeeId);
       res.json({ success: true, data: { ...role, learningProgress: status.learningProgress, hoursTracked: status.hoursTracked } });
@@ -901,6 +979,10 @@ export function setupRoutes(app: Express): void {
   // Admin override: set role for an employee
   app.put('/api/roles/:employeeId', requireAuth, async (req, res) => {
     try {
+      const employee = await getEmployeeById(req.orgId!, req.params.employeeId);
+      if (!employee) {
+        return res.status(404).json({ success: false, error: 'Employee not found' });
+      }
       const { roleType } = req.body;
       const profile = ROLE_PROFILES.find(p => p.roleType === roleType);
 
@@ -916,9 +998,9 @@ export function setupRoutes(app: Express): void {
 
       await db.run(
         `INSERT OR REPLACE INTO role_profiles
-         (employee_id, role_type, display_name, confidence, status, detected_at, learning_started_at, updated_at)
-         VALUES (?, ?, ?, 100, 'admin_override', ?, ?, ?)`,
-        [req.params.employeeId, roleType, profile.displayName, now, now, now]
+         (employee_id, org_id, role_type, display_name, confidence, status, detected_at, learning_started_at, updated_at)
+         VALUES (?, ?, ?, ?, 100, 'admin_override', ?, ?, ?)`,
+        [req.params.employeeId, req.orgId!, roleType, profile.displayName, now, now, now]
       );
 
       res.json({ success: true, data: { employeeId: req.params.employeeId, roleType, displayName: profile.displayName, status: 'admin_override' } });

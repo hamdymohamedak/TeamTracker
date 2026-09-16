@@ -3,6 +3,8 @@ import { api } from '../lib/api';
 import { formatDurationSeconds } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
 import { HelpTip } from '../components/HelpTip';
+import { StatusLine } from '../components/Icon';
+import { AlertTriangle } from 'lucide-react';
 
 // Browser-tz-aware "today" so the date picker defaults match what the user
 // sees on the Dashboard. The summary itself is computed in the org's
@@ -51,7 +53,7 @@ export const DailySummary: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState<string | null>(null);
+  const [sendResult, setSendResult] = useState<{ message: string; variant: 'success' | 'error' } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,12 +78,12 @@ export const DailySummary: React.FC = () => {
       const res = await api.post('/api/reports/daily-summary/send', { date });
       if (!res?.success) throw new Error(res?.error || 'Send failed');
       if (res.sent) {
-        setSendResult(`✅ Sent to ${res.recipient}`);
+        setSendResult({ message: `Sent to ${res.recipient}`, variant: 'success' });
       } else {
-        setSendResult(`⚠️ Not sent: ${res.reason || 'unknown reason'}`);
+        setSendResult({ message: `Not sent: ${res.reason || 'unknown reason'}`, variant: 'error' });
       }
     } catch (e) {
-      setSendResult(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
+      setSendResult({ message: e instanceof Error ? e.message : String(e), variant: 'error' });
     } finally {
       setSending(false);
     }
@@ -116,14 +118,22 @@ export const DailySummary: React.FC = () => {
           {sending ? t('summary.sending') : t('summary.emailNow')}
         </button>
         {sendResult && (
-          <span style={{ fontSize: '12px', color: sendResult.startsWith('✅') ? 'var(--tt-success)' : 'var(--tt-amber)' }}>
-            {sendResult}
-          </span>
+          <StatusLine
+            variant={sendResult.variant}
+            style={{
+              fontSize: '12px',
+              color: sendResult.variant === 'success' ? 'var(--tt-success)' : 'var(--tt-amber)',
+            }}
+          >
+            {sendResult.message}
+          </StatusLine>
         )}
       </div>
 
       {error && (
-        <div style={styles.errorBanner}>⚠️ {error}</div>
+        <div style={styles.errorBanner}>
+          <StatusLine variant="error">{error}</StatusLine>
+        </div>
       )}
 
       {summary && (
@@ -155,7 +165,10 @@ export const DailySummary: React.FC = () => {
                   <div style={{ fontWeight: 600, color: 'var(--tt-text)' }}>
                     {e.employeeName}
                     {e.suspiciousCount > 0 && (
-                      <span style={styles.suspiciousBadge}>⚠️ {e.suspiciousCount}</span>
+                      <span style={{ ...styles.suspiciousBadge, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <AlertTriangle size={12} strokeWidth={2} aria-hidden />
+                        {e.suspiciousCount}
+                      </span>
                     )}
                   </div>
                   {e.outsideHoursSeconds > 0 && (

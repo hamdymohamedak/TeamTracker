@@ -1,5 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, X, MessageCircle, ChevronLeft, Sparkles } from 'lucide-react';
+import { Send, X, MessageCircle, ChevronLeft, Sparkles, Lightbulb, User, Loader2 } from 'lucide-react';
+
+const WELCOME_MESSAGE =
+  "Hi! I'm Genesis, your AI analytics assistant. I can help you understand your team's productivity data.\n\nWhat would you like to know?";
+
+const WELCOME_SUGGESTIONS = [
+  'Who was most productive today?',
+  'Show repetitive tasks',
+  'Time spent on meetings',
+];
 
 interface Message {
   id: string;
@@ -78,13 +87,9 @@ export function GenesisAIChat() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: "👋 Hi! I'm Genesis, your AI analytics assistant. I can help you understand your team's productivity data.\n\nWhat would you like to know?",
+      content: WELCOME_MESSAGE,
       timestamp: new Date(),
-      suggestions: [
-        'Who was most productive today?',
-        'Show repetitive tasks',
-        'Time spent on meetings'
-      ]
+      suggestions: WELCOME_SUGGESTIONS,
     }
   ]);
   const [input, setInput] = useState('');
@@ -165,13 +170,9 @@ export function GenesisAIChat() {
       {
         id: 'welcome',
         role: 'assistant',
-        content: "👋 Hi! I'm Genesis, your AI analytics assistant. I can help you understand your team's productivity data.\n\nWhat would you like to know?",
+        content: WELCOME_MESSAGE,
         timestamp: new Date(),
-        suggestions: [
-          'Who was most productive today?',
-          'Show repetitive tasks',
-          'Time spent on meetings'
-        ]
+        suggestions: WELCOME_SUGGESTIONS,
       }
     ]);
   };
@@ -182,13 +183,9 @@ export function GenesisAIChat() {
       {
         id: 'welcome',
         role: 'assistant',
-        content: "👋 Hi! I'm Genesis, your AI analytics assistant. I can help you understand your team's productivity data.\n\nWhat would you like to know?",
+        content: WELCOME_MESSAGE,
         timestamp: new Date(),
-        suggestions: [
-          'Who was most productive today?',
-          'Show repetitive tasks',
-          'Time spent on meetings'
-        ]
+        suggestions: WELCOME_SUGGESTIONS,
       }
     ]);
     inputRef.current?.focus();
@@ -280,10 +277,12 @@ export function GenesisAIChat() {
                       {message.suggestions.map((suggestion, idx) => (
                         <button
                           key={idx}
+                          type="button"
                           onClick={() => handleSuggestion(suggestion)}
                           style={styles.suggestionButton}
                         >
-                          💡 {suggestion}
+                          <Lightbulb size={12} strokeWidth={2} aria-hidden />
+                          {suggestion}
                         </button>
                       ))}
                     </div>
@@ -296,7 +295,7 @@ export function GenesisAIChat() {
 
                 {message.role === 'user' && (
                   <div style={styles.userAvatar}>
-                    <span style={{ fontSize: 14 }}>👤</span>
+                    <User size={14} strokeWidth={2} aria-hidden />
                   </div>
                 )}
               </div>
@@ -308,7 +307,7 @@ export function GenesisAIChat() {
                   <Sparkles style={{ width: 14, height: 14, color: 'white' }} />
                 </div>
                 <div style={styles.loadingBubble}>
-                  <span style={styles.loadingSpinner}>⏳</span>
+                  <Loader2 size={16} strokeWidth={2} aria-hidden style={{ animation: 'tt-spin 1s linear infinite' }} />
                   <span>Analyzing your data...</span>
                 </div>
               </div>
@@ -523,9 +522,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: 8,
     fontSize: 13,
     color: '#6b7280'
-  },
-  loadingSpinner: {
-    animation: 'spin 1s linear infinite'
   },
   inputContainer: {
     padding: 12,

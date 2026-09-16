@@ -30,6 +30,8 @@ TeamTracker is an open-source employee tracking SaaS. See who's working, what th
 
 Go to **[YOUR_DOMAIN/signup](https://YOUR_DOMAIN/signup)**. Enter your company name, your name, email, and a password. You're in.
 
+**Save your recovery codes** shown right after signup. They are the offline way to reset your password (no email service required). Each code works once.
+
 ### 2. Add Employees
 
 Go to **Employees** > **+ Add Employee**. Add each team member with their name, email, and department.
@@ -158,7 +160,9 @@ Go back to your dashboard at [YOUR_DOMAIN](https://YOUR_DOMAIN). Within a minute
 
 ## Self-Hosting (Optional)
 
-Want to self-host on your own VPS? Deploy to any Ubuntu server:
+TeamTracker stays a **single-VPS** product: Node.js + SQLite + nginx + PM2. No PostgreSQL, Redis, or Kubernetes required.
+
+Full production guide (data layout, env vars, HTTPS, backups, rollback): **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)**.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/hamdymohamedak/TeamTracker/main/deploy.sh | bash
@@ -168,6 +172,12 @@ Works on DigitalOcean ($6/month droplet), AWS, or any VPS. Add a custom domain +
 ```bash
 certbot --nginx -d yourdomain.com
 ```
+
+After deploy, confirm liveness and readiness:
+- `GET /api/health` — process up
+- `GET /api/ready` — database + storage usable
+
+Related: [docs/BACKUP_RESTORE.md](./docs/BACKUP_RESTORE.md) · [docs/PRIVACY.md](./docs/PRIVACY.md) · [docs/DESKTOP_SIGNING.md](./docs/DESKTOP_SIGNING.md)
 
 ---
 
@@ -365,7 +375,8 @@ checks the active window every 10 seconds and syncs every 60 seconds.
 ```
 
 - **Admin dashboard:** React SPA served by Express
-- **API:** Express + SQLite (upgradeable to Postgres)
+- **API:** Express + SQLite on a **single VPS** (no Postgres/Redis/K8s required for production)
+- **Persistent data:** `/var/lib/teamtracker` (DB, uploads, backups) — app code under `/opt/teamtracker/application`
 - **Desktop tracker:** Electron app — samples the active window every **10
   seconds**, batches them, and syncs to the server every **60 seconds**.
 - **Productivity math:** Dashboard and Reports share one formula —
@@ -383,11 +394,13 @@ checks the active window every 10 seconds and syncs every 60 seconds.
 
 ## Updating
 
-SSH into your server (or use DigitalOcean Console) and run:
+Prefer the production-safe update script (does not wipe `/var/lib/teamtracker`):
 
 ```bash
-cd /opt/teamtracker && git pull && cd admin && npm install --no-package-lock && npx tsc -p tsconfig.server.json && npx vite build && pm2 restart teamtracker
+bash /opt/teamtracker/application/deploy-enterprise.sh
 ```
+
+Or see **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** for manual update / rollback steps.
 
 ---
 
@@ -398,13 +411,31 @@ All endpoints require `Authorization: Bearer <token>` header (except auth endpoi
 ### Auth
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/auth/signup` | POST | Public | Create account + org |
+| `/api/auth/signup` | POST | Public | Create account + org (returns recovery codes once) |
 | `/api/auth/login` | POST | Public | Login, get JWT |
-| `/api/auth/forgot-password` | POST | Public | Generate reset link |
-| `/api/auth/reset-password` | POST | Public | Reset password with token |
+| `/api/auth/reset-with-recovery-code` | POST | Public | Reset password with email + recovery code |
+| `/api/auth/recovery-codes` | GET | Dashboard | Count unused recovery codes |
+| `/api/auth/recovery-codes/regenerate` | POST | Dashboard | Issue new recovery codes (shown once) |
+| `/api/auth/forgot-password` | POST | Public | Optional email reset link (only if SMTP/Resend configured) |
+| `/api/auth/reset-password` | POST | Public | Reset password with email token |
+| `/api/auth/team/:id/password` | POST | Owner/Admin | Set another teammate’s password |
 | `/api/auth/setup-token` | POST | Dashboard | Generate employee setup token |
 | `/api/auth/enroll` | POST | Public | Redeem setup token for device JWT |
 | `/api/auth/me` | GET | Any | Get current user info |
+
+### Password recovery (offline)
+
+Forgot password in the UI uses a **recovery code** (no paid email required). From **Team** you can regenerate your codes while logged in, or set a teammate’s password.
+
+Break-glass on the server (SSH / local machine with the SQLite DB):
+
+```bash
+pnpm run reset-password -- --email example@gmail.com --password '123456789' --codes
+```
+
+- `--email` / `--password` — required  
+- `--codes` — also print fresh recovery codes once  
+- Optional: `DATABASE_PATH=/var/lib/teamtracker/database/admin.db` if not using the default DB path  
 
 ### Employees & Activities
 | Endpoint | Method | Description |

@@ -4,6 +4,8 @@ import type { Employee } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { HelpTip } from '../components/HelpTip';
+import { EmptyIcon, StatusLine } from '../components/Icon';
+import { Camera } from 'lucide-react';
 
 interface ScreenshotRow {
   id: string;
@@ -21,6 +23,14 @@ interface ScreenshotRow {
 function todayLocal(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Append dashboard JWT for <img src> — browser cannot send Authorization headers. */
+function authenticatedFileUrl(fileUrl: string): string {
+  const token = localStorage.getItem('teamtracker_token');
+  if (!token || !fileUrl) return fileUrl;
+  const sep = fileUrl.includes('?') ? '&' : '?';
+  return `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
 }
 
 export const Screenshots: React.FC = () => {
@@ -302,12 +312,14 @@ export const Screenshots: React.FC = () => {
       )}
 
       {error && (
-        <div style={styles.errorBanner}>⚠️ {error}</div>
+        <div style={styles.errorBanner}>
+          <StatusLine variant="error">{error}</StatusLine>
+        </div>
       )}
 
       {!loading && shots.length === 0 && (
         <div style={styles.empty}>
-          <div style={{ fontSize: '40px' }}>📷</div>
+          <EmptyIcon icon={Camera} size={40} />
           <h3 style={{ margin: '12px 0 4px', color: 'var(--tt-text)' }}>{t('screenshots.emptyTitle')}</h3>
           <p style={{ color: 'var(--tt-text-muted)', fontSize: '14px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.5 }}>
             {t('screenshots.emptyHint')}
@@ -325,7 +337,7 @@ export const Screenshots: React.FC = () => {
                 style={styles.thumbBtn}
                 aria-label="View full size"
               >
-                <img src={s.fileUrl} alt="" style={styles.thumb} loading="lazy" />
+                <img src={authenticatedFileUrl(s.fileUrl)} alt="" style={styles.thumb} loading="lazy" />
               </button>
               <div style={styles.cardBody}>
                 <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--tt-text)' }}>
@@ -359,7 +371,7 @@ export const Screenshots: React.FC = () => {
           style={styles.lightbox}
         >
           <img
-            src={zoomed.fileUrl}
+            src={authenticatedFileUrl(zoomed.fileUrl)}
             alt="Screenshot full size"
             style={styles.lightboxImg}
             onClick={e => e.stopPropagation()}

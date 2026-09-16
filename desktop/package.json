@@ -56,9 +56,10 @@
         }
       ],
       "icon": "assets/icon.png",
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": null,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "TeamTracker captures periodic screenshots so your team admin can review work activity.",
         "NSAppleEventsUsageDescription": "TeamTracker reads the active window title to track which apps are in use.",
@@ -81,7 +82,7 @@
         }
       ],
       "icon": "assets/icon.png",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
