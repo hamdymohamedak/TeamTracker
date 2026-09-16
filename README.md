@@ -14,7 +14,7 @@ TeamTracker is an open-source employee tracking SaaS. See who's working, what th
 
 - **Real-time dashboard** — see who's online, what app they're using, productivity scores
 - **AI assistant** — ask "Who was most productive today?" in plain English
-- **Automatic tracking** — silent desktop app, no timesheets, no manual entry
+- **Automatic tracking** — desktop app on each machine, no timesheets, no manual entry
 - **Smart role detection** — auto-detects if someone is a developer, designer, manager, etc. and adjusts scoring (admins can override)
 - **Business hours** — set per-employee working hours; activity outside hours is shown separately, not counted against productivity
 - **Multi-currency** — pick from 15+ currencies for each employee's hourly rate (USD, EUR, GBP, INR, AED, and more)
@@ -44,15 +44,15 @@ For each employee, click the **Setup Token** button next to their name. This gen
 
 Download the latest DMG (Mac), EXE (Windows), or AppImage/`.deb` (Linux) from [GitHub Releases](https://github.com/hamdymohamedak/TeamTracker/releases).
 
-**macOS:**
+**macOS** (releases are unsigned by default — no paid Apple certificate required):
 1. Open the `.dmg`, drag **TeamTracker** to Applications
-2. Right-click → **Open** → **Open Anyway** (required once for unsigned apps)
+2. First open may show a Gatekeeper warning. Allow **this app only**: right-click → **Open** → **Open**, or **System Settings → Privacy & Security → Open Anyway**. Do not disable Gatekeeper globally.
 3. macOS will prompt for **Screen Recording** and **Accessibility** — grant both
-4. TeamTracker runs silently in the background (no Dock icon, no menu bar)
+4. TeamTracker appears in the Dock / taskbar like a normal app (tray icon + status window). Tracking continues if you close the window — quit from the tray menu when you want to stop.
 
-**Windows:**
-1. Run the `.exe` installer, follow the wizard (Setup may show SmartScreen once — **More info → Run anyway**)
-2. The installer trusts the TeamTracker publisher cert for your user automatically — no separate PowerShell step
+**Windows** (releases are unsigned by default — no paid Authenticode certificate required):
+1. Run the `.exe` installer and follow the wizard
+2. SmartScreen may show **Windows protected your PC** / unknown publisher — click **More info → Run anyway**. Do not disable SmartScreen globally.
 3. TeamTracker starts automatically — no permission prompts needed
 
 **Linux:**
@@ -109,10 +109,12 @@ npm install
 npx electron .
 ```
 
-**Build a distributable app:**
+**Build a distributable app** (unsigned by default — no signing secrets required):
 ```bash
-npm run dist:mac    # builds DMG + ZIP for macOS (arm64 + x64)
-npm run dist:win    # builds Windows installer (x64)
+export CSC_IDENTITY_AUTO_DISCOVERY=false
+unset CSC_LINK WIN_CSC_LINK
+npm run dist:mac    # builds DMG + ZIP for macOS (arm64 + x64); ad-hoc identity via afterPack
+npm run dist:win    # builds Windows NSIS installer (x64); best run on Windows
 npm run dist:linux  # builds AppImage + .deb for Linux (x64)
 npm run dist:all    # macOS + Windows + Linux
 ```
@@ -124,7 +126,10 @@ Build output goes to `desktop/release/`.
 > fails, copy the `desktop/` folder to a standalone directory, run
 > `npm install` there, then `npm run dist:mac`.
 
-After building, re-sign the macOS app so Accessibility/Screen Recording permissions persist across restarts:
+Distribution and optional future paid signing: **[docs/DESKTOP_SIGNING.md](./docs/DESKTOP_SIGNING.md)**.
+
+After a local macOS package build without `CSC_LINK`, `afterPack` already
+ad-hoc signs the `.app`. Manual re-sign (only if you need to redo it):
 ```bash
 # Sign all nested frameworks, then the main app
 find release/mac-arm64/TeamTracker.app/Contents/Frameworks -name "*.framework" -exec codesign --force --sign - {} \;
@@ -202,14 +207,15 @@ macOS requires two permissions on first launch, both granted from
    - Settings path: **Privacy & Security → Accessibility → toggle on
      TeamTracker**.
 
-Both prompts appear once on first launch. The packaged app is signed with
-a stable bundle ID (`com.teamtracker.tracker`), so permissions survive
-restarts and app updates.
+Both prompts appear once on first launch. Packaged builds use a stable
+bundle ID (`com.teamtracker.tracker`). Unsigned CI builds are ad-hoc signed
+for identity stability only — that is **not** Apple Developer ID trust.
+Gatekeeper may still warn until the employee allows the app once.
 
-> ⚠️ **If you build from source**, re-sign the app after building (see
-> "Build from source" above). Without re-signing, macOS may re-prompt for
-> permissions on every restart because the code signature identifier
-> defaults to "Electron".
+> ⚠️ **If you build from source**, either use `npm run dist:mac` (runs an
+> ad-hoc `afterPack` when `CSC_LINK` is unset) or re-sign manually (see
+> "Build from source" above). Without a stable code signature identifier,
+> macOS may re-prompt for permissions on every restart.
 
 ### Windows (10 and newer)
 
@@ -217,12 +223,11 @@ Windows does not require an explicit permission for reading window titles —
 the tracker uses standard user-level APIs (`GetForegroundWindow`). However,
 you may see friction on first run:
 
-1. **SmartScreen warning** — the first download of **Setup.exe** may show
-   "Windows protected your PC" (Mark-of-the-Web). Click **More info →
-   Run anyway**. During install, TeamTracker adds its public publisher cert
-   to your user trust store so the installed app is treated as a known
-   publisher. A paid Authenticode cert is still required to avoid SmartScreen
-   for strangers on the open internet without that one click.
+1. **SmartScreen / unknown publisher** — unsigned (or newly published)
+   installers often show "Windows protected your PC". Click **More info →
+   Run anyway**. This is expected for a zero-cost internal release. A paid
+   public-CA Authenticode certificate is the later upgrade path if you need
+   fewer warnings for a larger audience — see [docs/DESKTOP_SIGNING.md](./docs/DESKTOP_SIGNING.md).
 2. **Microsoft Defender / corporate AV** — some EDR products (CrowdStrike,
    SentinelOne, etc.) quarantine new Electron apps by default. If the
    tracker exits immediately, add an exclusion for the TeamTracker folder or
@@ -346,19 +351,19 @@ Screenshots are off by default. Storage path on the server:
 `admin/data/uploads/screenshots/<orgId>/<employeeId>/<YYYY-MM-DD>/<id>.jpg`.
 
 ### Stealth Mode (Desktop Tracker)
-The tracker can run completely invisibly: no menu-bar / tray icon, no dock
-icon on macOS, silent boot. Enable by launching with the `TEAMTRACKER_STEALTH=1`
-env var:
+By default the tracker is a **normal app**: Dock / taskbar icon, tray menu, and
+status window. Optional stealth mode hides all of that (no tray, no Dock on
+macOS). Enable only if you explicitly want a background-only agent:
 
 ```bash
 TEAMTRACKER_STEALTH=1 npx electron .
 ```
 
 Combined with a launch agent (macOS `launchd` plist), a Windows scheduled
-task, or the Linux XDG/systemd autostart script, the tracker becomes
-invisible to the employee while still uploading activity + screenshots to
-the admin dashboard. Performance overhead is negligible — the tracker
-checks the active window every 10 seconds and syncs every 60 seconds.
+task, or the Linux XDG/systemd autostart script, stealth mode keeps the
+tracker invisible while still uploading activity + screenshots. Performance
+overhead is negligible — the tracker checks the active window every 10 seconds
+and syncs every 60 seconds.
 
 ### Multi-Tenant
 - Each business is completely isolated

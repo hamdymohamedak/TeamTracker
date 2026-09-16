@@ -205,7 +205,7 @@ Do **not** restore by wiping `/var/lib/teamtracker` unless you intend to discard
 4. Enroll with the setup token against your `PUBLIC_BASE_URL` (see main README).
 5. Grant OS permissions (Screen Recording + Accessibility on macOS; window-title backend on Linux).
 
-Desktop code signing / notarization for CI: **[DESKTOP_SIGNING.md](./DESKTOP_SIGNING.md)**.
+Desktop distribution (unsigned by default; optional paid signing later): **[DESKTOP_SIGNING.md](./DESKTOP_SIGNING.md)**.
 
 Privacy / monitoring behavior: **[PRIVACY.md](./PRIVACY.md)**.
 

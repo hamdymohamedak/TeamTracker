@@ -4,6 +4,14 @@ name: Build Desktop Apps
 # Trigger: create/push a version tag (e.g. v0.0.1, v1.2.3)
 # Builds Mac, Windows, and Linux for both desktop apps, then publishes a GitHub Release.
 # Manual: Actions → Build Desktop Apps → Run workflow
+#
+# Signing is OPTIONAL and zero-cost by default:
+#   - No secrets  → unsigned Windows + unsigned macOS (ad-hoc identity only) → release succeeds
+#   - With secrets → Developer ID / Authenticode when provided (see docs/DESKTOP_SIGNING.md)
+#
+# macOS runners:
+#   - macos-latest     → Apple Silicon (arm64) build + arch verify
+#   - macos-15-intel   → Intel MacBook (x64) build + arch verify on real x86_64 hardware
 
 on:
   push:
@@ -13,7 +21,7 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     env:
       # Non-secret flag for `if:` (secrets cannot be used directly in if-conditions)
       HAS_CSC: ${{ secrets.CSC_LINK != '' }}
@@ -21,20 +29,49 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Employee tracker — Apple Silicon
           - app_dir: desktop
-            artifact_name: employee-mac
-            codesign_id: com.teamtracker.tracker
-            app_bundle: TeamTracker.app
+            artifact_name: employee-mac-arm64
+            runner: macos-latest
+            arch: arm64
+          # Employee tracker — Intel MacBook
+          - app_dir: desktop
+            artifact_name: employee-mac-x64
+            runner: macos-15-intel
+            arch: x64
+          # Admin shell — Apple Silicon
           - app_dir: desktop-admin
-            artifact_name: admin-mac
-            codesign_id: com.teamtracker.admin
-            app_bundle: TeamTracker Admin.app
+            artifact_name: admin-mac-arm64
+            runner: macos-latest
+            arch: arm64
+          # Admin shell — Intel MacBook
+          - app_dir: desktop-admin
+            artifact_name: admin-mac-x64
+            runner: macos-15-intel
+            arch: x64
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Report runner CPU architecture
+        run: |
+          echo "matrix.arch=${{ matrix.arch }}"
+          echo "uname -m=$(uname -m)"
+          echo "runner=${{ matrix.runner }}"
+          case "$(uname -m)" in
+            arm64|aarch64)
+              test "${{ matrix.arch }}" = "arm64" || { echo "Runner is Apple Silicon but job expected ${{ matrix.arch }}"; exit 1; }
+              ;;
+            x86_64|amd64)
+              test "${{ matrix.arch }}" = "x64" || { echo "Runner is Intel but job expected ${{ matrix.arch }}"; exit 1; }
+              ;;
+            *)
+              echo "Unexpected runner arch: $(uname -m)"; exit 1
+              ;;
+          esac
 
       - name: Prepare standalone build dir
         run: |
@@ -48,7 +85,7 @@ jobs:
           npm install
           npm run build
 
-      - name: Package Mac app
+      - name: Package Mac app (${{ matrix.arch }})
         working-directory: ${{ runner.temp }}/tt-build
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -60,35 +97,63 @@ jobs:
           set -euo pipefail
           # Empty CSC_LINK makes electron-builder treat "" as a cert file path → "not a file".
           if [ -z "${CSC_LINK:-}" ]; then
-            unset CSC_LINK CSC_KEY_PASSWORD || true
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID || true
             export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "No Apple signing secrets — building unsigned macOS packages."
+            echo "afterPack will ad-hoc sign for a stable bundle identity (not Gatekeeper trust)."
           else
             export CSC_IDENTITY_AUTO_DISCOVERY=true
+            echo "CSC_LINK present — Developer ID signing enabled."
+            # Incomplete notarization secrets must not fail the build.
+            if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+              unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID || true
+              echo "Apple notarization secrets incomplete — signing without notarization."
+            else
+              echo "Apple notarization secrets present (enable notarize in package.json when ready)."
+            fi
           fi
-          npm run dist:mac
+          # Native-arch only: Intel job → x64, Apple Silicon → arm64.
+          npx electron-builder --mac --${{ matrix.arch }} --publish never
 
-      - name: Ad-hoc re-sign (unsigned builds only)
-        if: ${{ env.HAS_CSC != 'true' }}
+      - name: Verify packaged binary architecture
         working-directory: ${{ runner.temp }}/tt-build
         run: |
-          for dir in "release/mac-arm64/${{ matrix.app_bundle }}" "release/mac/${{ matrix.app_bundle }}"; do
-            if [ -d "$dir" ]; then
-              find "$dir" -type f -perm +111 -path "*/Frameworks/*" -exec codesign --force --sign - {} \; 2>/dev/null || true
-              find "$dir/Contents/Frameworks" -name "*.dylib" -exec codesign --force --sign - {} \; 2>/dev/null || true
-              find "$dir/Contents/Frameworks" -name "*.framework" -exec codesign --force --sign - {} \; 2>/dev/null || true
-              find "$dir/Contents/Frameworks" -name "*.app" -exec codesign --force --sign - {} \; 2>/dev/null || true
-              codesign --force --sign - --identifier "${{ matrix.codesign_id }}" "$dir"
-            fi
-          done
+          set -euo pipefail
+          shopt -s nullglob
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            apps=(release/mac-arm64/*.app)
+            expect="arm64"
+          else
+            apps=(release/mac/*.app)
+            expect="x86_64"
+          fi
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "No .app found for arch ${{ matrix.arch }}"
+            ls -laR release || true
+            exit 1
+          fi
+          app="${apps[0]}"
+          bin=$(find "$app/Contents/MacOS" -type f | head -1)
+          echo "Checking: $bin"
+          file "$bin"
+          file "$bin" | grep -q "$expect"
+          echo "OK: binary matches expected arch ($expect) on runner $(uname -m)"
 
       - name: Collect artifacts
         run: |
           mkdir -p release-out
           shopt -s nullglob
-          for f in $RUNNER_TEMP/tt-build/release/*.dmg $RUNNER_TEMP/tt-build/release/*-mac.zip; do
-            cp "$f" release-out/
+          for f in "$RUNNER_TEMP"/tt-build/release/*-${{ matrix.arch }}.dmg \
+                   "$RUNNER_TEMP"/tt-build/release/*-${{ matrix.arch }}.zip; do
+            [ -f "$f" ] && cp "$f" release-out/
           done
+          if [ -z "$(ls -A release-out 2>/dev/null || true)" ]; then
+            for f in "$RUNNER_TEMP"/tt-build/release/*.dmg "$RUNNER_TEMP"/tt-build/release/*.zip; do
+              [ -f "$f" ] && cp "$f" release-out/
+            done
+          fi
           ls -lh release-out/ || true
+          test -n "$(ls -A release-out 2>/dev/null || true)"
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
@@ -219,8 +284,10 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            employee-mac/*
-            admin-mac/*
+            employee-mac-arm64/*
+            employee-mac-x64/*
+            admin-mac-arm64/*
+            admin-mac-x64/*
             employee-windows/*
             admin-windows/*
             employee-linux/*

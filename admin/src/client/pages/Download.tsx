@@ -90,7 +90,7 @@ export const Download: React.FC = () => {
 
         <div style={{ padding: '28px 32px 32px' }}>
           <p style={{ textAlign: 'center', color: 'var(--tt-text-muted)', margin: '0 0 24px', lineHeight: 1.65 }}>
-            Install the silent desktop tracker on each employee device. Activity syncs live to your admin dashboard.
+            Install the desktop tracker on each employee device. Activity syncs live to your admin dashboard.
           </p>
 
           {loading ? (
@@ -144,9 +144,9 @@ export const Download: React.FC = () => {
             {os === 'windows' ? (
               <ol style={styles.stepsList}>
                 <li>Run the installer and follow the wizard</li>
-                <li>If Windows shows a SmartScreen warning, click <strong>More info</strong> then <strong>Run anyway</strong></li>
+                <li>Unsigned builds may show SmartScreen / unknown publisher — click <strong>More info</strong> then <strong>Run anyway</strong> (do not disable SmartScreen)</li>
                 <li>Enter the setup token from your admin (Employees → Setup Token)</li>
-                <li>TeamTracker runs silently — no further action needed</li>
+                <li>TeamTracker appears in the Dock / taskbar — use the tray menu to quit when finished</li>
               </ol>
             ) : os === 'linux' ? (
               <ol style={styles.stepsList}>
@@ -158,7 +158,7 @@ export const Download: React.FC = () => {
             ) : (
               <ol style={styles.stepsList}>
                 <li>Open the DMG and drag <strong>TeamTracker</strong> to Applications</li>
-                <li>Right-click TeamTracker → <strong>Open</strong> → <strong>Open Anyway</strong></li>
+                <li>Unsigned builds may show a Gatekeeper warning — right-click → <strong>Open</strong>, or use <strong>Privacy &amp; Security → Open Anyway</strong> (do not disable Gatekeeper)</li>
                 <li>Grant <strong>Screen Recording</strong> and <strong>Accessibility</strong> when prompted</li>
                 <li>Enter the setup token from your admin (Employees → Setup Token)</li>
               </ol>
