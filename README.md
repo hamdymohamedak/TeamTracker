@@ -90,7 +90,7 @@ Open the dashboard on any device. You’ll see apps in use, time breakdowns, and
 Prefer running it yourself? TeamTracker is designed for a single VPS — simple, affordable, and under your control.
 
 - [Deployment guide](./docs/DEPLOYMENT.md)
-- [LAN / home-office network setup](./LAN_SETUP.md) (Arabic step-by-step: admin + employee on the same Wi‑Fi)
+- [LAN / local network setup](./LAN_SETUP.md) (Arabic operational guide for admin + employees on the same network)
 - [Backup & restore](./docs/BACKUP_RESTORE.md)
 - [Privacy details](./docs/PRIVACY.md)
 - [Desktop signing](./docs/DESKTOP_SIGNING.md)
