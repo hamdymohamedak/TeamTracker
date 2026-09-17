@@ -24,12 +24,21 @@ Screenshots can include anything visible on the display (documents, chat, person
 
 ## Privacy blocks
 
-Admins can configure **capture privacy blocks** (patterns on app name / window title). When a block matches:
+Admins configure **capture privacy blocks** with a **site URL** (e.g. `https://web.whatsapp.com/`) or a native **app name**. Site URLs are stored as a **canonical hostname** (e.g. `web.whatsapp.com`).
 
-- Screenshot capture and/or live-view frames for that moment may be **suppressed**.
-- The product is designed to avoid uploading blocked visual content for matching windows; activity metadata handling follows the server/client implementation at the time of deploy.
+The desktop **PrivacyGuard** is the single gate for screenshots and Live Activity (there is no separate video-recording pipeline — continuous viewing is JPEG frames over the live session).
 
-Privacy blocks reduce risk; they are **not** a guarantee that sensitive content never appears in titles, activity logs, or residual frames. Window titles themselves can contain personal or confidential strings.
+- **Site hostnames (blocklist mode):** blocks capture when a listed host is the **active tab**.
+- **Site hostnames (allowlist mode):** blocks capture for **every** website except listed hosts on the active tab.
+- **App names:** match open window / process names for native apps.
+- **Fail-closed:** when URL rules require browser state and it cannot be verified, PrivacyGuard returns **unknown** and adapters **do not** capture.
+
+When a block matches (or state is unknown with URL rules present):
+
+- Screenshot capture is skipped before `desktopCapturer` runs.
+- Live Activity sends empty frames with `privacyBlocked: true` and does not grab pixels.
+
+Privacy blocks reduce risk; they are **not** a guarantee that sensitive content never appears in activity **titles**, residual check→grab races measured in milliseconds (e.g. switching to a blocked tab mid-capture), or browsers we cannot probe (Firefox; Windows/Linux URL rules). Window titles themselves can contain personal or confidential strings. On macOS, grant **Automation** permission for TeamTracker to control your browser so URL matching works; without it, capture stays blocked while URL rules exist.
 
 ## Stealth mode (honest description)
 

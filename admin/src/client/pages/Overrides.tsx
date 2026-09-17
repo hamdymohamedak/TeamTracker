@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { SlidersHorizontal, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Employee } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
-import { HelpTip } from '../components/HelpTip';
-import { StatusLine } from '../components/Icon';
+import { PageEmpty, PageHero, PagePanel } from '../components/PageHero';
 
 // Per-org / per-employee classification overrides admin page.
 //
@@ -122,7 +122,7 @@ export const Overrides: React.FC = () => {
   };
 
   const getEmployeeName = (id: string | null) => {
-    if (!id) return 'All employees (org-wide)';
+    if (!id) return t('overrides.allEmployees');
     return employees.find(e => e.id === id)?.name || `Unknown (${id.slice(0, 8)})`;
   };
 
@@ -130,143 +130,159 @@ export const Overrides: React.FC = () => {
     CATEGORY_OPTIONS.find(o => o.value === value)?.label || value;
 
   if (loading) {
-    return <div style={styles.container}><p>Loading overrides…</p></div>;
+    return (
+      <div className="tt-page">
+        <p className="tt-muted">{t('common.loading')}</p>
+      </div>
+    );
   }
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {t('overrides.title')}
-          <HelpTip text={t('help.overrides')} />
-        </h1>
-        <p style={styles.subtitle}>{t('overrides.subtitle')}</p>
-      </header>
+    <div className="tt-page">
+      <PageHero
+        icon={SlidersHorizontal}
+        title={t('overrides.title')}
+        subtitle={t('overrides.subtitle')}
+        help={t('help.overrides')}
+      />
 
-      {flash && (
-        <div style={styles.flash}>
-          <StatusLine variant="success">{flash}</StatusLine>
-        </div>
-      )}
-      {error && (
-        <div style={styles.errorBanner}>
-          <StatusLine variant="error">{error}</StatusLine>
-        </div>
-      )}
+      {flash && <div className="tt-flash">{flash}</div>}
+      {error && <div className="tt-error-banner">{error}</div>}
 
-      <section style={styles.card}>
-        <h2 style={styles.cardTitle}>Add a new override</h2>
-        <form onSubmit={submit} style={styles.form}>
-          <div style={styles.row}>
-            <label style={styles.label}>
-              Pattern (app name or window title contains)
-              <input
-                type="text"
-                value={pattern}
-                onChange={e => setPattern(e.target.value)}
-                placeholder='e.g. "Overflow Plumbing" or "AutoCAD"'
-                required
-                style={styles.input}
-              />
+      <PagePanel title={t('overrides.addTitle')} hint={t('overrides.addHint')}>
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="tt-field">
+            <label className="tt-field-label" htmlFor="override-pattern">
+              {t('overrides.pattern')}
             </label>
+            <input
+              id="override-pattern"
+              type="text"
+              className="tt-input"
+              value={pattern}
+              onChange={e => setPattern(e.target.value)}
+              placeholder='e.g. "Overflow Plumbing" or "AutoCAD"'
+              required
+            />
           </div>
-          <div style={styles.row}>
-            <label style={{ ...styles.label, flex: 1 }}>
-              Scope
-              <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} style={styles.input}>
-                <option value="__org__">All employees (org-wide)</option>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div className="tt-field" style={{ flex: 1, minWidth: 200 }}>
+              <label className="tt-field-label" htmlFor="override-scope">
+                {t('overrides.scope')}
+              </label>
+              <select
+                id="override-scope"
+                className="tt-input"
+                value={employeeId}
+                onChange={e => setEmployeeId(e.target.value)}
+              >
+                <option value="__org__">{t('overrides.allEmployees')}</option>
                 {employees.map(emp => (
                   <option key={emp.id} value={emp.id}>{emp.name}</option>
                 ))}
               </select>
-            </label>
-            <label style={{ ...styles.label, flex: 1 }}>
-              Category
-              <select value={category} onChange={e => handleCategoryChange(e.target.value)} style={styles.input}>
+            </div>
+            <div className="tt-field" style={{ flex: 1, minWidth: 200 }}>
+              <label className="tt-field-label" htmlFor="override-category">
+                {t('overrides.category')}
+              </label>
+              <select
+                id="override-category"
+                className="tt-input"
+                value={category}
+                onChange={e => handleCategoryChange(e.target.value)}
+              >
                 {CATEGORY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
-            </label>
-            <label style={{ ...styles.label, width: '120px' }}>
-              Score (0–100)
+            </div>
+            <div className="tt-field" style={{ width: 120, minWidth: 120 }}>
+              <label className="tt-field-label" htmlFor="override-score">
+                {t('overrides.score')}
+              </label>
               <input
+                id="override-score"
                 type="number"
+                className="tt-input"
                 min={0}
                 max={100}
                 value={score}
                 onChange={e => setScore(Number(e.target.value))}
-                style={styles.input}
               />
-            </label>
+            </div>
           </div>
-          <button type="submit" disabled={submitting || !pattern.trim()} style={styles.submitBtn}>
-            {submitting ? 'Adding…' : 'Add override'}
-          </button>
+          <div>
+            <button
+              type="submit"
+              className="tt-btn tt-btn-primary"
+              disabled={submitting || !pattern.trim()}
+            >
+              {submitting ? t('overrides.adding') : t('overrides.add')}
+            </button>
+          </div>
         </form>
-      </section>
+      </PagePanel>
 
-      <section style={styles.card}>
-        <h2 style={styles.cardTitle}>Active overrides ({overrides.length})</h2>
+      <PagePanel title={t('overrides.activeTitle', { count: overrides.length })}>
         {overrides.length === 0 ? (
-          <p style={styles.empty}>No overrides yet. Add one above to start customizing classification for your org.</p>
+          <PageEmpty
+            icon={SlidersHorizontal}
+            title={t('overrides.empty')}
+            hint={t('overrides.emptyHint')}
+          />
         ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Pattern</th>
-                <th style={styles.th}>Scope</th>
-                <th style={styles.th}>Category</th>
-                <th style={styles.th}>Score</th>
-                <th style={styles.th}>Created</th>
-                <th style={styles.th}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {overrides.map(o => (
-                <tr key={o.id}>
-                  <td style={styles.td}><code style={styles.code}>{o.app_pattern}</code></td>
-                  <td style={styles.td}>{getEmployeeName(o.employee_id)}</td>
-                  <td style={styles.td}>{getCategoryLabel(o.category)}</td>
-                  <td style={styles.td}>{o.productivity_score}</td>
-                  <td style={styles.td}>{new Date(o.created_at).toLocaleDateString()}</td>
-                  <td style={styles.td}>
-                    <button onClick={() => remove(o.id)} style={styles.deleteBtn}>Delete</button>
-                  </td>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <table className="tt-data-table" style={{ minWidth: 560 }}>
+              <thead>
+                <tr>
+                  <th>{t('overrides.pattern')}</th>
+                  <th>{t('overrides.scope')}</th>
+                  <th>{t('overrides.category')}</th>
+                  <th>{t('overrides.score')}</th>
+                  <th>{t('common.date')}</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {overrides.map(o => (
+                  <tr key={o.id}>
+                    <td>
+                      <code style={{
+                        backgroundColor: 'var(--tt-surface-muted)',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                        fontSize: 12,
+                      }}
+                      >
+                        {o.app_pattern}
+                      </code>
+                    </td>
+                    <td>{getEmployeeName(o.employee_id)}</td>
+                    <td>{getCategoryLabel(o.category)}</td>
+                    <td>{o.productivity_score}</td>
+                    <td>{new Date(o.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="tt-action-btn tt-action-btn-danger"
+                        onClick={() => remove(o.id)}
+                      >
+                        <Trash2 size={14} strokeWidth={2.2} />
+                        {t('overrides.delete')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-        <p style={styles.note}>
-          <StatusLine variant="info">
-            Overrides apply to <strong>new activities only</strong>. Existing activity records keep their original classification.
-          </StatusLine>
+        <p className="tt-muted" style={{ marginTop: 16, fontSize: 12 }}>
+          {t('overrides.note')}
         </p>
-      </section>
+      </PagePanel>
     </div>
   );
-};
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: { padding: 'clamp(16px, 4vw, 32px)' },
-  header: { marginBottom: '24px' },
-  title: { fontSize: '28px', fontWeight: 600, color: 'var(--tt-text)', margin: 0 },
-  subtitle: { fontSize: '14px', color: 'var(--tt-text-muted)', marginTop: '8px', maxWidth: '760px', lineHeight: 1.5 },
-  code: { backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: '12px' },
-  card: { backgroundColor: 'var(--tt-surface)', padding: '24px', borderRadius: 'var(--tt-radius)', boxShadow: 'var(--tt-shadow-sm)', marginBottom: '24px' },
-  cardTitle: { fontSize: '18px', fontWeight: 600, color: 'var(--tt-text)', marginTop: 0, marginBottom: '16px' },
-  form: { display: 'flex', flexDirection: 'column' as const, gap: '16px' },
-  row: { display: 'flex', gap: '16px', flexWrap: 'wrap' as const },
-  label: { display: 'flex', flexDirection: 'column' as const, gap: '6px', fontSize: '13px', fontWeight: 600, color: 'var(--tt-text)', flex: 1, minWidth: '200px' },
-  input: { padding: '10px 12px', border: '1px solid #d0d7de', borderRadius: '6px', fontSize: '14px', fontWeight: 400 },
-  submitBtn: { alignSelf: 'flex-start', padding: '10px 20px', backgroundColor: 'var(--tt-teal)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
-  table: { width: '100%', borderCollapse: 'collapse' as const },
-  th: { textAlign: 'left' as const, padding: '10px 12px', borderBottom: '2px solid #e0e6ed', fontSize: '12px', textTransform: 'uppercase' as const, color: 'var(--tt-text-muted)', fontWeight: 600 },
-  td: { padding: '10px 12px', borderBottom: '1px solid #f1f5f9', fontSize: '14px', color: 'var(--tt-text)' },
-  deleteBtn: { padding: '6px 12px', backgroundColor: 'rgba(232, 93, 76, 0.25)', color: '#dc2626', border: 'none', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' },
-  empty: { color: 'var(--tt-text-faint)', fontStyle: 'italic' as const, margin: 0 },
-  note: { fontSize: '12px', color: 'var(--tt-text-muted)', marginTop: '16px', marginBottom: 0 },
-  flash: { backgroundColor: '#d4edda', color: '#155724', padding: '12px 16px', borderRadius: 'var(--tt-radius-sm)', marginBottom: '16px', fontSize: '14px' },
-  errorBanner: { backgroundColor: 'var(--tt-danger-soft)', color: 'var(--tt-danger)', padding: '12px 16px', borderRadius: 'var(--tt-radius-sm)', marginBottom: '16px', fontSize: '14px' },
 };

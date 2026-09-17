@@ -14,6 +14,7 @@ import { requireAuth, requireAnyAuth, requireRole } from '../auth.js';
 import { getDatabase } from '../database.js';
 import { resolveTimezone } from '../timezone.js';
 import { getPaths, ensureDataDirectories } from '../paths.js';
+import { parsePrivacyAliases } from '../privacy-util.js';
 
 const { uploadsDir: UPLOADS_DIR } = (() => {
   ensureDataDirectories();
@@ -47,6 +48,7 @@ export function setupOrgRoutes(app: Express): void {
                 daily_summary_enabled, daily_summary_recipient, daily_summary_hour,
                 daily_summary_last_sent_date,
                 screenshots_enabled, screenshot_interval_minutes, screenshot_retention_days,
+                show_privacy_blocks_to_employees, privacy_url_mode,
                 created_at, updated_at
          FROM organizations WHERE id = ?`,
         [req.orgId!]
@@ -56,7 +58,7 @@ export function setupOrgRoutes(app: Express): void {
       // Device JWTs get only org-wide + their own blocks; admins get the full list.
       const blockParams: string[] = [req.orgId!];
       let blockSql =
-        `SELECT id, app_pattern, employee_id, block_screenshots, block_live_view
+        `SELECT id, app_pattern, aliases, employee_id, block_screenshots, block_live_view
          FROM capture_privacy_blocks WHERE org_id = ?`;
       if (req.tokenType === 'device' && req.employeeId) {
         blockSql += ` AND (employee_id IS NULL OR employee_id = ?)`;
@@ -64,6 +66,9 @@ export function setupOrgRoutes(app: Express): void {
       }
       blockSql += ` ORDER BY created_at DESC`;
       const blockRows = await db.all(blockSql, blockParams).catch(() => []);
+
+      const privacyUrlMode =
+        row.privacy_url_mode === 'allowlist' ? 'allowlist' : 'blocklist';
 
       res.json({
         success: true,
@@ -81,9 +86,12 @@ export function setupOrgRoutes(app: Express): void {
           screenshotsEnabled: row.screenshots_enabled === 1,
           screenshotIntervalMinutes: typeof row.screenshot_interval_minutes === 'number' ? row.screenshot_interval_minutes : 10,
           screenshotRetentionDays: typeof row.screenshot_retention_days === 'number' ? row.screenshot_retention_days : 7,
+          showPrivacyBlocksToEmployees: row.show_privacy_blocks_to_employees === 1,
+          privacyUrlMode,
           capturePrivacyBlocks: (blockRows || []).map((b: any) => ({
             id: b.id,
             appPattern: b.app_pattern,
+            aliases: parsePrivacyAliases(b.aliases),
             employeeId: b.employee_id || null,
             blockScreenshots: b.block_screenshots !== 0,
             blockLiveView: b.block_live_view !== 0,
@@ -103,7 +111,9 @@ export function setupOrgRoutes(app: Express): void {
       const {
         name, timezone, defaultCurrency,
         dailySummaryEnabled, dailySummaryRecipient, dailySummaryHour,
-        screenshotsEnabled, screenshotIntervalMinutes, screenshotRetentionDays
+        screenshotsEnabled, screenshotIntervalMinutes, screenshotRetentionDays,
+        showPrivacyBlocksToEmployees,
+        privacyUrlMode,
       } = req.body || {};
       const sets: string[] = [];
       const values: any[] = [];
@@ -140,6 +150,14 @@ export function setupOrgRoutes(app: Express): void {
       if (typeof screenshotRetentionDays === 'number' && screenshotRetentionDays >= 1 && screenshotRetentionDays <= 365) {
         sets.push('screenshot_retention_days = ?'); values.push(Math.floor(screenshotRetentionDays));
       }
+      if (typeof showPrivacyBlocksToEmployees === 'boolean') {
+        sets.push('show_privacy_blocks_to_employees = ?');
+        values.push(showPrivacyBlocksToEmployees ? 1 : 0);
+      }
+      if (privacyUrlMode === 'blocklist' || privacyUrlMode === 'allowlist') {
+        sets.push('privacy_url_mode = ?');
+        values.push(privacyUrlMode);
+      }
 
       if (sets.length === 0) {
         return res.status(400).json({ success: false, error: 'No updatable fields provided' });
@@ -157,7 +175,8 @@ export function setupOrgRoutes(app: Express): void {
       const row = await db.get(
         `SELECT id, name, slug, timezone, logo_url, default_currency,
                 daily_summary_enabled, daily_summary_recipient, daily_summary_hour,
-                screenshots_enabled, screenshot_interval_minutes, screenshot_retention_days
+                screenshots_enabled, screenshot_interval_minutes, screenshot_retention_days,
+                show_privacy_blocks_to_employees, privacy_url_mode
          FROM organizations WHERE id = ?`,
         [req.orgId!]
       );
@@ -175,7 +194,9 @@ export function setupOrgRoutes(app: Express): void {
           dailySummaryHour: typeof row.daily_summary_hour === 'number' ? row.daily_summary_hour : 18,
           screenshotsEnabled: row.screenshots_enabled === 1,
           screenshotIntervalMinutes: typeof row.screenshot_interval_minutes === 'number' ? row.screenshot_interval_minutes : 10,
-          screenshotRetentionDays: typeof row.screenshot_retention_days === 'number' ? row.screenshot_retention_days : 7
+          screenshotRetentionDays: typeof row.screenshot_retention_days === 'number' ? row.screenshot_retention_days : 7,
+          showPrivacyBlocksToEmployees: row.show_privacy_blocks_to_employees === 1,
+          privacyUrlMode: row.privacy_url_mode === 'allowlist' ? 'allowlist' : 'blocklist',
         }
       });
     } catch (error) {

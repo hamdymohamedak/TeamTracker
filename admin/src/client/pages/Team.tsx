@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { KeyRound, Plus, Trash2, UsersRound } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
-import { HelpTip } from '../components/HelpTip';
 import { RecoveryCodesPanel } from '../components/RecoveryCodesPanel';
-import { StatusLine } from '../components/Icon';
+import { PageEmpty, PageHero, PagePanel } from '../components/PageHero';
 
 // Multi-admin team management page.
 //
@@ -157,119 +157,159 @@ export const Team: React.FC = () => {
     }
   };
 
-  if (loading) return <div style={styles.container}><p>{t('team.loading')}</p></div>;
+  if (loading) {
+    return (
+      <div className="tt-page">
+        <p className="tt-muted">{t('team.loading')}</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t('team.title')}
-              <HelpTip text={t('help.team')} />
-            </h1>
-            <p style={styles.subtitle}>{t('team.subtitle')}</p>
-          </div>
-          <button onClick={() => setShowInvite(!showInvite)} style={styles.primaryBtn}>
-            {showInvite ? t('common.cancel') : t('team.invite')}
+    <div className="tt-page">
+      <PageHero
+        icon={UsersRound}
+        title={t('team.title')}
+        subtitle={t('team.subtitle')}
+        help={t('help.team')}
+        action={
+          <button
+            type="button"
+            className="tt-btn tt-btn-primary"
+            onClick={() => setShowInvite(!showInvite)}
+          >
+            {showInvite ? (
+              t('common.cancel')
+            ) : (
+              <>
+                <Plus size={16} strokeWidth={2.2} />
+                {t('team.invite')}
+              </>
+            )}
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      {flash && (
-        <div style={styles.flash}>
-          <StatusLine variant="success">{flash}</StatusLine>
-        </div>
-      )}
-      {error && (
-        <div style={styles.error}>
-          <StatusLine variant="error">{error}</StatusLine>
-        </div>
-      )}
+      {flash && <div className="tt-flash">{flash}</div>}
+      {error && <div className="tt-error-banner">{error}</div>}
 
-      <section style={styles.card}>
-        <h2 style={styles.cardTitle}>{t('team.recoverySection')}</h2>
+      <PagePanel title={t('team.recoverySection')}>
         {myNewCodes ? (
           <RecoveryCodesPanel codes={myNewCodes} onContinue={() => setMyNewCodes(null)} />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <p style={{ margin: 0, fontSize: 14, color: 'var(--tt-text-muted)' }}>
+            <p className="tt-muted">
               {t('team.recoveryRemaining').replace(
                 '{count}',
                 String(remainingCodes ?? '—')
               )}
             </p>
-            <button type="button" onClick={regenerateMyCodes} style={styles.secondaryBtn}>
+            <button type="button" onClick={regenerateMyCodes} className="tt-btn tt-btn-ghost">
               {t('team.regenerateCodes')}
             </button>
           </div>
         )}
-      </section>
+      </PagePanel>
 
       {inviteCodes && (
-        <section style={styles.card}>
-          <h2 style={styles.cardTitle}>{t('team.inviteCodesNote')}</h2>
+        <PagePanel title={t('team.inviteCodesNote')}>
           <RecoveryCodesPanel codes={inviteCodes} onContinue={() => setInviteCodes(null)} />
-        </section>
+        </PagePanel>
       )}
 
       {showInvite && (
-        <section style={styles.card}>
-          <h2 style={styles.cardTitle}>{t('team.inviteTitle')}</h2>
-          <form onSubmit={submit} style={styles.form}>
-            <div style={styles.row}>
-              <label style={styles.label}>
-                Name
-                <input type="text" value={inviteName} onChange={e => setInviteName(e.target.value)} required style={styles.input} />
-              </label>
-              <label style={styles.label}>
-                Email
-                <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required style={styles.input} />
-              </label>
+        <PagePanel title={t('team.inviteTitle')}>
+          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div className="tt-field" style={{ flex: 1, minWidth: 200 }}>
+                <label className="tt-field-label" htmlFor="invite-name">
+                  {t('team.name')}
+                </label>
+                <input
+                  id="invite-name"
+                  type="text"
+                  className="tt-input"
+                  value={inviteName}
+                  onChange={e => setInviteName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="tt-field" style={{ flex: 1, minWidth: 200 }}>
+                <label className="tt-field-label" htmlFor="invite-email">
+                  {t('team.email')}
+                </label>
+                <input
+                  id="invite-email"
+                  type="email"
+                  className="tt-input"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  required
+                />
+              </div>
             </div>
-            <div style={styles.row}>
-              <label style={styles.label}>
-                Temporary password (≥ 6 chars — share securely)
-                <input type="text" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} required minLength={6} style={styles.input} />
-              </label>
-              <label style={{ ...styles.label, width: '160px' }}>
-                Role
-                <select value={inviteRole} onChange={e => setInviteRole(e.target.value as any)} style={styles.input}>
-                  <option value="admin">Admin</option>
-                  <option value="owner">Owner</option>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div className="tt-field" style={{ flex: 1, minWidth: 200 }}>
+                <label className="tt-field-label" htmlFor="invite-password">
+                  {t('team.tempPassword')}
+                </label>
+                <input
+                  id="invite-password"
+                  type="text"
+                  className="tt-input"
+                  value={invitePassword}
+                  onChange={e => setInvitePassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div className="tt-field" style={{ width: 160, minWidth: 160 }}>
+                <label className="tt-field-label" htmlFor="invite-role">
+                  {t('team.role')}
+                </label>
+                <select
+                  id="invite-role"
+                  className="tt-input"
+                  value={inviteRole}
+                  onChange={e => setInviteRole(e.target.value as 'admin' | 'owner')}
+                >
+                  <option value="admin">{t('team.roleAdmin')}</option>
+                  <option value="owner">{t('team.roleOwner')}</option>
                 </select>
-              </label>
+              </div>
             </div>
-            <button type="submit" disabled={submitting} style={styles.primaryBtn}>
-              {submitting ? 'Inviting…' : 'Invite'}
-            </button>
+            <div>
+              <button type="submit" disabled={submitting} className="tt-btn tt-btn-primary">
+                {submitting ? t('team.inviting') : t('team.inviteSubmit')}
+              </button>
+            </div>
           </form>
-        </section>
+        </PagePanel>
       )}
 
       {passwordTarget && (
-        <section style={styles.card}>
-          <h2 style={styles.cardTitle}>
-            {t('team.setPasswordTitle').replace('{name}', passwordTarget.name)}
-          </h2>
-          <p style={{ fontSize: 13, color: 'var(--tt-text-muted)', marginTop: 0 }}>
+        <PagePanel title={t('team.setPasswordTitle').replace('{name}', passwordTarget.name)}>
+          <p className="tt-panel-hint" style={{ marginTop: 0 }}>
             {t('team.setPasswordHint')}
           </p>
-          <form onSubmit={submitPassword} style={styles.form}>
-            <label style={styles.label}>
-              New password
+          <form onSubmit={submitPassword} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="tt-field">
+              <label className="tt-field-label" htmlFor="new-password">
+                {t('team.newPassword')}
+              </label>
               <input
+                id="new-password"
                 type="text"
+                className="tt-input"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
                 minLength={6}
-                style={styles.input}
               />
-            </label>
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit" disabled={settingPassword} style={styles.primaryBtn}>
-                {settingPassword ? 'Saving…' : t('common.save')}
+              <button type="submit" disabled={settingPassword} className="tt-btn tt-btn-primary">
+                {settingPassword ? t('team.saving') : t('common.save')}
               </button>
               <button
                 type="button"
@@ -277,86 +317,91 @@ export const Team: React.FC = () => {
                   setPasswordTarget(null);
                   setNewPassword('');
                 }}
-                style={styles.secondaryBtn}
+                className="tt-btn tt-btn-ghost"
               >
                 {t('common.cancel')}
               </button>
             </div>
           </form>
-        </section>
+        </PagePanel>
       )}
 
-      <section style={styles.card}>
-        <h2 style={styles.cardTitle}>Active dashboard users ({users.length})</h2>
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Name</th>
-              <th style={styles.th}>Email</th>
-              <th style={styles.th}>Role</th>
-              <th style={styles.th}>Joined</th>
-              <th style={styles.th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id}>
-                <td style={styles.td}>
-                  {u.name}
-                  {u.id === user?.id && <span style={styles.youTag}>you</span>}
-                </td>
-                <td style={styles.td}>{u.email}</td>
-                <td style={styles.td}><span style={styles.roleTag(u.role)}>{u.role}</span></td>
-                <td style={styles.td}>{new Date(u.created_at).toLocaleDateString()}</td>
-                <td style={{ ...styles.td, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {u.id !== user?.id && (
-                    <>
-                      <button onClick={() => { setPasswordTarget(u); setNewPassword(''); }} style={styles.secondaryBtn}>
-                        {t('team.setPassword')}
-                      </button>
-                      <button onClick={() => remove(u)} style={styles.deleteBtn}>Remove</button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      </section>
+      <PagePanel title={t('team.activeTitle', { count: users.length })}>
+        {users.length === 0 ? (
+          <PageEmpty
+            icon={UsersRound}
+            title={t('team.empty')}
+            hint={t('team.emptyHint')}
+            action={
+              !showInvite ? (
+                <button
+                  type="button"
+                  className="tt-btn tt-btn-primary"
+                  onClick={() => setShowInvite(true)}
+                >
+                  <Plus size={16} strokeWidth={2.2} />
+                  {t('team.invite')}
+                </button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <table className="tt-data-table" style={{ minWidth: 560 }}>
+              <thead>
+                <tr>
+                  <th>{t('team.colName')}</th>
+                  <th>{t('team.colEmail')}</th>
+                  <th>{t('team.colRole')}</th>
+                  <th>{t('team.colJoined')}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.id}>
+                    <td>
+                      {u.name}
+                      {u.id === user?.id && (
+                        <span className="tt-chip" style={{ marginLeft: 8 }}>{t('team.you')}</span>
+                      )}
+                    </td>
+                    <td>{u.email}</td>
+                    <td>
+                      <span className="tt-chip">
+                        {u.role === 'owner' ? t('team.roleOwner') : t('team.roleAdmin')}
+                      </span>
+                    </td>
+                    <td>{new Date(u.created_at).toLocaleDateString()}</td>
+                    <td>
+                      {u.id !== user?.id && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="tt-action-btn"
+                            onClick={() => { setPasswordTarget(u); setNewPassword(''); }}
+                          >
+                            <KeyRound size={14} strokeWidth={2.2} />
+                            {t('team.setPassword')}
+                          </button>
+                          <button
+                            type="button"
+                            className="tt-action-btn tt-action-btn-danger"
+                            onClick={() => remove(u)}
+                          >
+                            <Trash2 size={14} strokeWidth={2.2} />
+                            {t('team.remove')}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </PagePanel>
     </div>
   );
-};
-
-const styles: { [key: string]: any } = {
-  container: { padding: 'clamp(16px, 4vw, 32px)' },
-  header: { marginBottom: '24px' },
-  title: { fontSize: '28px', fontWeight: 600, color: 'var(--tt-text)', margin: 0 },
-  subtitle: { fontSize: '14px', color: 'var(--tt-text-muted)', marginTop: '8px' },
-  primaryBtn: { padding: '10px 20px', backgroundColor: 'var(--tt-teal)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
-  secondaryBtn: { padding: '8px 14px', backgroundColor: 'var(--tt-surface-muted)', color: 'var(--tt-text)', border: '1px solid var(--tt-border-strong)', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' },
-  card: { backgroundColor: 'var(--tt-surface)', padding: '24px', borderRadius: 'var(--tt-radius)', boxShadow: 'var(--tt-shadow-sm)', marginBottom: '24px' },
-  cardTitle: { fontSize: '18px', fontWeight: 600, color: 'var(--tt-text)', marginTop: 0, marginBottom: '16px' },
-  form: { display: 'flex', flexDirection: 'column', gap: '16px' },
-  row: { display: 'flex', gap: '16px', flexWrap: 'wrap' },
-  label: { display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', fontWeight: 600, color: 'var(--tt-text)', flex: 1, minWidth: '200px' },
-  input: { padding: '10px 12px', border: '1px solid #d0d7de', borderRadius: '6px', fontSize: '14px', fontWeight: 400 },
-  table: { width: '100%', borderCollapse: 'collapse', minWidth: '560px' },
-  th: { textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e0e6ed', fontSize: '12px', textTransform: 'uppercase', color: 'var(--tt-text-muted)', fontWeight: 600 },
-  td: { padding: '10px 12px', borderBottom: '1px solid #f1f5f9', fontSize: '14px', color: 'var(--tt-text)' },
-  deleteBtn: { padding: '6px 12px', backgroundColor: 'rgba(232, 93, 76, 0.25)', color: '#dc2626', border: 'none', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' },
-  youTag: { marginLeft: '8px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 },
-  roleTag: (role: string) => ({
-    display: 'inline-block',
-    padding: '3px 10px',
-    borderRadius: '4px',
-    fontSize: '11px',
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    backgroundColor: role === 'owner' ? '#fef3c7' : '#e0e7ff',
-    color: role === 'owner' ? '#92400e' : '#3730a3'
-  }),
-  flash: { backgroundColor: '#d4edda', color: '#155724', padding: '12px 16px', borderRadius: 'var(--tt-radius-sm)', marginBottom: '16px', fontSize: '14px' },
-  error: { backgroundColor: 'var(--tt-danger-soft)', color: 'var(--tt-danger)', padding: '12px 16px', borderRadius: 'var(--tt-radius-sm)', marginBottom: '16px', fontSize: '14px' },
 };

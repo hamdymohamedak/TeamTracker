@@ -17,9 +17,12 @@ import { getEffectiveServerUrl } from './config.js';
 import { getActiveWindow } from './active-window.js';
 import {
   setCapturePrivacyBlocks,
-  shouldBlockScreenshotAsync,
+  setPrivacyUrlMode,
+  decide,
+  isCaptureBlocked,
   type CapturePrivacyBlock,
-} from './privacy-blocks.js';
+  type PrivacyUrlMode,
+} from './privacy-guard.js';
 
 interface ScreenshotConfig {
   enabled: boolean;
@@ -29,6 +32,8 @@ interface ScreenshotConfig {
 interface PolledOrgSettings {
   screenshotsEnabled: boolean;
   screenshotIntervalMinutes: number;
+  showPrivacyBlocksToEmployees?: boolean;
+  privacyUrlMode?: PrivacyUrlMode;
   capturePrivacyBlocks?: CapturePrivacyBlock[];
 }
 
@@ -44,6 +49,8 @@ export interface CaptureResult {
 }
 
 let currentConfig: ScreenshotConfig = { enabled: false, intervalMinutes: 10 };
+/** Whether the employee UI may show privacy-protected site patterns. */
+let showPrivacyBlocksToEmployees = false;
 let captureTimer: NodeJS.Timeout | null = null;
 let pollTimer: NodeJS.Timeout | null = null;
 let getTokenFn: (() => string) | null = null;
@@ -74,17 +81,34 @@ export async function captureNow(
       }
     } catch { /* use tracker context */ }
 
-    const blocked = await shouldBlockScreenshotAsync({ appName, windowTitle });
-    if (blocked) {
+    // PrivacyGuard: force a fresh browser probe; block + unknown both skip capture.
+    const privacy = await decide('screenshot', {
+      appName,
+      windowTitle,
+      forceRefresh: true,
+    });
+    if (isCaptureBlocked(privacy)) {
+      const pattern =
+        privacy.state === 'block'
+          ? privacy.pattern
+          : privacy.state === 'unknown'
+            ? `(unavailable: ${privacy.reason})`
+            : '(blocked)';
+      const via =
+        privacy.state === 'block'
+          ? privacy.matchedVia
+          : privacy.state === 'unknown'
+            ? privacy.reason
+            : 'blocked';
       console.log(
-        `[screenshot] skipped — privacy "${blocked.pattern}" via "${blocked.matchedVia}" ` +
+        `[screenshot] skipped — privacy "${pattern}" via "${via}" ` +
         `(${appName || '?'} | ${windowTitle || '?'})`
       );
       return {
         ok: false,
         error: 'privacy_blocked',
         privacyBlocked: true,
-        privacyPattern: blocked.pattern,
+        privacyPattern: pattern,
         appName,
         windowTitle,
       };
@@ -200,6 +224,9 @@ async function fetchSettings(getCurrentToken: () => string): Promise<PolledOrgSe
       screenshotIntervalMinutes: typeof json.data.screenshotIntervalMinutes === 'number'
         ? json.data.screenshotIntervalMinutes
         : 10,
+      showPrivacyBlocksToEmployees: !!(json.data as PolledOrgSettings).showPrivacyBlocksToEmployees,
+      privacyUrlMode:
+        (json.data as PolledOrgSettings).privacyUrlMode === 'allowlist' ? 'allowlist' : 'blocklist',
       capturePrivacyBlocks: Array.isArray((json.data as PolledOrgSettings).capturePrivacyBlocks)
         ? (json.data as PolledOrgSettings).capturePrivacyBlocks
         : [],
@@ -245,6 +272,8 @@ export function startScreenshotService(
     if (!settings) return;
 
     setCapturePrivacyBlocks(settings.capturePrivacyBlocks || []);
+    setPrivacyUrlMode(settings.privacyUrlMode);
+    showPrivacyBlocksToEmployees = !!settings.showPrivacyBlocksToEmployees;
 
     const intervalChanged = settings.screenshotIntervalMinutes !== currentConfig.intervalMinutes;
     const enabledChanged = settings.screenshotsEnabled !== currentConfig.enabled;
@@ -274,6 +303,13 @@ export async function refreshOrgCapturePolicy(): Promise<void> {
   const settings = await fetchSettings(getTokenFn);
   if (!settings) return;
   setCapturePrivacyBlocks(settings.capturePrivacyBlocks || []);
+  setPrivacyUrlMode(settings.privacyUrlMode);
+  showPrivacyBlocksToEmployees = !!settings.showPrivacyBlocksToEmployees;
+}
+
+/** Whether the employee desktop UI may list privacy-protected patterns. */
+export function getShowPrivacyBlocksToEmployees(): boolean {
+  return showPrivacyBlocksToEmployees;
 }
 
 /** Capture using the active service callbacks (for remote commands). */

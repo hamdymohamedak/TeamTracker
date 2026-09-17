@@ -19,7 +19,7 @@
       --bad-bg: rgba(181, 74, 63, 0.08);
     }
     body {
-      font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Arabic", sans-serif;
       background: var(--page);
       color: var(--ink);
       min-height: 100vh;
@@ -39,10 +39,36 @@
       background: var(--ink);
       color: #fff;
     }
+    .header-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
     .brand {
       font-size: 1.35rem;
       font-weight: 650;
       letter-spacing: -0.02em;
+    }
+    .lang-switch {
+      display: inline-flex;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 7px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .lang-switch button {
+      border: none;
+      background: transparent;
+      color: #a8a8a8;
+      font-size: 11px;
+      font-weight: 650;
+      padding: 5px 9px;
+      cursor: pointer;
+    }
+    .lang-switch button.active {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
     }
     .status-line {
       margin-top: 10px;
@@ -191,6 +217,7 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
+    html[lang="ar"] .stat-label { text-transform: none; letter-spacing: 0; }
     .stat-value {
       margin-top: 6px;
       font-size: 1.35rem;
@@ -213,6 +240,115 @@
     .sync-value { font-weight: 600; color: var(--ok); }
     .sync-row.warn .sync-value { color: #8a6a12; }
     .sync-row.bad .sync-value { color: var(--bad); }
+    .privacy-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fafafa;
+      margin-bottom: 16px;
+    }
+    .privacy-row[hidden] { display: none !important; }
+    .privacy-row-meta { min-width: 0; flex: 1; }
+    .privacy-title {
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+    .privacy-count {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .privacy-show-btn {
+      flex-shrink: 0;
+      padding: 7px 14px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .privacy-show-btn:hover { border-color: rgba(0,0,0,0.2); }
+    .privacy-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(20, 20, 20, 0.45);
+    }
+    .privacy-modal[hidden] { display: none !important; }
+    .privacy-dialog {
+      width: 100%;
+      max-width: 340px;
+      max-height: min(70vh, 420px);
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .privacy-dialog-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .privacy-dialog-title {
+      font-size: 14px;
+      font-weight: 650;
+      color: var(--ink);
+    }
+    .privacy-dialog-hint {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .privacy-close-btn {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .privacy-close-btn:hover { background: #f0f0f0; color: var(--ink); }
+    .privacy-list {
+      list-style: none;
+      margin: 0;
+      padding: 12px 16px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .privacy-list li {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: var(--ink);
+      background: #fafafa;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      word-break: break-all;
+    }
     .footer-note {
       font-size: 12px;
       color: var(--faint);
@@ -231,53 +367,236 @@
 <body>
   <div class="shell">
     <div class="header">
-      <div class="brand">TeamTracker</div>
+      <div class="header-top">
+        <div class="brand">TeamTracker</div>
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" id="lang-en" data-locale="en">EN</button>
+          <button type="button" id="lang-ar" data-locale="ar">ع</button>
+        </div>
+      </div>
       <div class="status-line">
         <span class="dot" id="header-dot"></span>
-        <span id="subtitle">Employee activity tracker</span>
+        <span id="subtitle" data-i18n="subtitle.default">Employee activity tracker</span>
       </div>
     </div>
     <div class="body">
       <div id="setup-view">
-        <p class="hint">Paste the one-time setup token from your administrator. After you connect once, you stay signed in until they reset access.</p>
+        <p class="hint" data-i18n="setup.hint">Paste the one-time setup token from your administrator. After you connect once, you stay signed in until they reset access.</p>
         <div id="error" class="error"></div>
-        <label for="token">Setup token</label>
-        <input id="token" type="text" placeholder="Paste your setup token" autocomplete="off" />
-        <button type="button" class="advanced-toggle" id="advanced-toggle">Advanced settings</button>
+        <label for="token" data-i18n="setup.tokenLabel">Setup token</label>
+        <input id="token" type="text" data-i18n-placeholder="setup.tokenPlaceholder" placeholder="Paste your setup token" autocomplete="off" />
+        <button type="button" class="advanced-toggle" id="advanced-toggle" data-i18n="setup.advancedShow">Advanced settings</button>
         <div id="advanced-fields">
-          <label for="server">Server URL</label>
-          <input id="server" type="url" placeholder="https://track.yourcompany.com" />
+          <label for="server" data-i18n="setup.serverLabel">Server URL</label>
+          <input id="server" type="url" placeholder="http://localhost:3001" />
         </div>
-        <button class="btn" id="connect-btn" type="button">Connect</button>
+        <button class="btn" id="connect-btn" type="button" data-i18n="setup.connect">Connect</button>
       </div>
       <div id="status-view">
         <div class="profile">
           <div class="avatar" id="emp-avatar">—</div>
           <div class="profile-meta">
             <div class="profile-name" id="emp-name">—</div>
-            <div class="profile-role">Signed in</div>
+            <div class="profile-role" data-i18n="status.signedIn">Signed in</div>
           </div>
         </div>
         <div class="stats">
           <div class="stat">
-            <div class="stat-label">Today</div>
+            <div class="stat-label" data-i18n="status.today">Today</div>
             <div class="stat-value" id="emp-activities">0</div>
           </div>
           <div class="stat">
-            <div class="stat-label">Pending</div>
+            <div class="stat-label" data-i18n="status.pending">Pending</div>
             <div class="stat-value" id="emp-queued">0</div>
           </div>
         </div>
         <div class="sync-row" id="sync-row">
-          <span class="sync-label">Connection</span>
+          <span class="sync-label" data-i18n="status.connection">Connection</span>
           <span class="sync-value" id="emp-online">—</span>
         </div>
-        <p class="footer-note">You stay signed in on this device. Tracking runs in the background — close this window anytime; TeamTracker stays in your menu bar.</p>
-        <button class="btn btn-ghost" id="logout-btn" type="button">Sign out</button>
+        <div class="privacy-row" id="privacy-box" hidden>
+          <div class="privacy-row-meta">
+            <div class="privacy-title" id="privacy-title" data-i18n="privacy.title">Privacy-protected sites</div>
+            <div class="privacy-count" id="privacy-count">0 sites</div>
+          </div>
+          <button type="button" class="privacy-show-btn" id="privacy-show-btn" data-i18n="privacy.show">Show</button>
+        </div>
+        <p class="footer-note" data-i18n="status.footer">You stay signed in on this device. Tracking runs in the background — close this window anytime; TeamTracker stays in your menu bar.</p>
+        <button class="btn btn-ghost" id="logout-btn" type="button" data-i18n="status.signOut">Sign out</button>
       </div>
     </div>
   </div>
+
+  <div class="privacy-modal" id="privacy-modal" hidden>
+    <div class="privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-dialog-title">
+      <div class="privacy-dialog-header">
+        <div>
+          <div class="privacy-dialog-title" id="privacy-dialog-title" data-i18n="privacy.title">Privacy-protected sites</div>
+          <p class="privacy-dialog-hint" id="privacy-dialog-hint" data-i18n="privacy.hint">Screenshots and live view pause while these are the active tab.</p>
+        </div>
+        <button type="button" class="privacy-close-btn" id="privacy-close-btn" data-i18n-aria="privacy.close" aria-label="Close">×</button>
+      </div>
+      <ul class="privacy-list" id="privacy-list"></ul>
+    </div>
+  </div>
+
   <script>
+    const STRINGS = {
+      en: {
+        'subtitle.default': 'Employee activity tracker',
+        'subtitle.connect': 'Connect with your setup token',
+        'subtitle.offline': 'Working offline',
+        'subtitle.syncing': 'Connected and syncing',
+        'subtitle.tracking': 'Connected and tracking',
+        'setup.hint': 'Paste the one-time setup token from your administrator. After you connect once, you stay signed in until they reset access.',
+        'setup.tokenLabel': 'Setup token',
+        'setup.tokenPlaceholder': 'Paste your setup token',
+        'setup.advancedShow': 'Advanced settings',
+        'setup.advancedHide': 'Hide advanced settings',
+        'setup.serverLabel': 'Server URL',
+        'setup.connect': 'Connect',
+        'setup.connecting': 'Connecting…',
+        'setup.needToken': 'Please enter a setup token.',
+        'setup.needServer': 'Open Advanced settings and enter the server URL.',
+        'setup.connectFailed': 'Connection failed. Check your token and try again.',
+        'setup.connectFailedShort': 'Connection failed.',
+        'status.signedIn': 'Signed in',
+        'status.employeeFallback': 'Employee',
+        'status.today': 'Today',
+        'status.pending': 'Pending',
+        'status.connection': 'Connection',
+        'status.offline': 'Offline — will sync later',
+        'status.syncing': 'Syncing…',
+        'status.synced': 'All synced',
+        'status.footer': 'You stay signed in on this device. Tracking runs in the background — close this window anytime; TeamTracker stays in your menu bar.',
+        'status.signOut': 'Sign out',
+        'status.signOutConfirm': 'Sign out of TeamTracker on this device? You will need a new setup token to reconnect.',
+        'status.signOutFailed': 'Could not sign out. Try again.',
+        'status.loadFailed': 'Could not load status.',
+        'privacy.title': 'Privacy-protected sites',
+        'privacy.titleAllow': 'Allowed capture sites',
+        'privacy.show': 'Show',
+        'privacy.hint': 'Screenshots and live view pause while these are the active tab.',
+        'privacy.hintAllow': 'Screenshots and live view are allowed only while these are the active tab.',
+        'privacy.close': 'Close',
+        'privacy.sitesOne': '1 site',
+        'privacy.sitesMany': '{n} sites',
+        'privacy.sitesZero': '0 sites',
+      },
+      ar: {
+        'subtitle.default': 'متتبع نشاط الموظف',
+        'subtitle.connect': 'اتصل برمز التثبيت',
+        'subtitle.offline': 'العمل دون اتصال',
+        'subtitle.syncing': 'متصل وجارٍ المزامنة',
+        'subtitle.tracking': 'متصل ويتتبع',
+        'setup.hint': 'الصق رمز التثبيت لمرة واحدة من المسؤول. بعد الاتصال مرة واحدة تبقى مسجّلاً حتى يعيد ضبط الصلاحية.',
+        'setup.tokenLabel': 'رمز التثبيت',
+        'setup.tokenPlaceholder': 'الصق رمز التثبيت',
+        'setup.advancedShow': 'إعدادات متقدمة',
+        'setup.advancedHide': 'إخفاء الإعدادات المتقدمة',
+        'setup.serverLabel': 'رابط الخادم',
+        'setup.connect': 'اتصال',
+        'setup.connecting': 'جارٍ الاتصال…',
+        'setup.needToken': 'يرجى إدخال رمز التثبيت.',
+        'setup.needServer': 'افتح الإعدادات المتقدمة وأدخل رابط الخادم.',
+        'setup.connectFailed': 'فشل الاتصال. تحقق من الرمز وحاول مجدداً.',
+        'setup.connectFailedShort': 'فشل الاتصال.',
+        'status.signedIn': 'مسجّل الدخول',
+        'status.employeeFallback': 'موظف',
+        'status.today': 'اليوم',
+        'status.pending': 'قيد الانتظار',
+        'status.connection': 'الاتصال',
+        'status.offline': 'غير متصل — ستتم المزامنة لاحقاً',
+        'status.syncing': 'جارٍ المزامنة…',
+        'status.synced': 'تمت المزامنة',
+        'status.footer': 'تبقى مسجّلاً على هذا الجهاز. يعمل التتبع في الخلفية — أغلق النافذة في أي وقت؛ يبقى TeamTracker في شريط القوائم.',
+        'status.signOut': 'تسجيل الخروج',
+        'status.signOutConfirm': 'تسجيل الخروج من TeamTracker على هذا الجهاز؟ ستحتاج رمز تثبيت جديد للاتصال مجدداً.',
+        'status.signOutFailed': 'تعذر تسجيل الخروج. حاول مجدداً.',
+        'status.loadFailed': 'تعذر تحميل الحالة.',
+        'privacy.title': 'مواقع محمية للخصوصية',
+        'privacy.titleAllow': 'مواقع مسموح تصويرها',
+        'privacy.show': 'عرض',
+        'privacy.hint': 'تتوقف لقطات الشاشة والمشاهدة المباشرة عندما تكون هذه المواقع هي التبويب النشط.',
+        'privacy.hintAllow': 'يُسمح بلقطات الشاشة والمشاهدة المباشرة فقط عندما تكون هذه المواقع هي التبويب النشط.',
+        'privacy.close': 'إغلاق',
+        'privacy.sitesOne': 'موقع واحد',
+        'privacy.sitesMany': '{n} مواقع',
+        'privacy.sitesZero': '٠ مواقع',
+      },
+    };
+
+    const LOCALE_KEY = 'teamtracker_employee_locale';
+    let locale = 'en';
+    let lastStatusData = null;
+    let advancedOpen = false;
+    let privacySitesCache = [];
+    let privacyUrlMode = 'blocklist';
+
+    function privacyTitleKey() {
+      return privacyUrlMode === 'allowlist' ? 'privacy.titleAllow' : 'privacy.title';
+    }
+    function privacyHintKey() {
+      return privacyUrlMode === 'allowlist' ? 'privacy.hintAllow' : 'privacy.hint';
+    }
+    function refreshPrivacyLabels() {
+      const titleEl = document.getElementById('privacy-title');
+      const dialogTitle = document.getElementById('privacy-dialog-title');
+      const dialogHint = document.getElementById('privacy-dialog-hint');
+      if (titleEl) titleEl.textContent = t(privacyTitleKey());
+      if (dialogTitle) dialogTitle.textContent = t(privacyTitleKey());
+      if (dialogHint) dialogHint.textContent = t(privacyHintKey());
+    }
+
+    function detectLocale() {
+      try {
+        const saved = localStorage.getItem(LOCALE_KEY);
+        if (saved === 'ar' || saved === 'en') return saved;
+      } catch { /* ignore */ }
+      const nav = (typeof navigator !== 'undefined' ? navigator.language : 'en') || 'en';
+      return nav.toLowerCase().startsWith('ar') ? 'ar' : 'en';
+    }
+
+    function t(key, vars) {
+      const dict = STRINGS[locale] || STRINGS.en;
+      let value = dict[key] || STRINGS.en[key] || key;
+      if (vars) {
+        value = value.replace(/\{(\w+)\}/g, (_, k) =>
+          vars[k] !== undefined ? String(vars[k]) : `{${k}}`
+        );
+      }
+      return value;
+    }
+
+    function applyStaticI18n() {
+      document.documentElement.lang = locale;
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (key) el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (key) el.setAttribute('placeholder', t(key));
+      });
+      document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+        const key = el.getAttribute('data-i18n-aria');
+        if (key) el.setAttribute('aria-label', t(key));
+      });
+      advancedToggle.textContent = advancedOpen ? t('setup.advancedHide') : t('setup.advancedShow');
+      document.getElementById('lang-en').classList.toggle('active', locale === 'en');
+      document.getElementById('lang-ar').classList.toggle('active', locale === 'ar');
+      if (!connectBtn.disabled) connectBtn.textContent = t('setup.connect');
+      refreshPrivacyLabels();
+    }
+
+    function setLocale(next) {
+      if (next !== 'en' && next !== 'ar') return;
+      locale = next;
+      try { localStorage.setItem(LOCALE_KEY, locale); } catch { /* ignore */ }
+      applyStaticI18n();
+      if (lastStatusData) renderStatus(lastStatusData);
+    }
+
     const setupView = document.getElementById('setup-view');
     const statusView = document.getElementById('status-view');
     const errorEl = document.getElementById('error');
@@ -288,13 +607,44 @@
     const advancedToggle = document.getElementById('advanced-toggle');
     const advancedFields = document.getElementById('advanced-fields');
     const headerDot = document.getElementById('header-dot');
+    const privacyBox = document.getElementById('privacy-box');
+    const privacyCount = document.getElementById('privacy-count');
+    const privacyShowBtn = document.getElementById('privacy-show-btn');
+    const privacyModal = document.getElementById('privacy-modal');
+    const privacyList = document.getElementById('privacy-list');
+    const privacyCloseBtn = document.getElementById('privacy-close-btn');
 
-    let advancedOpen = false;
+    document.getElementById('lang-en').addEventListener('click', () => setLocale('en'));
+    document.getElementById('lang-ar').addEventListener('click', () => setLocale('ar'));
+
+    function openPrivacyModal() {
+      if (!privacySitesCache.length) return;
+      privacyList.innerHTML = '';
+      for (const site of privacySitesCache) {
+        const li = document.createElement('li');
+        li.textContent = String(site);
+        privacyList.appendChild(li);
+      }
+      privacyModal.hidden = false;
+    }
+
+    function closePrivacyModal() {
+      privacyModal.hidden = true;
+    }
+
+    privacyShowBtn.addEventListener('click', openPrivacyModal);
+    privacyCloseBtn.addEventListener('click', closePrivacyModal);
+    privacyModal.addEventListener('click', (e) => {
+      if (e.target === privacyModal) closePrivacyModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !privacyModal.hidden) closePrivacyModal();
+    });
 
     advancedToggle.addEventListener('click', () => {
       advancedOpen = !advancedOpen;
       advancedFields.style.display = advancedOpen ? 'block' : 'none';
-      advancedToggle.textContent = advancedOpen ? 'Hide advanced settings' : 'Advanced settings';
+      advancedToggle.textContent = advancedOpen ? t('setup.advancedHide') : t('setup.advancedShow');
     });
 
     function showError(msg) {
@@ -309,13 +659,20 @@
       return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
 
+    function privacySitesLabel(n) {
+      if (n <= 0) return t('privacy.sitesZero');
+      if (n === 1) return t('privacy.sitesOne');
+      return t('privacy.sitesMany', { n });
+    }
+
     function renderStatus(data) {
+      lastStatusData = data;
       const cfg = data.config || {};
       const enrolled = !!cfg.deviceToken;
       if (!enrolled) {
         setupView.style.display = 'block';
         statusView.style.display = 'none';
-        document.getElementById('subtitle').textContent = 'Connect with your setup token';
+        document.getElementById('subtitle').textContent = t('subtitle.connect');
         headerDot.className = 'dot';
         if (data.defaultServerUrl) serverInput.value = data.defaultServerUrl;
         return;
@@ -323,7 +680,7 @@
 
       setupView.style.display = 'none';
       statusView.style.display = 'flex';
-      const name = cfg.employeeName || cfg.employeeId || 'Employee';
+      const name = cfg.employeeName || cfg.employeeId || t('status.employeeFallback');
       document.getElementById('emp-name').textContent = name;
       document.getElementById('emp-avatar').textContent = initials(name);
       document.getElementById('emp-activities').textContent = String(data.activitiesCount ?? 0);
@@ -336,17 +693,33 @@
       headerDot.className = 'dot ' + (online ? 'on' : 'off');
 
       if (!online) {
-        document.getElementById('subtitle').textContent = 'Working offline';
+        document.getElementById('subtitle').textContent = t('subtitle.offline');
         syncRow.className = 'sync-row bad';
-        onlineEl.textContent = 'Offline — will sync later';
+        onlineEl.textContent = t('status.offline');
       } else if (queued > 0) {
-        document.getElementById('subtitle').textContent = 'Connected and syncing';
+        document.getElementById('subtitle').textContent = t('subtitle.syncing');
         syncRow.className = 'sync-row warn';
-        onlineEl.textContent = 'Syncing…';
+        onlineEl.textContent = t('status.syncing');
       } else {
-        document.getElementById('subtitle').textContent = 'Connected and tracking';
+        document.getElementById('subtitle').textContent = t('subtitle.tracking');
         syncRow.className = 'sync-row';
-        onlineEl.textContent = 'All synced';
+        onlineEl.textContent = t('status.synced');
+      }
+
+      const sites = Array.isArray(data.privacyProtectedSites) ? data.privacyProtectedSites : [];
+      const showPrivacy = !!data.showPrivacyBlocksToEmployees && sites.length > 0;
+      privacyUrlMode = data.privacyUrlMode === 'allowlist' ? 'allowlist' : 'blocklist';
+      privacySitesCache = showPrivacy ? sites : [];
+      refreshPrivacyLabels();
+      if (privacyBox && privacyCount) {
+        if (showPrivacy) {
+          privacyBox.hidden = false;
+          privacyCount.textContent = privacySitesLabel(sites.length);
+        } else {
+          privacyBox.hidden = true;
+          privacyCount.textContent = privacySitesLabel(0);
+          closePrivacyModal();
+        }
       }
     }
 
@@ -355,7 +728,7 @@
         const data = await window.teamtracker.getStatus();
         renderStatus(data);
       } catch (e) {
-        showError('Could not load status.');
+        showError(t('status.loadFailed'));
       }
     }
 
@@ -364,36 +737,36 @@
       const token = tokenInput.value.trim();
       const serverUrl = serverInput.value.trim();
       if (!token) {
-        showError('Please enter a setup token.');
+        showError(t('setup.needToken'));
         return;
       }
       if (!serverUrl) {
-        showError('Open Advanced settings and enter the server URL.');
+        showError(t('setup.needServer'));
         advancedOpen = true;
         advancedFields.style.display = 'block';
-        advancedToggle.textContent = 'Hide advanced settings';
+        advancedToggle.textContent = t('setup.advancedHide');
         return;
       }
       connectBtn.disabled = true;
-      connectBtn.textContent = 'Connecting…';
+      connectBtn.textContent = t('setup.connecting');
       try {
         const result = await window.teamtracker.enroll(token, serverUrl);
         if (!result.success) {
-          showError(result.error || 'Connection failed.');
+          showError(result.error || t('setup.connectFailedShort'));
           return;
         }
         tokenInput.value = '';
         await refresh();
       } catch (e) {
-        showError('Connection failed. Check your token and try again.');
+        showError(t('setup.connectFailed'));
       } finally {
         connectBtn.disabled = false;
-        connectBtn.textContent = 'Connect';
+        connectBtn.textContent = t('setup.connect');
       }
     });
 
     logoutBtn.addEventListener('click', async () => {
-      const ok = window.confirm('Sign out of TeamTracker on this device? You will need a new setup token to reconnect.');
+      const ok = window.confirm(t('status.signOutConfirm'));
       if (!ok) return;
       logoutBtn.disabled = true;
       try {
@@ -401,12 +774,14 @@
         showError('');
         await refresh();
       } catch (e) {
-        showError('Could not sign out. Try again.');
+        showError(t('status.signOutFailed'));
       } finally {
         logoutBtn.disabled = false;
       }
     });
 
+    locale = detectLocale();
+    applyStaticI18n();
     refresh();
     setInterval(refresh, 5000);
   </script>

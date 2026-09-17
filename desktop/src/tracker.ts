@@ -7,7 +7,8 @@ import {
   generateDailySummary,
   ActivityCategory,
 } from './classifier.js';
-import { startScreenshotService } from './screenshot.js';
+import { startScreenshotService, getShowPrivacyBlocksToEmployees } from './screenshot.js';
+import { getCapturePrivacyBlocks, getPrivacyUrlMode } from './privacy-guard.js';
 import { startRemoteCommandClient, stopRemoteCommandClient } from './remote.js';
 import { getActiveWindow, hasActiveWinModule } from './active-window.js';
 
@@ -658,6 +659,12 @@ function loadConfig(): void {
       if (config.serverUrl) {
         config.serverUrl = config.serverUrl.replace(/\/+$/, '');
       }
+      // Not enrolled yet: ignore a stale saved serverUrl from a previous
+      // production/local session so `pnpm run dev` always defaults to localhost
+      // and release builds default to production.
+      if (!config.deviceToken) {
+        config.serverUrl = getServerUrl();
+      }
       syncRuntimeServerUrl();
     }
   } catch (err) {
@@ -893,8 +900,8 @@ export function isEnrolled(): boolean {
 
 /**
  * Sign out this device: drop the device JWT and employee identity so the
- * employee can re-enroll with a new setup token. Keeps serverUrl so reconnect
- * is one field (token) for most installs.
+ * employee can re-enroll with a new setup token. Resets serverUrl to the
+ * build/env default (localhost in dev, production in release builds).
  */
 export function logoutDevice(): { success: boolean } {
   clearDeviceAuth('user signed out');
@@ -923,6 +930,10 @@ function clearDeviceAuth(reason: string): void {
   config.employeeName = TEAMTRACKER_CONFIG.defaults.employeeName;
   config.activeProjectId = undefined;
   config.activeTaskId = undefined;
+  // Reset to build/env default so local dev doesn't keep a production URL
+  // (and release builds don't keep a leftover localhost URL).
+  config.serverUrl = getServerUrl();
+  syncRuntimeServerUrl();
   saveConfig();
 
   // Queued rows belong to the previous identity — drop them to avoid
@@ -935,6 +946,10 @@ function clearDeviceAuth(reason: string): void {
 
 export function setupIpcHandlers(): void {
   ipcMain.handle('tracker:getStatus', () => {
+    const showPrivacy = getShowPrivacyBlocksToEmployees();
+    const privacyPatterns = showPrivacy
+      ? [...new Set(getCapturePrivacyBlocks().map(b => b.appPattern).filter(Boolean))]
+      : [];
     return {
       isOnline,
       activitiesCount: activities.length,
@@ -943,6 +958,9 @@ export function setupIpcHandlers(): void {
       queueDropCount,
       clockOffsetMs,
       lastActivity,
+      showPrivacyBlocksToEmployees: showPrivacy,
+      privacyUrlMode: getPrivacyUrlMode(),
+      privacyProtectedSites: privacyPatterns,
       config: {
         ...config,
         deviceToken: config.deviceToken ? '***' : '',
