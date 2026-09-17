@@ -124,24 +124,8 @@ tt_migrate_legacy_uploads
 # -----------------------------------------
 # Build
 # -----------------------------------------
-cd "$APP_DIR"
-log "Installing project dependencies..."
-if [ -f package.json ]; then
-  npm install
-fi
-
-cd "$ADMIN_DIR"
-log "Installing admin dependencies..."
-npm install --include=dev
-
-# Optional Rollup native binary (Linux x64) — ignore failures on other arches
-if [ "$(uname -m)" = "x86_64" ]; then
-  log "Ensuring Rollup Linux native dependency..."
-  npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@4.59.0" 2>/dev/null || true
-fi
-
-log "Building TeamTracker..."
-npm run build
+log "Installing dependencies and building admin..."
+tt_npm_install_and_build_admin "$APP_DIR" "$ADMIN_DIR"
 log "Build completed."
 
 # -----------------------------------------

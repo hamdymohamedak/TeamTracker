@@ -67,13 +67,10 @@ ok "App: $APP_DIR"
 ok "Data: $DATA_DIR"
 
 echo ""
-echo "📥 Pulling latest ($BRANCH)..."
-cd "$APP_DIR"
-git fetch --depth 1 origin "$BRANCH"
-git checkout "$BRANCH"
-git pull --ff-only origin "$BRANCH" || warn "ff-only pull failed; using current tree"
+echo "📥 Syncing latest ($BRANCH)..."
+tt_sync_app_git "$APP_DIR" "$BRANCH"
 
-# Re-source after pull in case helpers updated
+# Re-source after sync in case helpers updated
 # shellcheck disable=SC1091
 source "$APP_DIR/scripts/deploy-lib.sh"
 
@@ -85,9 +82,7 @@ tt_ensure_production_env "$ENV_FILE"
 
 echo ""
 echo "🔨 Building..."
-cd "$ADMIN_DIR"
-npm install --include=dev
-npm run build
+tt_npm_install_and_build_admin "$APP_DIR" "$ADMIN_DIR"
 ok "Build complete"
 
 echo ""

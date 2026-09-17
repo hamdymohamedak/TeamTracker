@@ -45,7 +45,15 @@ chmod 750 "$DATA_DIR" "$DATA_DIR"/database "$DATA_DIR"/uploads "$DATA_DIR"/backu
 
 echo "📥 Downloading TeamTracker into $APP_DIR..."
 if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" pull --ff-only origin "$BRANCH" || true
+  # Prefer hard sync so divergent VPS trees cannot block updates
+  if [ -f "$APP_DIR/scripts/deploy-lib.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$APP_DIR/scripts/deploy-lib.sh"
+    tt_sync_app_git "$APP_DIR" "$BRANCH"
+  else
+    git -C "$APP_DIR" fetch origin "$BRANCH"
+    git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+  fi
 else
   git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 fi
@@ -55,12 +63,8 @@ ADMIN_DIR="$APP_DIR/admin"
 # shellcheck disable=SC1091
 source "$APP_DIR/scripts/deploy-lib.sh"
 
-echo "📦 Installing admin dependencies..."
-cd "$ADMIN_DIR"
-npm install --include=dev
-
-echo "🔨 Building TeamTracker..."
-npm run build
+echo "📦 Installing dependencies and building..."
+tt_npm_install_and_build_admin "$APP_DIR" "$ADMIN_DIR"
 
 echo "⚙️  Configuring environment ($ENV_FILE)..."
 tt_ensure_data_dirs "$DATA_DIR"
