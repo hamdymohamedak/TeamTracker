@@ -287,11 +287,18 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
+      # softprops/action-gh-release uploads all assets in parallel by default.
+      # Parallel uploads of many ~100MB installers often hit GitHub's uploads API
+      # with HTTP 500 "Error saving asset". Upload sequentially with retries instead.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          TAG="${{ github.ref_name }}"
+
+          files=(
             employee-mac-arm64/*
             employee-mac-x64/*
             admin-mac-arm64/*
@@ -300,3 +307,40 @@ jobs:
             admin-windows/*
             employee-linux/*
             admin-linux/*
+          )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release assets found"
+            find . -maxdepth 3 -type f | head -100 || true
+            exit 1
+          fi
+
+          echo "Assets to upload (${#files[@]}):"
+          printf '  %s\n' "${files[@]}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading/overwriting assets"
+          else
+            gh release create "$TAG" --generate-notes --draft
+          fi
+
+          for f in "${files[@]}"; do
+            echo "⬆️  Uploading $f ..."
+            ok=0
+            for attempt in 1 2 3 4 5; do
+              if gh release upload "$TAG" "$f" --clobber; then
+                ok=1
+                break
+              fi
+              sleep_s=$((attempt * 10))
+              echo "Upload failed for $f (attempt $attempt/5), retrying in ${sleep_s}s..."
+              sleep "$sleep_s"
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Failed to upload $f after 5 attempts"
+              exit 1
+            fi
+          done
+
+          gh release edit "$TAG" --draft=false
+          echo "✅ Release $TAG published"
+          gh release view "$TAG" --json url,assets --jq '{url, assets: [.assets[].name]}'
