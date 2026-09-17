@@ -359,6 +359,7 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
           privacyBlocked,
           appName: message.data?.appName || null,
           windowTitle: message.data?.windowTitle || null,
+          pattern: message.data?.pattern || null,
         },
       }));
       break;

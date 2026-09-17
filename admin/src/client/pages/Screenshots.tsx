@@ -3,8 +3,8 @@ import { api } from '../lib/api';
 import type { Employee } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
-import { HelpTip } from '../components/HelpTip';
-import { EmptyIcon, StatusLine } from '../components/Icon';
+import { PageHero, PageEmpty, PagePanel } from '../components/PageHero';
+import { StatusLine } from '../components/Icon';
 import { Camera } from 'lucide-react';
 
 interface ScreenshotRow {
@@ -45,9 +45,13 @@ export const Screenshots: React.FC = () => {
   const [flash, setFlash] = useState<string | null>(null);
   const [zoomed, setZoomed] = useState<ScreenshotRow | null>(null);
   const [taking, setTaking] = useState(false);
+  const [delaySec, setDelaySec] = useState<number>(0);
+  const [countdownLeft, setCountdownLeft] = useState<number | null>(null);
   const [httpOnlineIds, setHttpOnlineIds] = useState<Set<string>>(new Set());
   const pendingRequestRef = useRef<{ requestId: string; employeeId: string } | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const delayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const delayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEmployeeOnline = useCallback((id: string) => {
     return onlineEmployees.has(id) || httpOnlineIds.has(id);
@@ -170,19 +174,34 @@ export const Screenshots: React.FC = () => {
       pollTimerRef.current = null;
     }
     setFlash(t('screenshots.privacyBlocked', {
-      app: data.appName || data.pattern || '—',
+      app: data.pattern || data.windowTitle || data.appName || '—',
     }));
   }, [lastMessage, employeeId, t]);
 
   useEffect(() => {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (delayTimerRef.current) clearInterval(delayTimerRef.current);
+      if (delayTimeoutRef.current) clearTimeout(delayTimeoutRef.current);
     };
   }, []);
 
-  const selectedOnline = employeeId ? isEmployeeOnline(employeeId) : false;
+  const clearDelayTimers = () => {
+    if (delayTimerRef.current) {
+      clearInterval(delayTimerRef.current);
+      delayTimerRef.current = null;
+    }
+    if (delayTimeoutRef.current) {
+      clearTimeout(delayTimeoutRef.current);
+      delayTimeoutRef.current = null;
+    }
+    setCountdownLeft(null);
+  };
 
-  const handleTakeScreenshot = async () => {
+  const selectedOnline = employeeId ? isEmployeeOnline(employeeId) : false;
+  const scheduling = countdownLeft !== null;
+
+  const requestScreenshotNow = async () => {
     if (!employeeId) {
       setError(t('screenshots.selectEmployee'));
       return;
@@ -195,7 +214,6 @@ export const Screenshots: React.FC = () => {
       if (!res?.success) {
         throw new Error(res?.error || t('screenshots.offline'));
       }
-      // Presence may have been stale — refresh after a successful request.
       setHttpOnlineIds(prev => new Set(prev).add(employeeId));
       const requestId = res.data?.requestId as string | undefined;
       if (requestId) {
@@ -204,7 +222,6 @@ export const Screenshots: React.FC = () => {
       setFlash(t('screenshots.requested'));
       setDate(todayLocal());
 
-      // Poll gallery briefly while waiting for the device upload.
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       let ticks = 0;
       pollTimerRef.current = setInterval(() => {
@@ -221,6 +238,62 @@ export const Screenshots: React.FC = () => {
       setTaking(false);
       setError(e instanceof Error ? e.message : String(e));
     }
+  };
+
+  const handleCancelSchedule = () => {
+    clearDelayTimers();
+    setFlash(t('screenshots.timerCancelled'));
+  };
+
+  const handleTakeScreenshot = () => {
+    if (!employeeId) {
+      setError(t('screenshots.selectEmployee'));
+      return;
+    }
+    if (taking || scheduling) return;
+
+    if (delaySec <= 0) {
+      void requestScreenshotNow();
+      return;
+    }
+
+    setError(null);
+    setFlash(t('screenshots.timerArmed', { seconds: delaySec }));
+
+    // Clear any previous schedule without wiping the new countdown.
+    if (delayTimerRef.current) {
+      clearInterval(delayTimerRef.current);
+      delayTimerRef.current = null;
+    }
+    if (delayTimeoutRef.current) {
+      clearTimeout(delayTimeoutRef.current);
+      delayTimeoutRef.current = null;
+    }
+
+    let left = delaySec;
+    setCountdownLeft(left);
+    delayTimerRef.current = setInterval(() => {
+      left -= 1;
+      if (left <= 0) {
+        if (delayTimerRef.current) {
+          clearInterval(delayTimerRef.current);
+          delayTimerRef.current = null;
+        }
+        setCountdownLeft(null);
+        return;
+      }
+      setCountdownLeft(left);
+    }, 1000);
+
+    delayTimeoutRef.current = setTimeout(() => {
+      delayTimeoutRef.current = null;
+      if (delayTimerRef.current) {
+        clearInterval(delayTimerRef.current);
+        delayTimerRef.current = null;
+      }
+      setCountdownLeft(null);
+      void requestScreenshotNow();
+    }, delaySec * 1000);
   };
 
   const handleDelete = async (s: ScreenshotRow) => {
@@ -245,138 +318,193 @@ export const Screenshots: React.FC = () => {
   };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <div>
-          <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {t('screenshots.title')}
-            <HelpTip text={t('help.screenshots')} />
-          </h1>
-          <p style={styles.subtitle}>{t('screenshots.subtitle')}</p>
+    <div className="tt-page tt-page--wide">
+      <PageHero
+        icon={Camera}
+        title={t('screenshots.title')}
+        subtitle={t('screenshots.subtitle')}
+        help={t('help.screenshots')}
+      />
+
+      <PagePanel>
+        <div className="tt-toolbar">
+          <select
+            className="tt-input"
+            value={employeeId}
+            onChange={e => setEmployeeId(e.target.value)}
+            style={{ width: 'auto', minWidth: '220px' }}
+          >
+            <option value="">{t('common.allEmployees')}</option>
+            {employees.map(e => {
+              const online = isEmployeeOnline(e.id);
+              return (
+                <option key={e.id} value={e.id}>
+                  {e.name} · {online ? t('screenshots.online') : t('screenshots.offlineBadge')}
+                </option>
+              );
+            })}
+          </select>
+          <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('common.date')}:
+            <input
+              type="date"
+              className="tt-input"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              style={{ width: 'auto' }}
+            />
+          </label>
+          <button
+            type="button"
+            className="tt-btn tt-btn-ghost"
+            onClick={() => load()}
+            disabled={loading}
+          >
+            {loading ? t('common.loading') : t('common.refresh')}
+          </button>
+          <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('screenshots.timer')}:
+            <select
+              className="tt-input"
+              value={delaySec}
+              onChange={e => setDelaySec(Number(e.target.value))}
+              disabled={taking || scheduling}
+              style={{ width: 'auto', minWidth: '120px' }}
+              title={t('screenshots.timerHint')}
+            >
+              <option value={0}>{t('screenshots.timerNow')}</option>
+              <option value={5}>{t('screenshots.timerSeconds', { n: 5 })}</option>
+              <option value={10}>{t('screenshots.timerSeconds', { n: 10 })}</option>
+              <option value={30}>{t('screenshots.timerSeconds', { n: 30 })}</option>
+              <option value={60}>{t('screenshots.timerMinute')}</option>
+              <option value={120}>{t('screenshots.timerMinutes', { n: 2 })}</option>
+              <option value={300}>{t('screenshots.timerMinutes', { n: 5 })}</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="tt-btn tt-btn-primary"
+            onClick={handleTakeScreenshot}
+            disabled={taking || scheduling || !employeeId}
+            title={!employeeId ? t('screenshots.selectEmployee') : selectedOnline ? undefined : t('screenshots.offline')}
+          >
+            {taking
+              ? t('screenshots.taking')
+              : scheduling
+                ? t('screenshots.timerCountdown', { seconds: countdownLeft ?? 0 })
+                : delaySec > 0
+                  ? t('screenshots.schedule')
+                  : t('screenshots.take')}
+          </button>
+          {scheduling && (
+            <button type="button" className="tt-btn tt-btn-ghost" onClick={handleCancelSchedule}>
+              {t('screenshots.timerCancel')}
+            </button>
+          )}
+          {employeeId && (
+            <span
+              className="tt-badge"
+              style={{
+                color: selectedOnline ? 'var(--tt-success)' : 'var(--tt-text-faint)',
+              }}
+            >
+              {selectedOnline ? `● ${t('screenshots.online')}` : `○ ${t('screenshots.offlineBadge')}`}
+            </span>
+          )}
         </div>
-      </header>
+      </PagePanel>
 
-      <div style={styles.controls}>
-        <select
-          value={employeeId}
-          onChange={e => setEmployeeId(e.target.value)}
-          style={styles.select}
-        >
-          <option value="">{t('common.allEmployees')}</option>
-          {employees.map(e => {
-            const online = isEmployeeOnline(e.id);
-            return (
-              <option key={e.id} value={e.id}>
-                {e.name} · {online ? t('screenshots.online') : t('screenshots.offlineBadge')}
-              </option>
-            );
-          })}
-        </select>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--tt-text-muted)' }}>
-          {t('common.date')}:
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            style={styles.dateInput}
-          />
-        </label>
-        <button onClick={() => load()} disabled={loading} style={styles.btnGhost}>
-          {loading ? t('common.loading') : t('common.refresh')}
-        </button>
-        <button
-          onClick={handleTakeScreenshot}
-          disabled={taking || !employeeId}
-          style={{
-            ...styles.btnPrimary,
-            opacity: taking || !employeeId ? 0.55 : 1,
-            cursor: taking || !employeeId ? 'not-allowed' : 'pointer',
-          }}
-          title={!employeeId ? t('screenshots.selectEmployee') : selectedOnline ? undefined : t('screenshots.offline')}
-        >
-          {taking ? t('screenshots.taking') : t('screenshots.take')}
-        </button>
-        {employeeId && (
-          <span style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: selectedOnline ? 'var(--tt-success)' : 'var(--tt-text-faint)',
-          }}>
-            {selectedOnline ? `● ${t('screenshots.online')}` : `○ ${t('screenshots.offlineBadge')}`}
-          </span>
-        )}
-      </div>
-
-      {flash && (
-        <div style={styles.flashBanner}>{flash}</div>
-      )}
+      {flash && <div className="tt-flash">{flash}</div>}
 
       {error && (
-        <div style={styles.errorBanner}>
+        <div className="tt-error-banner">
           <StatusLine variant="error">{error}</StatusLine>
         </div>
       )}
 
       {!loading && shots.length === 0 && (
-        <div style={styles.empty}>
-          <EmptyIcon icon={Camera} size={40} />
-          <h3 style={{ margin: '12px 0 4px', color: 'var(--tt-text)' }}>{t('screenshots.emptyTitle')}</h3>
-          <p style={{ color: 'var(--tt-text-muted)', fontSize: '14px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.5 }}>
-            {t('screenshots.emptyHint')}
-          </p>
-        </div>
+        <PageEmpty
+          icon={Camera}
+          title={t('screenshots.emptyTitle')}
+          hint={t('screenshots.emptyHint')}
+        />
       )}
 
-      <div style={styles.grid}>
-        {shots.map(s => {
-          const emp = employees.find(e => e.id === s.employeeId);
-          return (
-            <div key={s.id} style={styles.card}>
-              <button
-                onClick={() => setZoomed(s)}
-                style={styles.thumbBtn}
-                aria-label="View full size"
-              >
-                <img src={authenticatedFileUrl(s.fileUrl)} alt="" style={styles.thumb} loading="lazy" />
-              </button>
-              <div style={styles.cardBody}>
-                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--tt-text)' }}>
-                  {emp?.name || s.employeeId.slice(0, 8)}
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--tt-text-muted)' }}>
-                  {fmtTime(s.timestamp)} · {fmtSize(s.fileSizeBytes)}
-                </div>
-                {s.appName && (
-                  <div style={{ fontSize: '11px', color: 'var(--tt-text-faint)', marginTop: '2px' }}>
-                    {s.appName}
-                  </div>
-                )}
+      {shots.length > 0 && (
+        <div
+          className="tt-card-grid"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
+        >
+          {shots.map(s => {
+            const emp = employees.find(e => e.id === s.employeeId);
+            return (
+              <article key={s.id} className="tt-entity-card" style={{ padding: 0, minHeight: 'auto', overflow: 'hidden' }}>
                 <button
-                  onClick={() => handleDelete(s)}
-                  style={styles.deleteBtn}
+                  type="button"
+                  onClick={() => setZoomed(s)}
+                  style={{
+                    padding: 0,
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'zoom-in',
+                    display: 'block',
+                    width: '100%',
+                  }}
+                  aria-label="View full size"
                 >
-                  {t('screenshots.delete')}
+                  <img
+                    src={authenticatedFileUrl(s.fileUrl)}
+                    alt=""
+                    loading="lazy"
+                    style={{
+                      width: '100%',
+                      height: '140px',
+                      objectFit: 'cover',
+                      display: 'block',
+                      backgroundColor: 'var(--tt-surface-muted)',
+                    }}
+                  />
                 </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                    {emp?.name || s.employeeId.slice(0, 8)}
+                  </div>
+                  <div className="tt-muted" style={{ fontSize: 11 }}>
+                    {fmtTime(s.timestamp)} · {fmtSize(s.fileSizeBytes)}
+                  </div>
+                  {s.appName && (
+                    <div style={{ fontSize: 11, color: 'var(--tt-text-faint)' }}>{s.appName}</div>
+                  )}
+                  <div className="tt-entity-card-actions" style={{ marginTop: 8, paddingTop: 8 }}>
+                    <button
+                      type="button"
+                      className="tt-action-btn tt-action-btn-danger"
+                      onClick={() => handleDelete(s)}
+                    >
+                      {t('screenshots.delete')}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
       {zoomed && (
         <div
           role="dialog"
           aria-modal="true"
           onClick={() => setZoomed(null)}
-          style={styles.lightbox}
+          style={lightboxStyles.overlay}
         >
           <img
             src={authenticatedFileUrl(zoomed.fileUrl)}
             alt="Screenshot full size"
-            style={styles.lightboxImg}
+            style={lightboxStyles.image}
             onClick={e => e.stopPropagation()}
           />
-          <div style={styles.lightboxMeta}>
+          <div style={lightboxStyles.meta}>
             {fmtTime(zoomed.timestamp)} · {zoomed.appName || ''} · {zoomed.windowTitle || ''}
           </div>
         </div>
@@ -385,26 +513,28 @@ export const Screenshots: React.FC = () => {
   );
 };
 
-const styles: { [key: string]: React.CSSProperties } = {
-  container: { padding: '32px' },
-  header: { marginBottom: '20px' },
-  title: { fontSize: '28px', fontWeight: 600, color: 'var(--tt-text)', margin: 0 },
-  subtitle: { fontSize: '14px', color: 'var(--tt-text-muted)', margin: '4px 0 0 0' },
-  controls: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' as const },
-  select: { padding: '9px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', minWidth: '220px' },
-  dateInput: { padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' },
-  btnPrimary: { padding: '9px 18px', backgroundColor: 'var(--tt-teal)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 },
-  btnGhost: { padding: '9px 18px', backgroundColor: 'var(--tt-surface)', color: 'var(--tt-text)', border: '1px solid var(--tt-border-strong)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 },
-  errorBanner: { backgroundColor: 'var(--tt-danger-soft)', border: '1px solid rgba(232, 93, 76, 0.25)', color: 'var(--tt-danger)', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px' },
-  flashBanner: { backgroundColor: 'var(--tt-success-soft)', border: '1px solid rgba(74, 124, 89, 0.25)', color: 'var(--tt-success)', padding: '10px 12px', borderRadius: '6px', marginBottom: '12px' },
-  empty: { textAlign: 'center', padding: '60px 20px', backgroundColor: 'var(--tt-surface)', borderRadius: 'var(--tt-radius)', boxShadow: 'var(--tt-shadow-sm)' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' },
-  card: { backgroundColor: 'var(--tt-surface)', borderRadius: '10px', boxShadow: 'var(--tt-shadow-sm)', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-  thumbBtn: { padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', display: 'block' },
-  thumb: { width: '100%', height: '140px', objectFit: 'cover', display: 'block', backgroundColor: 'var(--tt-surface-muted)' },
-  cardBody: { padding: '10px 12px', borderTop: '1px solid #f1f3f5' },
-  deleteBtn: { marginTop: '8px', padding: '6px 10px', fontSize: '11px', backgroundColor: 'var(--tt-danger-soft)', color: 'var(--tt-danger)', border: '1px solid rgba(232, 93, 76, 0.25)', borderRadius: '4px', cursor: 'pointer', width: '100%' },
-  lightbox: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' },
-  lightboxImg: { maxWidth: '95%', maxHeight: '85%', borderRadius: 'var(--tt-radius-sm)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' },
-  lightboxMeta: { color: '#fff', fontSize: '12px', marginTop: '12px', opacity: 0.8 }
+const lightboxStyles: { overlay: React.CSSProperties; image: React.CSSProperties; meta: React.CSSProperties } = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3000,
+    padding: 20,
+  },
+  image: {
+    maxWidth: '95%',
+    maxHeight: '85%',
+    borderRadius: 'var(--tt-radius-sm)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+  },
+  meta: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 12,
+    opacity: 0.8,
+  },
 };

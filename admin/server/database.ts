@@ -246,12 +246,13 @@ async function createTables(): Promise<void> {
       created_at TEXT NOT NULL
     );
 
-    -- Privacy blocks: skip screenshots / live view when foreground app/title matches
+    -- Privacy blocks: skip screenshots / live view when app/title/URL matches
     CREATE TABLE IF NOT EXISTS capture_privacy_blocks (
       id TEXT PRIMARY KEY,
       org_id TEXT NOT NULL,
       employee_id TEXT,
       app_pattern TEXT NOT NULL,
+      aliases TEXT NOT NULL DEFAULT '[]',
       block_screenshots INTEGER NOT NULL DEFAULT 1,
       block_live_view INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL

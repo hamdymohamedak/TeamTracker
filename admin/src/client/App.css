@@ -380,6 +380,14 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+.dashboard-suspicious-panel {
+  border: 2px solid var(--tt-danger);
+}
+
+.dashboard-suspicious-panel .tt-panel-title {
+  color: var(--tt-danger);
+}
 .lang-switcher {
   display: inline-flex;
   gap: 4px;

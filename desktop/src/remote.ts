@@ -41,7 +41,7 @@ async function handleScreenshotCommand(requestId: string): Promise<void> {
   if (!requestId || inFlightRequests.has(requestId)) return;
   inFlightRequests.add(requestId);
   try {
-    void refreshOrgCapturePolicy();
+    await refreshOrgCapturePolicy();
     console.log(`[remote] capturing screenshot for request ${requestId}`);
     const result = await captureNow(getTokenFn, () => ({
       appName: getContextFn().appName,
@@ -75,9 +75,17 @@ function handleMessage(raw: WebSocket.RawData): void {
       void handleScreenshotCommand(String(message.data.requestId));
     }
     if (message?.type === 'command:live-view-start' && message?.data?.sessionId) {
-      // Start streaming immediately — privacy policy refresh must not delay first frames.
-      void refreshOrgCapturePolicy();
-      startLiveViewSession(String(message.data.sessionId));
+      // Refresh privacy rules first so the first frames respect new blocks
+      // (e.g. WhatsApp / web.whatsapp.com added moments ago).
+      const sessionId = String(message.data.sessionId);
+      void (async () => {
+        try {
+          await refreshOrgCapturePolicy();
+        } catch (err) {
+          console.warn('[remote] privacy policy refresh failed:', (err as Error).message);
+        }
+        startLiveViewSession(sessionId);
+      })();
     }
     if (message?.type === 'command:live-view-stop') {
       stopLiveViewSession('admin-stop');

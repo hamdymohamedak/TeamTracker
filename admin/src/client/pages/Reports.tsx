@@ -8,9 +8,8 @@ import {
   CANONICAL_CATEGORY_ORDER
 } from '../../../shared-types';
 import { useI18n } from '../contexts/I18nContext';
-import { HelpTip } from '../components/HelpTip';
-import { EmptyIcon } from '../components/Icon';
-import { AlertTriangle, Clock, Download, TrendingUp } from 'lucide-react';
+import { PageHero, PageEmpty, PagePanel } from '../components/PageHero';
+import { BarChart3, Clock, Download } from 'lucide-react';
 
 function getBrowserTz(): string {
   try {
@@ -74,6 +73,34 @@ export const Reports: React.FC = () => {
     }
   };
 
+  const exportCsv = async () => {
+    if (!selectedEmployee || !startDate || !endDate) return;
+    try {
+      const tz = encodeURIComponent(getBrowserTz());
+      const token = localStorage.getItem('teamtracker_token');
+      const res = await fetch(
+        `/api/reports/export.csv?employeeId=${selectedEmployee}&startDate=${startDate}&endDate=${endDate}&tz=${tz}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) {
+        alert(t('reports.exportFailed', { error: await res.text() }));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `teamtracker-${startDate}-${endDate}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+    } catch (e) {
+      alert(t('reports.exportFailed', {
+        error: e instanceof Error ? e.message : String(e),
+      }));
+    }
+  };
+
   // Pagination for suspicious activities
   const paginatedSuspiciousActivities = report?.suspiciousActivities?.slice(
     (suspiciousPage - 1) * SUSPICIOUS_ACTIVITIES_PER_PAGE,
@@ -84,110 +111,81 @@ export const Reports: React.FC = () => {
   );
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {t('reports.title')}
-          <HelpTip text={t('help.reports')} />
-        </h1>
-        <p style={styles.subtitle}>{t('reports.subtitle')}</p>
-      </header>
+    <div className="tt-page tt-page--wide">
+      <PageHero
+        icon={BarChart3}
+        title={t('reports.title')}
+        subtitle={t('reports.subtitle')}
+        help={t('help.reports')}
+      />
 
-      <div style={styles.filters}>
-        <select
-          value={selectedEmployee}
-          onChange={(e) => setSelectedEmployee(e.target.value)}
-          style={styles.select}
-        >
-          <option value="">Select Employee</option>
-          {employees.map((emp) => (
-            <option key={emp.id} value={emp.id}>
-              {emp.name}
-            </option>
-          ))}
-        </select>
+      <PagePanel>
+        <div className="tt-toolbar">
+          <select
+            className="tt-input"
+            value={selectedEmployee}
+            onChange={(e) => setSelectedEmployee(e.target.value)}
+            style={{ width: 'auto', minWidth: '200px' }}
+          >
+            <option value="">{t('reports.selectEmployee')}</option>
+            {employees.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.name}
+              </option>
+            ))}
+          </select>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--tt-text-muted)' }}>From:</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={styles.input}
-          />
-        </div>
+          <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('reports.from')}:
+            <input
+              type="date"
+              className="tt-input"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{ width: 'auto' }}
+            />
+          </label>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--tt-text-muted)' }}>To:</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={styles.input}
-          />
-        </div>
+          <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('reports.to')}:
+            <input
+              type="date"
+              className="tt-input"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{ width: 'auto' }}
+            />
+          </label>
 
-        <button
-          onClick={generateReport}
-          disabled={!selectedEmployee || loading}
-          style={styles.button}
-        >
-          {loading ? 'Generating...' : 'Generate Report'}
-        </button>
+          <button
+            type="button"
+            className="tt-btn tt-btn-primary"
+            onClick={generateReport}
+            disabled={!selectedEmployee || loading}
+          >
+            {loading ? t('reports.generating') : t('reports.generate')}
+          </button>
 
-        <button
-          onClick={async () => {
-            if (!selectedEmployee || !startDate || !endDate) return;
-            // The endpoint is auth-gated; use fetch+token then trigger a
-            // download from the resulting blob. Plain <a href> won't work
-            // because we need to send the Bearer token.
-            try {
-              const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-              const token = localStorage.getItem('teamtracker_token');
-              const res = await fetch(
-                `/api/reports/export.csv?employeeId=${selectedEmployee}&startDate=${startDate}&endDate=${endDate}&tz=${tz}`,
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
-              if (!res.ok) {
-                alert('CSV export failed: ' + (await res.text()));
-                return;
-              }
-              const blob = await res.blob();
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `teamtracker-${startDate}-${endDate}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
-            } catch (e) {
-              alert('CSV export failed: ' + (e instanceof Error ? e.message : String(e)));
-            }
-          }}
-          disabled={!selectedEmployee || !startDate || !endDate}
-          style={{ ...styles.button, backgroundColor: 'var(--tt-success)' }}
-          title="Download raw activity rows as CSV (for payroll, invoicing, or external analysis)"
-        >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button
+            type="button"
+            className="tt-btn tt-btn-primary"
+            onClick={exportCsv}
+            disabled={!selectedEmployee || !startDate || !endDate}
+            title={t('reports.exportCsvTitle')}
+            style={{ background: 'var(--tt-success)' }}
+          >
             <Download size={16} strokeWidth={2} aria-hidden />
-            Export CSV
-          </span>
-        </button>
-      </div>
+            {t('reports.exportCsv')}
+          </button>
+        </div>
+      </PagePanel>
 
       {!report && !loading && (
-        <div style={{
-          textAlign: 'center' as const,
-          padding: '48px 20px',
-          backgroundColor: 'var(--tt-surface)',
-          borderRadius: 'var(--tt-radius)',
-          boxShadow: 'var(--tt-shadow-sm)',
-        }}>
-          <EmptyIcon icon={TrendingUp} size={40} />
-          <p style={{ fontSize: '15px', color: 'var(--tt-text-muted)', margin: 0, maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.6' }}>
-            Select an employee and date range, then click <strong>Generate Report</strong> to see productivity data.
-          </p>
-        </div>
+        <PageEmpty
+          icon={BarChart3}
+          title={t('reports.emptyTitle')}
+          hint={t('reports.emptyHint')}
+        />
       )}
 
       {report && (() => {
@@ -220,366 +218,181 @@ export const Reports: React.FC = () => {
           );
 
         return (
-        <div style={styles.reportContainer}>
-          <div style={styles.summaryCards}>
-            <div style={styles.card}>
-              <h3 style={styles.cardTitle}>Total Hours</h3>
-              <p style={styles.cardValue}>{formatDurationSeconds(totalSeconds)}</p>
-              <p style={{ fontSize: '11px', color: 'var(--tt-text-faint)', margin: '4px 0 0' }}>
-                productive + idle + other
-              </p>
-            </div>
-            <div style={styles.card}>
-              <h3 style={styles.cardTitle}>Productive Hours</h3>
-              <p style={{...styles.cardValue, color: 'var(--tt-success)'}}>
-                {formatDurationSeconds(productiveSeconds)}
-              </p>
-            </div>
-            <div style={styles.card}>
-              <h3 style={styles.cardTitle}>Unproductive Hours</h3>
-              <p style={{...styles.cardValue, color: 'var(--tt-danger)'}}>
-                {formatDurationSeconds(unproductiveSeconds)}
-              </p>
-            </div>
-            <div style={styles.card}>
-              <h3 style={styles.cardTitle}>Productivity Score</h3>
-              <p style={{...styles.cardValue, color: 'var(--tt-teal)'}}>{score}%</p>
-              <p style={{ fontSize: '11px', color: 'var(--tt-text-faint)', margin: '4px 0 0' }}>
-                productive ÷ (productive + unproductive)
-              </p>
-            </div>
-          </div>
-
-          {/* Reconciliation card — breaks down how the total was built so the
-              admin can always see the math. */}
-          <div style={{
-            ...styles.section,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '12px'
-          }}>
-            <ReconcileCell label="Productive" seconds={productiveSeconds} color="var(--tt-success)" />
-            <ReconcileCell label="Unproductive" seconds={unproductiveSeconds} color="var(--tt-danger)" />
-            <ReconcileCell label="Other (neutral)" seconds={neutralSeconds} color="var(--tt-text-faint)" />
-            <ReconcileCell label="Idle / Break" seconds={idleSeconds} color="var(--tt-text-faint)" />
-            <ReconcileCell label="Total" seconds={totalSeconds} color="var(--tt-text)" bold />
-          </div>
-
-          {/* Outside-business-hours card — only when BH are set for this employee. */}
-          {report.hasBusinessHours && outsideHoursSeconds > 0 && (
-            <div style={{
-              ...styles.section,
-              border: '1px dashed var(--tt-amber)',
-              backgroundColor: '#fffaf0'
-            }}>
-              <h3 style={{ ...styles.sectionTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Clock size={18} strokeWidth={2} aria-hidden />
-                Outside Business Hours
-              </h3>
-              <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 8px' }}>
-                {formatDurationSeconds(outsideHoursSeconds)} was tracked outside of this employee's
-                configured working hours and is <strong>not</strong> counted in their total, productive,
-                or productivity-score numbers above.
-              </p>
-            </div>
-          )}
-
-          {report.suspiciousActivities.length > 0 && (
-            <div style={styles.section}>
-              <h3 style={{ ...styles.sectionTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={18} strokeWidth={2} aria-hidden />
-                Suspicious Activities ({report.suspiciousActivities.length})
-              </h3>
-              <div style={styles.activityList}>
-                {paginatedSuspiciousActivities.map((activity: Activity) => (
-                  <div key={activity.id} style={styles.suspiciousActivity}>
-                    <p style={styles.activityApp}>{activity.appName}</p>
-                    <p style={styles.activityTitle}>{activity.windowTitle}</p>
-                    <p style={styles.activityReason}>{activity.suspiciousReason}</p>
-                    <p style={styles.activityTime}>
-                      {new Date(activity.timestamp).toLocaleString()}
-                    </p>
-                  </div>
-                ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="tt-stat-grid">
+              <div className="tt-stat">
+                <div className="tt-muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('reports.totalHours')}
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{formatDurationSeconds(totalSeconds)}</div>
+                <p className="tt-muted" style={{ fontSize: 11, marginTop: 4 }}>{t('reports.totalHoursHint')}</p>
               </div>
-              {totalSuspiciousPages > 1 && (
-                <div style={styles.pagination}>
-                  <button
-                    onClick={() => setSuspiciousPage(p => Math.max(1, p - 1))}
-                    disabled={suspiciousPage === 1}
-                    style={styles.paginationButton}
-                  >
-                    ← Prev
-                  </button>
-                  <span style={styles.paginationInfo}>
-                    Page {suspiciousPage} of {totalSuspiciousPages}
-                  </span>
-                  <button
-                    onClick={() => setSuspiciousPage(p => Math.min(totalSuspiciousPages, p + 1))}
-                    disabled={suspiciousPage === totalSuspiciousPages}
-                    style={styles.paginationButton}
-                  >
-                    Next →
-                  </button>
+              <div className="tt-stat">
+                <div className="tt-muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('reports.productiveHours')}
                 </div>
-              )}
+                <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4, color: 'var(--tt-success)' }}>
+                  {formatDurationSeconds(productiveSeconds)}
+                </div>
+              </div>
+              <div className="tt-stat">
+                <div className="tt-muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('reports.unproductiveHours')}
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4, color: 'var(--tt-danger)' }}>
+                  {formatDurationSeconds(unproductiveSeconds)}
+                </div>
+              </div>
+              <div className="tt-stat">
+                <div className="tt-muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('reports.productivityScore')}
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4, color: 'var(--tt-teal)' }}>{score}%</div>
+                <p className="tt-muted" style={{ fontSize: 11, marginTop: 4 }}>{t('reports.scoreFormula')}</p>
+              </div>
             </div>
-          )}
 
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>Category Breakdown</h3>
-            <div style={styles.categoryList}>
-              {orderedCategories.length === 0 && (
-                <div style={{ ...styles.categoryItem, justifyContent: 'center', color: 'var(--tt-text-faint)' }}>
-                  No categorized activity in this range.
+            <PagePanel>
+              <div className="tt-stat-grid">
+                <ReconcileCell label={t('reports.reconcileProductive')} seconds={productiveSeconds} color="var(--tt-success)" />
+                <ReconcileCell label={t('reports.reconcileUnproductive')} seconds={unproductiveSeconds} color="var(--tt-danger)" />
+                <ReconcileCell label={t('reports.reconcileNeutral')} seconds={neutralSeconds} color="var(--tt-text-faint)" />
+                <ReconcileCell label={t('reports.reconcileIdle')} seconds={idleSeconds} color="var(--tt-text-faint)" />
+                <ReconcileCell label={t('reports.reconcileTotal')} seconds={totalSeconds} color="var(--tt-text)" bold />
+              </div>
+            </PagePanel>
+
+            {report.hasBusinessHours && outsideHoursSeconds > 0 && (
+              <PagePanel title={t('reports.outsideHours')}>
+                <p className="tt-muted" style={{ margin: 0, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <Clock size={18} strokeWidth={2} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span>
+                    {t('reports.outsideHoursDesc', { duration: formatDurationSeconds(outsideHoursSeconds) })}
+                  </span>
+                </p>
+              </PagePanel>
+            )}
+
+            {report.suspiciousActivities.length > 0 && (
+              <PagePanel title={t('reports.suspiciousActivities', { count: report.suspiciousActivities.length })}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {paginatedSuspiciousActivities.map((activity: Activity) => (
+                    <div
+                      key={activity.id}
+                      style={{
+                        padding: 12,
+                        backgroundColor: 'var(--tt-danger-soft)',
+                        border: '1px solid rgba(232, 93, 76, 0.25)',
+                        borderRadius: 'var(--tt-radius-sm)',
+                      }}
+                    >
+                      <p style={{ fontWeight: 600, margin: '0 0 4px' }}>{activity.appName}</p>
+                      <p className="tt-muted" style={{ fontSize: 14, margin: '0 0 4px' }}>{activity.windowTitle}</p>
+                      <p style={{ fontSize: 12, color: 'var(--tt-danger)', margin: '0 0 4px' }}>{activity.suspiciousReason}</p>
+                      <p style={{ fontSize: 12, color: 'var(--tt-text-faint)', margin: 0 }}>
+                        {new Date(activity.timestamp).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              )}
-              {orderedCategories.map((id) => {
-                const seconds = rawBreakdown[id] || 0;
-                const pct = totalSeconds > 0 ? Math.round((seconds / totalSeconds) * 100) : 0;
-                const color = CATEGORY_COLORS[id] || 'var(--tt-text-faint)';
-                const label = CATEGORY_DISPLAY_NAMES[id] || id;
-                return (
-                  <div key={id} style={styles.categoryItem}>
-                    <span style={{
-                      ...styles.categoryName,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}>
-                      <span style={{
-                        display: 'inline-block',
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: color
-                      }} />
-                      {label}
+                {totalSuspiciousPages > 1 && (
+                  <div className="tt-toolbar" style={{ justifyContent: 'center', marginTop: 16, marginBottom: 0 }}>
+                    <button
+                      type="button"
+                      className="tt-btn tt-btn-primary"
+                      onClick={() => setSuspiciousPage(p => Math.max(1, p - 1))}
+                      disabled={suspiciousPage === 1}
+                    >
+                      {t('reports.prev')}
+                    </button>
+                    <span className="tt-muted">
+                      {t('reports.pageOf', { page: suspiciousPage, total: totalSuspiciousPages })}
                     </span>
-                    <span style={styles.categoryValue}>
-                      {formatDurationSeconds(seconds)}{' '}
-                      <span style={{ color: 'var(--tt-text-faint)', fontWeight: 400, marginLeft: '6px' }}>
-                        {pct}%
-                      </span>
-                    </span>
+                    <button
+                      type="button"
+                      className="tt-btn tt-btn-primary"
+                      onClick={() => setSuspiciousPage(p => Math.min(totalSuspiciousPages, p + 1))}
+                      disabled={suspiciousPage === totalSuspiciousPages}
+                    >
+                      {t('reports.next')}
+                    </button>
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </PagePanel>
+            )}
+
+            <PagePanel title={t('reports.categoryBreakdown')}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {orderedCategories.length === 0 && (
+                  <div className="tt-muted" style={{ textAlign: 'center', padding: 12 }}>
+                    {t('reports.noCategories')}
+                  </div>
+                )}
+                {orderedCategories.map((id) => {
+                  const seconds = rawBreakdown[id] || 0;
+                  const pct = totalSeconds > 0 ? Math.round((seconds / totalSeconds) * 100) : 0;
+                  const color = CATEGORY_COLORS[id] || 'var(--tt-text-faint)';
+                  const label = CATEGORY_DISPLAY_NAMES[id] || id;
+                  return (
+                    <div
+                      key={id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: 12,
+                        backgroundColor: 'var(--tt-surface-muted)',
+                        borderRadius: 6,
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            backgroundColor: color,
+                          }}
+                        />
+                        {label}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--tt-teal)' }}>
+                        {formatDurationSeconds(seconds)}{' '}
+                        <span style={{ color: 'var(--tt-text-faint)', fontWeight: 400, marginLeft: 6 }}>
+                          {pct}%
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </PagePanel>
           </div>
-        </div>
         );
       })()}
     </div>
   );
 };
 
-// Small cell used in the reconciliation grid.
-const ReconcileCell: React.FC<{ label: string; seconds: number; color: string; bold?: boolean }> = ({ label, seconds, color, bold }) => (
-  <div style={{
-    padding: '10px 12px',
-    backgroundColor: 'var(--tt-surface-muted)',
-    borderLeft: `3px solid ${color}`,
-    borderRadius: '6px'
-  }}>
-    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--tt-text-muted)', letterSpacing: '0.5px' }}>
+const ReconcileCell: React.FC<{ label: string; seconds: number; color: string; bold?: boolean }> = ({
+  label,
+  seconds,
+  color,
+  bold,
+}) => (
+  <div
+    className="tt-stat"
+    style={{
+      borderLeft: `3px solid ${color}`,
+      padding: '10px 12px',
+    }}
+  >
+    <div className="tt-muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
       {label}
     </div>
-    <div style={{ fontSize: '18px', fontWeight: bold ? 700 : 600, color: 'var(--tt-text)', marginTop: '2px' }}>
+    <div style={{ fontSize: 18, fontWeight: bold ? 700 : 600, marginTop: 2 }}>
       {formatDurationSeconds(seconds)}
     </div>
   </div>
 );
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    padding: '32px',
-    '@media (max-width: 768px)': {
-      padding: '16px'
-    }
-  } as React.CSSProperties,
-  header: {
-    marginBottom: '24px'
-  },
-  title: {
-    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
-    fontWeight: 750,
-    fontFamily: 'var(--tt-font-display)',
-    letterSpacing: '-0.02em',
-    color: 'var(--tt-text)',
-    margin: 0
-  },
-  subtitle: {
-    fontSize: '14px',
-    color: 'var(--tt-text-muted)',
-    margin: '8px 0 0 0'
-  },
-  filters: {
-    display: 'flex',
-    gap: '12px',
-    marginBottom: '24px',
-    flexWrap: 'wrap',
-    '@media (max-width: 768px)': {
-      flexDirection: 'column',
-      gap: '8px'
-    }
-  } as React.CSSProperties,
-  select: {
-    padding: '10px 16px',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    fontSize: '14px',
-    minWidth: '200px',
-    '@media (max-width: 768px)': {
-      minWidth: '100%',
-      fontSize: '16px' // Prevent zoom on iOS
-    }
-  } as React.CSSProperties,
-  input: {
-    padding: '10px 16px',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    fontSize: '14px',
-    '@media (max-width: 768px)': {
-      fontSize: '16px', // Prevent zoom on iOS
-      width: '100%'
-    }
-  } as React.CSSProperties,
-  button: {
-    padding: '10px 24px',
-    backgroundColor: 'var(--tt-teal)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 500
-  },
-  reportContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '24px'
-  },
-  summaryCards: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '16px',
-    '@media (max-width: 768px)': {
-      gridTemplateColumns: '1fr 1fr',
-      gap: '8px'
-    }
-  } as React.CSSProperties,
-  card: {
-    backgroundColor: 'var(--tt-surface)',
-    padding: '20px',
-    borderRadius: 'var(--tt-radius)',
-    boxShadow: 'var(--tt-shadow-sm)',
-    '@media (max-width: 768px)': {
-      padding: '12px'
-    }
-  } as React.CSSProperties,
-  cardTitle: {
-    fontSize: '14px',
-    color: 'var(--tt-text-muted)',
-    margin: '0 0 8px 0'
-  },
-  cardValue: {
-    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
-    fontWeight: 750,
-    fontFamily: 'var(--tt-font-display)',
-    letterSpacing: '-0.02em',
-    color: 'var(--tt-text)',
-    margin: 0,
-    '@media (max-width: 768px)': {
-      fontSize: '24px'
-    }
-  } as React.CSSProperties,
-  section: {
-    backgroundColor: 'var(--tt-surface)',
-    padding: '20px',
-    borderRadius: 'var(--tt-radius)',
-    boxShadow: 'var(--tt-shadow-sm)'
-  },
-  sectionTitle: {
-    fontSize: '18px',
-    fontWeight: 600,
-    color: 'var(--tt-text)',
-    margin: '0 0 16px 0'
-  },
-  activityList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px'
-  },
-  suspiciousActivity: {
-    padding: '12px',
-    backgroundColor: 'var(--tt-danger-soft)',
-    border: '1px solid rgba(232, 93, 76, 0.25)',
-    borderRadius: 'var(--tt-radius-sm)'
-  },
-  activityApp: {
-    fontWeight: 600,
-    color: 'var(--tt-text)',
-    margin: '0 0 4px 0'
-  },
-  activityTitle: {
-    fontSize: '14px',
-    color: 'var(--tt-text-muted)',
-    margin: '0 0 4px 0'
-  },
-  activityReason: {
-    fontSize: '12px',
-    color: 'var(--tt-danger)',
-    margin: '0 0 4px 0'
-  },
-  activityTime: {
-    fontSize: '12px',
-    color: 'var(--tt-text-faint)',
-    margin: 0
-  },
-  categoryList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px'
-  },
-  categoryItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: '12px',
-    backgroundColor: 'var(--tt-surface-muted)',
-    borderRadius: '6px'
-  },
-  categoryName: {
-    fontSize: '14px',
-    color: 'var(--tt-text)'
-  },
-  categoryValue: {
-    fontSize: '14px',
-    fontWeight: 600,
-    color: 'var(--tt-teal)'
-  },
-  pagination: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '12px',
-    marginTop: '16px',
-    paddingTop: '16px',
-    borderTop: '1px solid #eee'
-  },
-  paginationButton: {
-    padding: '8px 16px',
-    backgroundColor: 'var(--tt-teal)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 500
-  },
-  paginationInfo: {
-    fontSize: '14px',
-    color: 'var(--tt-text-muted)',
-    fontWeight: 500
-  }
-};

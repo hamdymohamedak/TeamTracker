@@ -1,12 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Employee } from '../../../shared-types';
 import { SUPPORTED_CURRENCIES, formatCurrency, JOB_ROLES } from '../../../shared-types';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
-import { HelpTip } from '../components/HelpTip';
-import { EmptyIcon, IconLabel, ModalCloseButton, StatusLine } from '../components/Icon';
-import { AlertTriangle, Building2, Clock, DollarSign, Globe, Mail, Users } from 'lucide-react';
+import { EmptyIcon, ModalCloseButton, StatusLine } from '../components/Icon';
+import { PageEmpty, PageHero } from '../components/PageHero';
+import {
+  AlertTriangle,
+  Building2,
+  Clock,
+  Download,
+  Globe,
+  KeyRound,
+  Mail,
+  Pencil,
+  Plus,
+  Search,
+  ShieldOff,
+  Trash2,
+  Users,
+} from 'lucide-react';
 
 // Common IANA timezones offered in the per-employee timezone dropdown.
 // Covers North America + Europe + APAC + Middle East — admins can leave it
@@ -95,11 +109,37 @@ export const Employees: React.FC = () => {
   const [setupToken, setSetupToken] = useState<{ token: string; employeeName: string } | null>(null);
   const [installPrompt, setInstallPrompt] = useState<{ employeeName: string } | null>(null);
   const [formData, setFormData] = useState<EmployeeFormData>(emptyFormData(defaultCurrency));
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     loadEmployees();
   }, []);
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter(e => {
+      const hay = [e.name, e.email, e.department, e.role, e.timezone]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [employees, query]);
+
+  const openCreate = () => {
+    setEditingEmployee(null);
+    setFormData(emptyFormData(defaultCurrency));
+    setFormError(null);
+    setShowForm(true);
+  };
+
+  const initials = (name: string) => {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
   const loadEmployees = async () => {
     try {
       setError(null);
@@ -323,42 +363,58 @@ export const Employees: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={styles.loading}>Loading...</div>;
+    return <div className="tt-page"><p className="tt-muted">{t('common.loading')}</p></div>;
   }
 
   if (error) {
     return (
-      <div style={styles.container}>
-        <div style={errorStyles.container}>
-          <EmptyIcon icon={AlertTriangle} size={48} color="var(--tt-danger)" />
-          <h2 style={errorStyles.title}>Error Loading Employees</h2>
-          <p style={errorStyles.message}>{error}</p>
-          <button onClick={loadEmployees} style={errorStyles.retryButton}>
-            Retry
-          </button>
+      <div className="tt-page">
+        <div className="tt-empty">
+          <EmptyIcon icon={AlertTriangle} size={40} color="var(--tt-danger)" />
+          <h2 className="tt-empty-title">{t('employees.loadFailed')}</h2>
+          <p className="tt-muted">{error}</p>
+          <div className="tt-empty-action">
+            <button type="button" className="tt-btn tt-btn-primary" onClick={loadEmployees}>
+              {t('common.retry')}
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {t('employees.title')}
-          <HelpTip text={t('help.employees')} />
-        </h1>
-        <button
-          style={styles.addButton}
-          onClick={() => {
-            setEditingEmployee(null);
-            setFormData(emptyFormData(defaultCurrency));
-            setShowForm(true);
-          }}
-        >
-          {t('employees.add')}
-        </button>
-      </header>
+    <div className="tt-page">
+      <PageHero
+        icon={Users}
+        title={t('employees.title')}
+        subtitle={t('employees.subtitle')}
+        help={t('help.employees')}
+        action={
+          <button type="button" className="tt-btn tt-btn-primary" onClick={openCreate}>
+            <Plus size={16} strokeWidth={2.4} />
+            {t('employees.add')}
+          </button>
+        }
+      />
+
+      {employees.length > 0 && (
+        <div className="tt-toolbar">
+          <div className="tt-search">
+            <Search size={16} strokeWidth={2.1} style={{ color: 'var(--tt-text-faint)', flexShrink: 0 }} />
+            <input
+              type="search"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder={t('employees.searchPlaceholder')}
+              aria-label={t('common.search')}
+            />
+          </div>
+          <div className="tt-count-pill">
+            {t('employees.count', { count: filtered.length, total: employees.length })}
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div
@@ -384,7 +440,7 @@ export const Employees: React.FC = () => {
                 )}
                 <div className="tt-modal-form tt-modal-form--2col">
                   <div className="tt-field">
-                    <label className="tt-field-label">Name *</label>
+                    <label className="tt-field-label">{t('employees.name')} *</label>
                     <input
                       type="text"
                       className="tt-input"
@@ -395,7 +451,7 @@ export const Employees: React.FC = () => {
                     />
                   </div>
                   <div className="tt-field">
-                    <label className="tt-field-label">Email</label>
+                    <label className="tt-field-label">{t('employees.email')}</label>
                     <input
                       type="email"
                       className="tt-input"
@@ -405,19 +461,19 @@ export const Employees: React.FC = () => {
                     />
                   </div>
                   <div className="tt-field">
-                    <label className="tt-field-label">Role</label>
+                    <label className="tt-field-label">{t('employees.role')}</label>
                     <select
                       className="tt-input"
                       value={formData.role}
                       onChange={e => setFormData({...formData, role: e.target.value})}
                     >
-                      <option value="employee">Employee</option>
-                      <option value="manager">Manager</option>
-                      <option value="admin">Admin</option>
+                      <option value="employee">{t('employees.role.employee')}</option>
+                      <option value="manager">{t('employees.role.manager')}</option>
+                      <option value="admin">{t('employees.role.admin')}</option>
                     </select>
                   </div>
                   <div className="tt-field">
-                    <label className="tt-field-label">Department</label>
+                    <label className="tt-field-label">{t('employees.department')}</label>
                     <input
                       type="text"
                       className="tt-input"
@@ -427,7 +483,7 @@ export const Employees: React.FC = () => {
                     />
                   </div>
                   <div className="tt-field">
-                    <label className="tt-field-label">Hourly Rate</label>
+                    <label className="tt-field-label">{t('employees.hourlyRate')}</label>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <select
                         value={formData.currency}
@@ -453,7 +509,7 @@ export const Employees: React.FC = () => {
                     </div>
                   </div>
                   <div className="tt-field">
-                    <label className="tt-field-label">Job Type</label>
+                    <label className="tt-field-label">{t('employees.jobType')}</label>
                     <select
                       className="tt-input"
                       value={formData.jobRoleType}
@@ -470,7 +526,7 @@ export const Employees: React.FC = () => {
                     </div>
                   </div>
                   <div className="tt-field tt-field-span-2">
-                    <label className="tt-field-label">Timezone</label>
+                    <label className="tt-field-label">{t('employees.timezone')}</label>
                     <select
                       className="tt-input"
                       value={formData.timezone}
@@ -489,18 +545,10 @@ export const Employees: React.FC = () => {
                         checked={formData.businessHoursEnabled}
                         onChange={e => setFormData({ ...formData, businessHoursEnabled: e.target.checked })}
                       />
-                      Restrict tracking to business hours
+                      {t('employees.businessHours')}
                     </label>
                     {formData.businessHoursEnabled && (
-                      <div style={{
-                        marginTop: '4px',
-                        padding: '12px',
-                        backgroundColor: 'var(--tt-surface-muted)',
-                        borderRadius: 'var(--tt-radius-sm)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '10px'
-                      }}>
+                      <div style={styles.hoursBox}>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '12px', color: 'var(--tt-text-muted)', minWidth: '40px' }}>Start</span>
                           <input
@@ -535,15 +583,9 @@ export const Employees: React.FC = () => {
                                   }));
                                 }}
                                 style={{
-                                  padding: '6px 12px',
-                                  borderRadius: '8px',
-                                  border: '1px solid var(--tt-border-strong)',
-                                  cursor: 'pointer',
-                                  backgroundColor: selected ? 'var(--tt-teal)' : 'var(--tt-surface)',
+                                  ...styles.dayChip,
+                                  backgroundColor: selected ? 'var(--tt-ink)' : 'var(--tt-surface)',
                                   color: selected ? '#fff' : 'var(--tt-text-muted)',
-                                  fontSize: '12px',
-                                  fontWeight: 500,
-                                  minHeight: 36,
                                 }}
                               >
                                 {day.label}
@@ -572,7 +614,6 @@ export const Employees: React.FC = () => {
         </div>
       )}
 
-      {/* Setup Token Modal */}
       {setupToken && (
         <div
           className="tt-modal-overlay"
@@ -582,32 +623,14 @@ export const Employees: React.FC = () => {
         >
           <div className="tt-modal tt-modal--md" onClick={e => e.stopPropagation()}>
             <div className="tt-modal-header">
-              <h2 className="tt-modal-title">Setup Token for {setupToken.employeeName}</h2>
+              <h2 className="tt-modal-title">{t('employees.setupToken')} — {setupToken.employeeName}</h2>
               <ModalCloseButton onClick={() => setSetupToken(null)} />
             </div>
             <div className="tt-modal-body">
-              <div style={{
-                backgroundColor: 'var(--tt-surface-muted)',
-                border: '1px solid var(--tt-border-strong)',
-                borderRadius: 'var(--tt-radius-sm)',
-                padding: '16px',
-                fontFamily: 'ui-monospace, monospace',
-                fontSize: '13px',
-                wordBreak: 'break-all' as const,
-                color: 'var(--tt-text)',
-                marginBottom: '12px',
-              }}>
-                {setupToken.token}
-              </div>
-              <div style={{
-                backgroundColor: 'var(--tt-info-soft)',
-                border: '1px solid rgba(42, 143, 214, 0.25)',
-                borderRadius: 'var(--tt-radius-sm)',
-                padding: '14px 16px',
-                marginBottom: '12px',
-              }}>
+              <div style={styles.tokenBox}>{setupToken.token}</div>
+              <div style={styles.infoCallout}>
                 <p style={{ fontSize: '13px', color: 'var(--tt-text)', margin: '0 0 8px', lineHeight: '1.5' }}>
-                  Share this token with <strong>{setupToken.employeeName}</strong>. They use it once to connect their desktop app.
+                  {t('employees.tokenShare', { name: setupToken.employeeName })}
                 </p>
                 <p style={{ fontSize: '12px', color: 'var(--tt-text-muted)', margin: 0, lineHeight: '1.5' }}>
                   {t('employees.tokenExpiry')}
@@ -621,7 +644,7 @@ export const Employees: React.FC = () => {
                   className="tt-btn tt-btn-primary"
                   style={{ textDecoration: 'none' }}
                 >
-                  Download Tracker App
+                  {t('employees.downloadTracker')}
                 </a>
                 <a
                   href="https://github.com/hamdymohamedak/TeamTracker#3-install-the-desktop-tracker"
@@ -630,7 +653,7 @@ export const Employees: React.FC = () => {
                   className="tt-btn tt-btn-ghost"
                   style={{ textDecoration: 'none' }}
                 >
-                  Setup instructions →
+                  {t('employees.setupInstructions')}
                 </a>
               </div>
             </div>
@@ -648,7 +671,6 @@ export const Employees: React.FC = () => {
         </div>
       )}
 
-      {/* Install on this Device — post-click modal */}
       {installPrompt && (
         <div
           className="tt-modal-overlay"
@@ -665,15 +687,7 @@ export const Employees: React.FC = () => {
               <p style={{ color: 'var(--tt-text)', margin: '0 0 12px', fontSize: '14px', lineHeight: 1.5 }}>
                 An activation file for <strong>{installPrompt.employeeName}</strong> has been saved to your Downloads folder.
               </p>
-              <div style={{
-                backgroundColor: 'var(--tt-success-soft)',
-                border: '1px solid rgba(31, 169, 113, 0.3)',
-                borderRadius: 'var(--tt-radius-sm)',
-                padding: '12px 14px',
-                fontSize: '13px',
-                color: 'var(--tt-success)',
-                lineHeight: 1.5,
-              }}>
+              <div style={styles.successCallout}>
                 <div style={{ fontWeight: 650, marginBottom: '6px' }}>Next steps on this laptop:</div>
                 <ol style={{ margin: 0, paddingLeft: '18px' }}>
                   <li>Click the button below to download the TeamTracker installer</li>
@@ -692,151 +706,218 @@ export const Employees: React.FC = () => {
         </div>
       )}
 
-      {employees.length === 0 && (
-        <div style={{
-          textAlign: 'center' as const,
-          padding: '60px 20px',
-          backgroundColor: 'var(--tt-surface)',
-          borderRadius: 'var(--tt-radius)',
-          boxShadow: 'var(--tt-shadow-sm)',
-        }}>
-          <EmptyIcon icon={Users} size={48} />
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--tt-text)', margin: '0 0 8px' }}>
-            {t('employees.empty')}
-          </h2>
-          <p style={{ fontSize: '14px', color: 'var(--tt-text-muted)', margin: '0 0 24px' }}>
-            {t('employees.emptyHint')}
-          </p>
-          <button
-            onClick={() => {
-              setEditingEmployee(null);
-              setFormData(emptyFormData(defaultCurrency));
-              setShowForm(true);
-            }}
-            style={{
-              padding: '12px 32px',
-              backgroundColor: 'var(--tt-success)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 'var(--tt-radius-sm)',
-              cursor: 'pointer',
-              fontSize: '15px',
-              fontWeight: 600,
-            }}
-          >
-            {t('employees.add')}
-          </button>
+      {employees.length === 0 ? (
+        <PageEmpty
+          icon={Users}
+          title={t('employees.empty')}
+          hint={t('employees.emptyHint')}
+          action={
+            <button type="button" className="tt-btn tt-btn-primary" onClick={openCreate}>
+              <Plus size={16} strokeWidth={2.4} />
+              {t('employees.addFirst')}
+            </button>
+          }
+        />
+      ) : filtered.length === 0 ? (
+        <div className="tt-empty">
+          <p className="tt-muted">{t('employees.noSearchResults')}</p>
+        </div>
+      ) : (
+        <div className="tt-card-grid">
+          {filtered.map(employee => (
+            <article key={employee.id} className="tt-entity-card">
+              <div style={styles.cardTop}>
+                <div style={styles.avatar}>{initials(employee.name)}</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={styles.nameRow}>
+                    <h3 style={styles.employeeName}>{employee.name}</h3>
+                    <span style={roleBadgeStyle(employee.role)}>{employee.role}</span>
+                  </div>
+                  <p style={styles.emailLine}>
+                    <Mail size={13} strokeWidth={2.1} />
+                    <span>{employee.email || '—'}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="tt-meta-chips">
+                {employee.department && (
+                  <span className="tt-chip"><Building2 size={12} />{employee.department}</span>
+                )}
+                {employee.hourlyRate ? (
+                  <span className="tt-chip">
+                    {formatCurrency(employee.hourlyRate, employee.currency || defaultCurrency)}/hr
+                  </span>
+                ) : null}
+                {employee.businessHoursStart && employee.businessHoursEnd ? (
+                  <span className="tt-chip">
+                    <Clock size={12} />
+                    {employee.businessHoursStart}–{employee.businessHoursEnd}
+                  </span>
+                ) : null}
+                {employee.timezone ? (
+                  <span className="tt-chip"><Globe size={12} />{employee.timezone}</span>
+                ) : null}
+              </div>
+
+              <div className="tt-entity-card-actions">
+                <button type="button" onClick={() => handleEdit(employee)} className="tt-action-btn" title={t('common.edit')}>
+                  <Pencil size={14} strokeWidth={2.1} />
+                  {t('common.edit')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleInstallOnThisDevice(employee)}
+                  className="tt-action-btn"
+                  title={t('employees.installDevice')}
+                >
+                  <Download size={14} strokeWidth={2.1} />
+                  {t('employees.installDevice')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGenerateSetupToken(employee)}
+                  className="tt-action-btn"
+                  title={t('employees.setupToken')}
+                >
+                  <KeyRound size={14} strokeWidth={2.1} />
+                  {t('employees.setupToken')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRevokeDevices(employee)}
+                  className="tt-action-btn"
+                  style={{ borderColor: 'rgba(180,140,40,0.35)', background: 'rgba(180,140,40,0.08)', color: '#8a6d1a' }}
+                  title={t('employees.revokeDevicesHint')}
+                >
+                  <ShieldOff size={14} strokeWidth={2.1} />
+                  {t('employees.revokeDevices')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(employee.id)}
+                  className="tt-action-btn tt-action-btn-danger"
+                  title={t('common.delete')}
+                >
+                  <Trash2 size={14} strokeWidth={2.1} />
+                  {t('common.delete')}
+                </button>
+              </div>
+            </article>
+          ))}
         </div>
       )}
-
-      <div style={styles.grid}>
-        {employees.map(employee => (
-          <div key={employee.id} style={styles.card}>
-            <div style={styles.cardHeader}>
-              <h3 style={styles.employeeName}>{employee.name}</h3>
-              <span style={styles.roleBadge(employee.role)}>{employee.role}</span>
-            </div>
-            <div style={styles.cardBody}>
-              <p style={styles.info}><IconLabel icon={Mail}>{employee.email}</IconLabel></p>
-              {employee.department && (
-                <p style={styles.info}><IconLabel icon={Building2}>{employee.department}</IconLabel></p>
-              )}
-              {employee.hourlyRate ? (
-                <p style={styles.info}>
-                  <IconLabel icon={DollarSign}>
-                    {formatCurrency(employee.hourlyRate, employee.currency || defaultCurrency)}/hr
-                  </IconLabel>
-                </p>
-              ) : null}
-              {employee.businessHoursStart && employee.businessHoursEnd && employee.businessHoursDays ? (
-                <p style={styles.info}>
-                  <IconLabel icon={Clock}>
-                    {employee.businessHoursStart}–{employee.businessHoursEnd}
-                    {' '}({employee.businessHoursDays})
-                  </IconLabel>
-                </p>
-              ) : null}
-              {employee.timezone ? (
-                <p style={{ ...styles.info, fontSize: '12px', color: 'var(--tt-text-faint)' }}>
-                  <IconLabel icon={Globe}>{employee.timezone}</IconLabel>
-                </p>
-              ) : null}
-            </div>
-            <div style={styles.cardActions}>
-              <button onClick={() => handleEdit(employee)} style={styles.editButton}>
-                Edit
-              </button>
-              <button
-                onClick={() => handleInstallOnThisDevice(employee)}
-                style={styles.installButton}
-                title="Use this when you're sitting at this employee's laptop. Downloads an activation file and the tracker will auto-connect on first launch."
-              >
-                {t('employees.installDevice')}
-              </button>
-              <button onClick={() => handleGenerateSetupToken(employee)} style={styles.setupButton}>
-                {t('employees.setupToken')}
-              </button>
-              <button
-                onClick={() => handleRevokeDevices(employee)}
-                style={styles.revokeButton}
-                title={t('employees.revokeDevicesHint')}
-              >
-                {t('employees.revokeDevices')}
-              </button>
-              <button onClick={() => handleDelete(employee.id)} style={styles.deleteButton}>
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 };
 
-const errorStyles: { [key: string]: React.CSSProperties } = {
-  container: {
+function roleBadgeStyle(role: string): React.CSSProperties {
+  const base: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+    borderRadius: 999,
+    padding: '4px 8px',
+    flexShrink: 0,
+  };
+  if (role === 'admin') return { ...base, background: 'var(--tt-danger-soft)', color: 'var(--tt-danger)' };
+  if (role === 'manager') return { ...base, background: 'rgba(180,140,40,0.12)', color: '#8a6d1a' };
+  return { ...base, background: 'var(--tt-surface-muted)', color: 'var(--tt-text-muted)', border: '1px solid var(--tt-border)' };
+}
+
+const styles: { [key: string]: React.CSSProperties } = {
+  page: {
+    padding: 'clamp(20px, 4vw, 36px)',
+    maxWidth: 1100,
+    margin: '0 auto',
+  },
+  muted: { color: 'var(--tt-text-muted)', fontSize: 14, lineHeight: 1.5, margin: 0 },
+  hero: {
     display: 'flex',
-    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 14,
+    marginBottom: 22,
+    flexWrap: 'wrap',
+  },
+  heroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '40px',
-    textAlign: 'center'
-  },
-  icon: {
-    fontSize: '48px',
-    marginBottom: '16px'
+    background: 'var(--tt-surface-muted)',
+    border: '1px solid var(--tt-border)',
+    color: 'var(--tt-text)',
+    flexShrink: 0,
   },
   title: {
-    fontSize: '24px',
-    fontWeight: 600,
-    color: 'var(--tt-danger)',
-    marginBottom: '8px'
+    fontSize: 26,
+    fontWeight: 650,
+    color: 'var(--tt-text)',
+    margin: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    letterSpacing: '-0.02em',
   },
-  message: {
-    fontSize: '16px',
+  subtitle: {
+    fontSize: 14,
     color: 'var(--tt-text-muted)',
-    marginBottom: '24px'
+    marginTop: 8,
+    lineHeight: 1.55,
+    maxWidth: 560,
   },
-  retryButton: {
-    padding: '12px 24px',
-    backgroundColor: 'var(--tt-teal)',
+  primaryBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '11px 16px',
+    background: 'var(--tt-ink)',
     color: '#fff',
     border: 'none',
-    borderRadius: 'var(--tt-radius-sm)',
-    fontSize: '16px',
-    fontWeight: 500,
-    cursor: 'pointer'
-  }
-};
-
-const styles: { [key: string]: React.CSSProperties | any } = {
-  container: {
-    padding: '32px'
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 650,
+    cursor: 'pointer',
+    flexShrink: 0,
   },
-  loading: {
-    padding: '40px',
-    textAlign: 'center'
+  toolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  searchWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 220,
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid var(--tt-border)',
+    background: 'var(--tt-surface)',
+    boxShadow: 'var(--tt-shadow-sm)',
+  },
+  searchInput: {
+    border: 'none',
+    outline: 'none',
+    background: 'transparent',
+    width: '100%',
+    fontSize: 14,
+    color: 'var(--tt-text)',
+  },
+  countPill: {
+    fontSize: 12,
+    fontWeight: 650,
+    color: 'var(--tt-text-muted)',
+    background: 'var(--tt-surface-muted)',
+    border: '1px solid var(--tt-border)',
+    borderRadius: 999,
+    padding: '8px 12px',
   },
   errorBanner: {
     backgroundColor: 'var(--tt-danger-soft)',
@@ -845,191 +926,205 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     padding: '12px 16px',
     borderRadius: 'var(--tt-radius-sm)',
     marginBottom: '16px',
-    fontWeight: 500
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '24px'
-  },
-  title: {
-    fontSize: 'clamp(1.5rem, 2.2vw, 1.9rem)',
-    fontWeight: 750,
-    fontFamily: 'var(--tt-font-display)',
-    letterSpacing: '-0.02em',
-    color: 'var(--tt-text)'
-  },
-  addButton: {
-    padding: '12px 24px',
-    backgroundColor: 'var(--tt-success)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 'var(--tt-radius-sm)',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 500
-  },
-  modal: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000
-  },
-  modalContent: {
-    backgroundColor: 'var(--tt-surface)',
-    padding: '32px',
-    borderRadius: 'var(--tt-radius)',
-    width: '100%',
-    maxWidth: '400px'
-  },
-  modalTitle: {
-    marginBottom: '20px',
-    color: 'var(--tt-text)'
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px'
-  },
-  inputGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px'
-  },
-  label: {
-    fontSize: '13px',
     fontWeight: 500,
-    color: 'var(--tt-text-muted)'
   },
-  input: {
-    padding: '12px',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    fontSize: '14px'
-  },
-  formButtons: {
+  errorPanel: {
     display: 'flex',
-    gap: '12px',
-    marginTop: '8px'
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+    textAlign: 'center',
+    padding: '48px 20px',
+    background: 'var(--tt-surface)',
+    border: '1px solid var(--tt-border)',
+    borderRadius: 'var(--tt-radius-lg)',
   },
-  cancelButton: {
-    flex: 1,
-    padding: '12px',
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: 650,
+    color: 'var(--tt-danger)',
+    margin: 0,
+  },
+  hoursBox: {
+    marginTop: 8,
+    padding: 12,
     backgroundColor: 'var(--tt-surface-muted)',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer'
+    borderRadius: 'var(--tt-radius-sm)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
   },
-  saveButton: {
-    flex: 1,
-    padding: '12px',
-    backgroundColor: 'var(--tt-success)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
+  dayChip: {
+    padding: '6px 12px',
+    borderRadius: 8,
+    border: '1px solid var(--tt-border-strong)',
     cursor: 'pointer',
-    fontWeight: 500
+    fontSize: 12,
+    fontWeight: 500,
+    minHeight: 36,
+  },
+  tokenBox: {
+    backgroundColor: 'var(--tt-surface-muted)',
+    border: '1px solid var(--tt-border-strong)',
+    borderRadius: 'var(--tt-radius-sm)',
+    padding: 16,
+    fontFamily: 'ui-monospace, monospace',
+    fontSize: 13,
+    wordBreak: 'break-all',
+    color: 'var(--tt-text)',
+    marginBottom: 12,
+  },
+  infoCallout: {
+    backgroundColor: 'var(--tt-info-soft)',
+    border: '1px solid var(--tt-border)',
+    borderRadius: 'var(--tt-radius-sm)',
+    padding: '14px 16px',
+    marginBottom: 12,
+  },
+  successCallout: {
+    backgroundColor: 'var(--tt-success-soft)',
+    border: '1px solid rgba(31, 169, 113, 0.3)',
+    borderRadius: 'var(--tt-radius-sm)',
+    padding: '12px 14px',
+    fontSize: 13,
+    color: 'var(--tt-success)',
+    lineHeight: 1.5,
+  },
+  emptyPanel: {
+    textAlign: 'center',
+    padding: '56px 20px',
+    background: 'var(--tt-surface)',
+    border: '1px dashed var(--tt-border-strong)',
+    borderRadius: 'var(--tt-radius-lg)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 650,
+    color: 'var(--tt-text)',
+    margin: 0,
   },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-    gap: '16px'
+    gap: 14,
   },
   card: {
-    backgroundColor: 'var(--tt-surface)',
-    padding: '20px',
-    borderRadius: 'var(--tt-radius)',
-    boxShadow: 'var(--tt-shadow-sm)'
-  },
-  cardHeader: {
+    background: 'var(--tt-surface)',
+    border: '1px solid var(--tt-border)',
+    borderRadius: 'var(--tt-radius-lg)',
+    boxShadow: 'var(--tt-shadow-sm)',
+    padding: 16,
     display: 'flex',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  cardTop: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    background: 'var(--tt-ink)',
+    color: '#fff',
+    display: 'flex',
     alignItems: 'center',
-    marginBottom: '12px'
+    justifyContent: 'center',
+    fontSize: 14,
+    fontWeight: 700,
+    letterSpacing: '-0.02em',
+    flexShrink: 0,
+  },
+  nameRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   employeeName: {
-    fontSize: '18px',
-    fontWeight: 600,
-    color: 'var(--tt-text)'
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 650,
+    color: 'var(--tt-text)',
+    letterSpacing: '-0.01em',
   },
-  roleBadge: (role: string) => ({
-    padding: '4px 8px',
-    borderRadius: '4px',
-    fontSize: '11px',
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    backgroundColor: role === 'admin' ? 'var(--tt-danger)' : role === 'manager' ? 'var(--tt-amber)' : 'var(--tt-teal)',
-    color: '#fff'
-  }),
-  cardBody: {
-    marginBottom: '16px'
-  },
-  info: {
-    fontSize: '14px',
+  emailLine: {
+    margin: '6px 0 0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 13,
     color: 'var(--tt-text-muted)',
-    margin: '4px 0'
+    minWidth: 0,
+  },
+  metaChips: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  chip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    fontSize: 11,
+    fontWeight: 600,
+    color: 'var(--tt-text-muted)',
+    background: 'var(--tt-surface-muted)',
+    border: '1px solid var(--tt-border)',
+    borderRadius: 999,
+    padding: '5px 9px',
   },
   cardActions: {
     display: 'flex',
-    gap: '8px',
-    flexWrap: 'wrap' as const,
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 'auto',
+    paddingTop: 4,
+    borderTop: '1px solid var(--tt-border)',
   },
-  editButton: {
-    flex: 1,
-    padding: '8px',
-    backgroundColor: 'var(--tt-teal)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '13px'
-  },
-  setupButton: {
-    flex: 1,
-    padding: '8px',
-    backgroundColor: '#8e44ad',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '13px'
-  },
-  revokeButton: {
-    flex: 1,
-    padding: '8px',
-    backgroundColor: 'var(--tt-surface-muted)',
-    color: 'var(--tt-text)',
+  actionBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '7px 10px',
+    borderRadius: 8,
     border: '1px solid var(--tt-border-strong)',
-    borderRadius: '6px',
+    background: 'var(--tt-surface-muted)',
+    color: 'var(--tt-text)',
+    fontSize: 12,
+    fontWeight: 600,
     cursor: 'pointer',
-    fontSize: '13px'
   },
-  installButton: {
-    flex: 1.4,
-    padding: '8px',
-    backgroundColor: 'var(--tt-success)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
+  actionBtnWarn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '7px 10px',
+    borderRadius: 8,
+    border: '1px solid rgba(180,140,40,0.35)',
+    background: 'rgba(180,140,40,0.08)',
+    color: '#8a6d1a',
+    fontSize: 12,
+    fontWeight: 600,
     cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: 600
   },
-  deleteButton: {
-    flex: 1,
-    padding: '8px',
-    backgroundColor: 'var(--tt-danger)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
+  actionBtnDanger: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '7px 10px',
+    borderRadius: 8,
+    border: '1px solid rgba(181,74,63,0.25)',
+    background: 'var(--tt-danger-soft)',
+    color: 'var(--tt-danger)',
+    fontSize: 12,
+    fontWeight: 600,
     cursor: 'pointer',
-    fontSize: '13px'
-  }
+  },
 };

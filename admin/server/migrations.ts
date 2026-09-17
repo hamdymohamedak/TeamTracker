@@ -353,6 +353,48 @@ export async function runMigrations(db: DB): Promise<void> {
         `);
         console.log('  Migration 8: recovery_codes table created');
       }
+    },
+    {
+      version: 9,
+      name: 'privacy block aliases — admin-defined locale/title matches (no desktop hardcode)',
+      up: async (db: DB) => {
+        const cols = await db.all(`PRAGMA table_info(capture_privacy_blocks)`);
+        const names = new Set(cols.map((c: any) => c.name));
+        if (!names.has('aliases')) {
+          await db.exec(
+            `ALTER TABLE capture_privacy_blocks ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'`
+          );
+        }
+        console.log('  Migration 9: capture_privacy_blocks.aliases column');
+      }
+    },
+    {
+      version: 10,
+      name: 'show privacy blocks list to employees (org disclosure toggle)',
+      up: async (db: DB) => {
+        const cols = await db.all(`PRAGMA table_info(organizations)`);
+        const names = new Set(cols.map((c: any) => c.name));
+        if (!names.has('show_privacy_blocks_to_employees')) {
+          await db.exec(
+            `ALTER TABLE organizations ADD COLUMN show_privacy_blocks_to_employees INTEGER NOT NULL DEFAULT 0`
+          );
+        }
+        console.log('  Migration 10: organizations.show_privacy_blocks_to_employees');
+      }
+    },
+    {
+      version: 11,
+      name: 'privacy URL mode — blocklist (default) or allowlist',
+      up: async (db: DB) => {
+        const cols = await db.all(`PRAGMA table_info(organizations)`);
+        const names = new Set(cols.map((c: any) => c.name));
+        if (!names.has('privacy_url_mode')) {
+          await db.exec(
+            `ALTER TABLE organizations ADD COLUMN privacy_url_mode TEXT NOT NULL DEFAULT 'blocklist'`
+          );
+        }
+        console.log('  Migration 11: organizations.privacy_url_mode');
+      }
     }
   ];
 

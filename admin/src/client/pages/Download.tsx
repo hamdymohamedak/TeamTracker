@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { Apple, Download as DownloadIcon, Github, Monitor, Terminal } from 'lucide-react';
+import { useI18n, LanguageSwitcher } from '../contexts/I18nContext';
+import { PageHero, PagePanel } from '../components/PageHero';
 
 const GITHUB_RELEASE_URL = 'https://github.com/hamdymohamedak/TeamTracker/releases/latest';
+const GITHUB_REPO_URL = 'https://github.com/hamdymohamedak/TeamTracker';
 
 interface ReleaseAsset {
   name: string;
@@ -12,7 +17,9 @@ type DetectedOS = 'mac-arm' | 'mac-intel' | 'windows' | 'linux' | 'unknown';
 
 function detectOS(): DetectedOS {
   const ua = navigator.userAgent.toLowerCase();
-  const platform = (navigator as any).userAgentData?.platform?.toLowerCase() || navigator.platform?.toLowerCase() || '';
+  const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toLowerCase()
+    || navigator.platform?.toLowerCase()
+    || '';
 
   if (ua.includes('win') || platform.includes('win')) return 'windows';
   if (ua.includes('linux') || platform.includes('linux')) return 'linux';
@@ -27,7 +34,7 @@ function detectOS(): DetectedOS {
           if (renderer.includes('apple m') || renderer.includes('apple gpu')) return 'mac-arm';
         }
       }
-    } catch {}
+    } catch { /* ignore */ }
     return 'mac-intel';
   }
   return 'unknown';
@@ -37,7 +44,15 @@ function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(0) + ' MB';
 }
 
+function PrimaryIcon({ os }: { os: DetectedOS }) {
+  if (os === 'windows') return <Monitor size={18} strokeWidth={2.1} aria-hidden />;
+  if (os === 'linux') return <Terminal size={18} strokeWidth={2.1} aria-hidden />;
+  if (os === 'mac-arm' || os === 'mac-intel') return <Apple size={18} strokeWidth={2.1} aria-hidden />;
+  return <DownloadIcon size={18} strokeWidth={2.1} aria-hidden />;
+}
+
 export const Download: React.FC = () => {
+  const { t } = useI18n();
   const [os, setOS] = useState<DetectedOS>('unknown');
   const [assets, setAssets] = useState<ReleaseAsset[]>([]);
   const [version, setVersion] = useState('');
@@ -73,102 +88,154 @@ export const Download: React.FC = () => {
     : os === 'mac-intel' ? macIntelDmg
     : macArmDmg;
 
-  const primaryLabel = os === 'windows' ? 'Download for Windows'
-    : os === 'linux' ? 'Download for Linux'
-    : os === 'mac-arm' ? 'Download for Mac (Apple Silicon)'
-    : os === 'mac-intel' ? 'Download for Mac (Intel)'
-    : 'Download for Mac';
+  const primaryLabel = os === 'windows' ? t('download.primaryWindows')
+    : os === 'linux' ? t('download.primaryLinux')
+    : os === 'mac-arm' ? t('download.primaryMacArm')
+    : os === 'mac-intel' ? t('download.primaryMacIntel')
+    : t('download.primaryDefault');
+
+  const setupSteps = useMemo(() => {
+    if (os === 'windows') {
+      return [
+        t('download.winStep1'),
+        t('download.winStep2'),
+        t('download.winStep3'),
+        t('download.winStep4'),
+      ];
+    }
+    if (os === 'linux') {
+      return [
+        t('download.linuxStep1'),
+        t('download.linuxStep2'),
+        t('download.linuxStep3'),
+        t('download.linuxStep4'),
+      ];
+    }
+    return [
+      t('download.macStep1'),
+      t('download.macStep2'),
+      t('download.macStep3'),
+      t('download.macStep4'),
+    ];
+  }, [os, t]);
 
   return (
     <div className="auth-shell" style={{ alignItems: 'stretch', padding: '40px 20px' }}>
       <div className="auth-panel" style={{ maxWidth: 560, margin: 'auto' }}>
-        <div className="auth-brand" style={{ textAlign: 'center', paddingBottom: 32 }}>
-          <div className="auth-brand-mark" style={{ margin: '0 auto 14px' }}>T</div>
+        <div className="auth-brand">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <div className="auth-brand-mark">T</div>
+            <LanguageSwitcher variant="auth" />
+          </div>
           <h1>TeamTracker</h1>
-          <p>Desktop tracker {version}</p>
+          <p>{version ? t('download.versionLabel', { version }) : t('download.title')}</p>
         </div>
 
-        <div style={{ padding: '28px 32px 32px' }}>
-          <p style={{ textAlign: 'center', color: 'var(--tt-text-muted)', margin: '0 0 24px', lineHeight: 1.65 }}>
-            Install the desktop tracker on each employee device. Activity syncs live to your admin dashboard.
-          </p>
+        <div style={{ padding: '24px 28px 28px' }}>
+          <PageHero
+            icon={DownloadIcon}
+            title={t('download.title')}
+            subtitle={t('download.desc')}
+          />
 
           {loading ? (
-            <div style={{ textAlign: 'center', color: 'var(--tt-text-faint)', padding: 20 }}>Loading latest release…</div>
+            <p className="tt-muted" style={{ textAlign: 'center', padding: '20px 0' }}>
+              {t('download.loading')}
+            </p>
           ) : primaryAsset ? (
             <>
-              <a href={primaryAsset.browser_download_url} className="tt-btn tt-btn-primary" style={{ width: '100%', textDecoration: 'none', marginBottom: 18, padding: '16px 20px', flexDirection: 'column', gap: 4 }}>
-                <span>{primaryLabel}</span>
+              <a
+                href={primaryAsset.browser_download_url}
+                className="tt-btn tt-btn-primary"
+                style={{
+                  width: '100%',
+                  textDecoration: 'none',
+                  marginBottom: 18,
+                  padding: '16px 20px',
+                  flexDirection: 'column',
+                  gap: 4,
+                }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <PrimaryIcon os={os} />
+                  {primaryLabel}
+                </span>
                 <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.85 }}>{formatSize(primaryAsset.size)}</span>
               </a>
 
               <div style={{ marginBottom: 24 }}>
-                <p style={{ fontSize: 13, color: 'var(--tt-text-faint)', textAlign: 'center', marginBottom: 10 }}>Other platforms</p>
+                <p className="tt-muted" style={{ textAlign: 'center', marginBottom: 10, fontSize: 13 }}>
+                  {t('download.other')}
+                </p>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                   {macArmDmg && os !== 'mac-arm' && (
                     <a href={macArmDmg.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
-                      Mac (Apple Silicon) · {formatSize(macArmDmg.size)}
+                      <Apple size={14} aria-hidden />
+                      {t('download.platformMacArm')} · {formatSize(macArmDmg.size)}
                     </a>
                   )}
                   {macIntelDmg && os !== 'mac-intel' && (
                     <a href={macIntelDmg.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
-                      Mac (Intel) · {formatSize(macIntelDmg.size)}
+                      <Apple size={14} aria-hidden />
+                      {t('download.platformMacIntel')} · {formatSize(macIntelDmg.size)}
                     </a>
                   )}
                   {windowsExe && os !== 'windows' && (
                     <a href={windowsExe.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
-                      Windows · {formatSize(windowsExe.size)}
+                      <Monitor size={14} aria-hidden />
+                      {t('download.platformWindows')} · {formatSize(windowsExe.size)}
                     </a>
                   )}
                   {linuxAppImage && os !== 'linux' && (
                     <a href={linuxAppImage.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
-                      Linux · {formatSize(linuxAppImage.size)}
+                      <Terminal size={14} aria-hidden />
+                      {t('download.platformLinux')} · {formatSize(linuxAppImage.size)}
                     </a>
                   )}
                   {linuxDeb && os === 'linux' && linuxAppImage && (
                     <a href={linuxDeb.browser_download_url} className="tt-btn tt-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>
-                      Linux (.deb) · {formatSize(linuxDeb.size)}
+                      <Terminal size={14} aria-hidden />
+                      {t('download.platformLinuxDeb')} · {formatSize(linuxDeb.size)}
                     </a>
                   )}
                 </div>
               </div>
             </>
           ) : (
-            <a href={GITHUB_RELEASE_URL} className="tt-btn tt-btn-primary" style={{ width: '100%', textDecoration: 'none', marginBottom: 20 }} target="_blank" rel="noopener noreferrer">
-              View downloads on GitHub
+            <a
+              href={GITHUB_RELEASE_URL}
+              className="tt-btn tt-btn-primary"
+              style={{ width: '100%', textDecoration: 'none', marginBottom: 20 }}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Github size={16} aria-hidden />
+              {t('download.viewGithub')}
             </a>
           )}
 
-          <div className="tt-card" style={{ padding: '18px 20px', marginBottom: 22, background: 'var(--tt-surface-muted)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Setup instructions</h3>
-            {os === 'windows' ? (
-              <ol style={styles.stepsList}>
-                <li>Run the installer and follow the wizard</li>
-                <li>Unsigned builds may show SmartScreen / unknown publisher — click <strong>More info</strong> then <strong>Run anyway</strong> (do not disable SmartScreen)</li>
-                <li>Enter the setup token from your admin (Employees → Setup Token)</li>
-                <li>TeamTracker appears in the Dock / taskbar — use the tray menu to quit when finished</li>
-              </ol>
-            ) : os === 'linux' ? (
-              <ol style={styles.stepsList}>
-                <li>Download the <strong>AppImage</strong> (or <code>.deb</code> for Debian/Ubuntu)</li>
-                <li>Make it executable: <code>chmod +x TeamTracker-*.AppImage</code>, then run it</li>
-                <li>For window titles: install <code>xdotool</code> on X11. On GNOME Wayland, install the <strong>Focused Window D-Bus</strong> Shell extension.</li>
-                <li>Enter the setup token from your admin (Employees → Setup Token)</li>
-              </ol>
-            ) : (
-              <ol style={styles.stepsList}>
-                <li>Open the DMG and drag <strong>TeamTracker</strong> to Applications</li>
-                <li>Unsigned builds may show a Gatekeeper warning — right-click → <strong>Open</strong>, or use <strong>Privacy &amp; Security → Open Anyway</strong> (do not disable Gatekeeper)</li>
-                <li>Grant <strong>Screen Recording</strong> and <strong>Accessibility</strong> when prompted</li>
-                <li>Enter the setup token from your admin (Employees → Setup Token)</li>
-              </ol>
-            )}
-          </div>
+          <PagePanel title={t('download.setup')}>
+            <ol style={styles.stepsList}>
+              {setupSteps.map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
+            </ol>
+          </PagePanel>
 
           <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--tt-text-muted)' }}>
-            <a href="/login" style={{ fontWeight: 650, textDecoration: 'none' }}>Admin login</a>
+            <Link to="/login" style={{ fontWeight: 650, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {t('download.adminLogin')}
+            </Link>
             <span style={{ margin: '0 8px', opacity: 0.4 }}>·</span>
-            <a href="https://github.com/hamdymohamedak/TeamTracker" target="_blank" rel="noopener noreferrer" style={{ fontWeight: 650, textDecoration: 'none' }}>GitHub</a>
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontWeight: 650, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Github size={14} aria-hidden />
+              {t('download.github')}
+            </a>
           </div>
         </div>
       </div>

@@ -4,9 +4,9 @@ import {
   AlertTriangle,
   BarChart3,
   Camera,
-  Clock3,
   EyeOff,
   Focus,
+  LayoutDashboard,
   Maximize2,
   Minimize2,
   Monitor,
@@ -20,8 +20,8 @@ import { api } from '../lib/api';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
-import { HelpTip, SectionTitle } from '../components/HelpTip';
-import { EmptyIcon } from '../components/Icon';
+import { HelpTip } from '../components/HelpTip';
+import { PageEmpty, PageHero, PagePanel } from '../components/PageHero';
 
 import type { Employee } from '../../../shared-types';
 import { formatDurationSeconds } from '../../../shared-types';
@@ -275,6 +275,7 @@ export const Dashboard: React.FC = () => {
   const [liveSnapMsg, setLiveSnapMsg] = useState<string | null>(null);
   const [livePrivacyBlocked, setLivePrivacyBlocked] = useState(false);
   const [livePrivacyApp, setLivePrivacyApp] = useState<string | null>(null);
+  const [livePrivacyPattern, setLivePrivacyPattern] = useState<string | null>(null);
   const [httpOnlineIds, setHttpOnlineIds] = useState<Set<string>>(new Set());
   const liveImgRef = useRef<HTMLImageElement | null>(null);
   const liveStageRef = useRef<HTMLDivElement | null>(null);
@@ -289,6 +290,7 @@ export const Dashboard: React.FC = () => {
   const { onlineEmployees, lastMessage, sendMessage, subscribeLiveFrames, isConnected } = useWebSocket();
   const { org } = useAuth();
   const { t } = useI18n();
+  const navigate = useNavigate();
 
   const isEmployeeOnline = (id: string) => onlineEmployees.has(id) || httpOnlineIds.has(id);
 
@@ -331,6 +333,7 @@ export const Dashboard: React.FC = () => {
     setLiveSnapMsg(null);
     setLivePrivacyBlocked(false);
     setLivePrivacyApp(null);
+    setLivePrivacyPattern(null);
     if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
     if (document.fullscreenElement === liveStageRef.current) {
       void document.exitFullscreen().catch(() => {});
@@ -343,6 +346,8 @@ export const Dashboard: React.FC = () => {
     setLiveStarting(true);
     setLiveStreaming(false);
     setLivePrivacyBlocked(false);
+    setLivePrivacyApp(null);
+    setLivePrivacyPattern(null);
     setLiveFrameAt(null);
     liveResumeRef.current = true;
     if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
@@ -446,7 +451,10 @@ export const Dashboard: React.FC = () => {
 
       if (message.data?.privacyBlocked) {
         setLivePrivacyBlocked(true);
-        setLivePrivacyApp(message.data.appName || message.data.windowTitle || null);
+        setLivePrivacyPattern(message.data.pattern || null);
+        setLivePrivacyApp(
+          message.data.windowTitle || message.data.appName || message.data.pattern || null
+        );
         setLiveStreaming(prev => (prev ? prev : true));
         setLiveStarting(prev => (prev ? false : prev));
         if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
@@ -462,6 +470,7 @@ export const Dashboard: React.FC = () => {
       if (message.data?.sessionId) liveSessionRef.current = message.data.sessionId;
       setLivePrivacyBlocked(false);
       setLivePrivacyApp(null);
+      setLivePrivacyPattern(null);
       setLiveStreaming(prev => (prev ? prev : true));
       setLiveStarting(prev => (prev ? false : prev));
       if (liveStartTimerRef.current) {
@@ -578,15 +587,17 @@ export const Dashboard: React.FC = () => {
 
   if (error) {
     return (
-      <div style={styles.container}>
-        <div style={errorStyles.container}>
-          <EmptyIcon icon={AlertTriangle} size={48} color="var(--tt-danger)" />
-          <h2 style={errorStyles.title}>{t('dashboard.failedLoad')}</h2>
-          <p style={errorStyles.message}>{error}</p>
-          <button onClick={loadData} style={errorStyles.retryButton}>
-            Retry
-          </button>
-        </div>
+      <div className="tt-page tt-page--wide">
+        <PageEmpty
+          icon={AlertTriangle}
+          title={t('dashboard.failedLoad')}
+          hint={error}
+          action={
+            <button type="button" className="tt-btn tt-btn-primary" onClick={loadData}>
+              {t('common.retry')}
+            </button>
+          }
+        />
       </div>
     );
   }
@@ -596,7 +607,7 @@ export const Dashboard: React.FC = () => {
   // the live dashboard immediately — don't force the welcome checklist.
   if (employees.length === 0) {
     return (
-      <div style={styles.container}>
+      <div className="tt-page tt-page--wide">
         <GettingStarted
           orgName={org?.name || ''}
           onDismiss={() => {}}
@@ -619,62 +630,47 @@ export const Dashboard: React.FC = () => {
     || activity.employeeId.slice(0, 8);
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <h1 style={{ ...styles.title, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t('dashboard.title')}
-              <HelpTip text={t('help.dashboard')} />
-            </h1>
-            <p style={styles.subtitle}>{t('dashboard.subtitle')}</p>
-          </div>
-          <div role="tablist" aria-label="Dashboard scope" style={{
-            display: 'inline-flex',
-            border: '1px solid var(--tt-border-strong)',
-            borderRadius: '999px',
-            overflow: 'hidden',
-            backgroundColor: 'var(--tt-surface)',
-            boxShadow: 'var(--tt-shadow-sm)',
-          }}>
+    <div className="tt-page tt-page--wide" style={{ animation: 'tt-rise 0.45s var(--tt-ease) both' }}>
+      <PageHero
+        icon={LayoutDashboard}
+        title={t('dashboard.title')}
+        subtitle={t('dashboard.subtitle')}
+        help={t('help.dashboard')}
+        action={
+          <div role="tablist" aria-label="Dashboard scope" style={styles.scopeTabs}>
             {(['today', 'week', 'all'] as DashboardScope[]).map(s => (
               <button
                 key={s}
+                type="button"
                 role="tab"
                 aria-selected={scope === s}
                 onClick={() => changeScope(s)}
                 style={{
-                  padding: '9px 16px',
-                  border: 'none',
-                  backgroundColor: scope === s ? 'var(--tt-teal)' : 'transparent',
-                  color: scope === s ? '#fff' : 'var(--tt-text-muted)',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 650,
+                  ...styles.scopeTab,
+                  ...(scope === s ? styles.scopeTabActive : null),
                 }}
               >
                 {s === 'all' ? t('dashboard.all') : s === 'week' ? t('dashboard.week') : t('dashboard.today')}
               </button>
             ))}
           </div>
-        </div>
-      </header>
+        }
+      />
 
-      {/* Alert Banner for Suspicious Activity */}
       {stats && stats.suspiciousActivityCount > 0 && (
-        <div style={styles.alertBanner}>
-          <AlertTriangle size={16} style={{ marginRight: 8, verticalAlign: 'text-bottom' }} />
-          {stats.suspiciousActivityCount} suspicious activities detected today
+        <div className="tt-error-banner" role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={16} aria-hidden />
+          {t('dashboard.suspiciousBanner', { count: stats.suspiciousActivityCount })}
         </div>
       )}
 
       <div style={styles.grid}>
-        {/* Key Stats */}
-        <div style={styles.statsGrid}>
+        <div style={styles.statTray}>
+          <div className="tt-stat-grid">
           <StatCard
             title={t('dashboard.teamProductivity')}
             value={`${stats?.averageProductivityScore || 0}%`}
-            icon={<BarChart3 size={22} strokeWidth={2.1} />}
+            icon={<BarChart3 size={20} strokeWidth={2.1} />}
             color={getProductivityColor(stats?.averageProductivityScore || 0)}
             tooltip={t('help.teamProductivity')}
           />
@@ -686,7 +682,7 @@ export const Dashboard: React.FC = () => {
               <StatCard
                 title={t('dashboard.utilization')}
                 value={`${util}%`}
-                icon={<Zap size={22} strokeWidth={2.1} />}
+                icon={<Zap size={20} strokeWidth={2.1} />}
                 color={getProductivityColor(util)}
                 tooltip={t('help.utilization')}
               />
@@ -695,36 +691,32 @@ export const Dashboard: React.FC = () => {
           <StatCard
             title={t('dashboard.focusTime')}
             value={formatDurationSeconds(stats?.focusSecondsToday ?? (stats?.focusTimeMinutes || 0) * 60)}
-            icon={<Focus size={22} strokeWidth={2.1} />}
+            icon={<Focus size={20} strokeWidth={2.1} />}
             color="var(--tt-success)"
             tooltip={t('help.focusTime')}
           />
           <StatCard
             title={t('dashboard.idleTime')}
             value={formatDurationSeconds(stats?.distractedSecondsToday ?? (stats?.distractedTimeMinutes || 0) * 60)}
-            icon={<Moon size={22} strokeWidth={2.1} />}
+            icon={<Moon size={20} strokeWidth={2.1} />}
             color="var(--tt-danger)"
             tooltip={t('help.idleTime')}
           />
           <StatCard
             title={t('dashboard.suspicious')}
             value={stats?.suspiciousActivityCount || 0}
-            icon={<ShieldAlert size={22} strokeWidth={2.1} />}
+            icon={<ShieldAlert size={20} strokeWidth={2.1} />}
             color={stats?.suspiciousActivityCount ? 'var(--tt-danger)' : 'var(--tt-text-faint)'}
             tooltip={t('help.suspicious')}
           />
+          </div>
         </div>
 
         {/* Live Activity — pick one employee, then start on-demand screen stream */}
-        <div style={styles.section}>
-          <SectionTitle
-            icon={<Monitor size={18} strokeWidth={2.1} />}
-            help={t('help.liveActivity')}
-            style={{ marginBottom: 16 }}
-          >
-            {t('live.title')}
-          </SectionTitle>
-
+        <PagePanel
+          title={t('live.title')}
+          headAction={<HelpTip text={t('help.liveActivity')} />}
+        >
           <div style={styles.liveLayout} className="dashboard-live-layout">
             <div style={styles.liveEmployeeList} role="listbox" aria-label={t('live.employees')}>
               {employees.length === 0 ? (
@@ -879,9 +871,23 @@ export const Dashboard: React.FC = () => {
                         <div style={styles.liveEmptyScreen}>
                           <EyeOff size={36} color="var(--tt-text-faint)" />
                           <p style={{ margin: '12px 0 4px', fontWeight: 600 }}>{t('live.privacyBlocked')}</p>
-                          <p style={{ margin: 0, fontSize: 13, color: 'var(--tt-text-muted)', maxWidth: 400, textAlign: 'center' }}>
-                            {t('live.privacyBlockedHint', { app: livePrivacyApp || '—' })}
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--tt-text-muted)', maxWidth: 420, textAlign: 'center', lineHeight: 1.5 }}>
+                            {t('live.privacyBlockedHint', {
+                              rule: livePrivacyPattern || livePrivacyApp || '—',
+                            })}
                           </p>
+                          {livePrivacyApp && livePrivacyPattern && livePrivacyApp !== livePrivacyPattern && (
+                            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--tt-text-faint)', maxWidth: 420, textAlign: 'center' }}>
+                              {t('live.privacyBlockedWindow', { window: livePrivacyApp })}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => navigate('/privacy')}
+                            style={styles.livePrivacyLink}
+                          >
+                            {t('live.privacyManage')}
+                          </button>
                         </div>
                       )}
                       {!liveStreaming && (
@@ -933,17 +939,13 @@ export const Dashboard: React.FC = () => {
               })()}
             </div>
           </div>
-        </div>
+        </PagePanel>
 
         {/* Time Breakdown */}
-        <div style={styles.section}>
-          <SectionTitle
-            icon={<Clock3 size={18} strokeWidth={2.1} />}
-            help={t('help.timeBreakdown')}
-            style={{ marginBottom: 16 }}
-          >
-            Time Breakdown ({scope === 'all' ? 'All Time' : scope === 'week' ? 'This Week' : 'Today'})
-          </SectionTitle>
+        <PagePanel
+          title={`Time Breakdown (${scope === 'all' ? 'All Time' : scope === 'week' ? 'This Week' : 'Today'})`}
+          headAction={<HelpTip text={t('help.timeBreakdown')} />}
+        >
           <div style={styles.breakdownGrid}>
             <BreakdownItem
               label="Core Work"
@@ -991,18 +993,15 @@ export const Dashboard: React.FC = () => {
               color="var(--tt-text-faint)"
             />
           </div>
-        </div>
+        </PagePanel>
 
         {/* Suspicious Activity Log */}
         {stats?.recentActivities?.some(a => a.isSuspicious) && (
-          <div style={{ ...styles.section, border: '2px solid var(--tt-danger)' }}>
-            <SectionTitle
-              icon={<ShieldAlert size={18} strokeWidth={2.1} color="var(--tt-danger)" />}
-              help={t('help.suspiciousLog')}
-              style={{ marginBottom: 16, color: 'var(--tt-danger)' }}
-            >
-              Suspicious Activity Log
-            </SectionTitle>
+          <PagePanel
+            title="Suspicious Activity Log"
+            headAction={<HelpTip text={t('help.suspiciousLog')} />}
+            className="dashboard-suspicious-panel"
+          >
             <div style={styles.suspiciousList}>
               {stats.recentActivities
                 .filter(a => a.isSuspicious)
@@ -1024,7 +1023,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                 ))}
             </div>
-          </div>
+          </PagePanel>
         )}
 
       </div>
@@ -1045,7 +1044,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, tooltip 
     <div style={{ ...styles.statCard, borderLeftColor: color }}>
       <div style={styles.statIcon(color)}>{icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ ...styles.statValue, color }}>{value}</div>
+        <div style={styles.statValue}>{value}</div>
         <div style={{ ...styles.statTitle, display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span>{title}</span>
           {tooltip ? <HelpTip text={tooltip} /> : null}
@@ -1073,132 +1072,81 @@ const BreakdownItem: React.FC<BreakdownItemProps> = ({ label, minutes, color }) 
   );
 };
 
-const errorStyles: { [key: string]: React.CSSProperties } = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '40px',
-    textAlign: 'center'
-  },
-  icon: {
-    fontSize: '48px',
-    marginBottom: '16px'
-  },
-  title: {
-    fontSize: '24px',
-    fontWeight: 600,
-    color: 'var(--tt-danger)',
-    marginBottom: '8px'
-  },
-  message: {
-    fontSize: '16px',
-    color: 'var(--tt-text-muted)',
-    marginBottom: '24px'
-  },
-  retryButton: {
-    padding: '12px 24px',
-    backgroundColor: 'var(--tt-teal)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 'var(--tt-radius-sm)',
-    fontSize: '16px',
-    fontWeight: 500,
-    cursor: 'pointer'
-  }
-};
-
 const styles: { [key: string]: React.CSSProperties | any } = {
-  container: {
-    padding: '8px 4px 24px',
-    animation: 'tt-rise 0.45s var(--tt-ease) both',
-    maxWidth: 1400,
-    margin: '0 auto',
-  },
   loading: {
     padding: '40px',
     textAlign: 'center',
     color: 'var(--tt-text-muted)'
   },
-  header: {
-    marginBottom: '28px'
+  scopeTabs: {
+    display: 'inline-flex',
+    gap: 4,
+    padding: 4,
+    borderRadius: 999,
+    backgroundColor: 'var(--tt-surface-muted)',
+    border: '1px solid var(--tt-border)',
   },
-  title: {
-    fontSize: 'clamp(1.75rem, 2.5vw, 2.15rem)',
-    fontWeight: 750,
-    fontFamily: 'var(--tt-font-display)',
-    letterSpacing: '-0.03em',
-    color: 'var(--tt-text)',
-    margin: 0
-  },
-  subtitle: {
-    fontSize: '15px',
+  scopeTab: {
+    padding: '9px 16px',
+    border: 'none',
+    borderRadius: 999,
+    backgroundColor: 'transparent',
     color: 'var(--tt-text-muted)',
-    marginTop: '6px'
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 650,
+    transition: 'background 140ms ease, color 140ms ease',
   },
-  alertBanner: {
-    backgroundColor: 'var(--tt-danger-soft)',
-    border: '1px solid rgba(232, 93, 76, 0.25)',
-    color: 'var(--tt-danger)',
-    padding: '14px 18px',
-    borderRadius: 'var(--tt-radius)',
-    marginBottom: '20px',
-    fontWeight: 600,
+  scopeTabActive: {
+    backgroundColor: 'var(--tt-ink)',
+    color: '#fff',
+    boxShadow: 'var(--tt-shadow-sm)',
   },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '14px'
+  statTray: {
+    background: 'var(--tt-surface-muted)',
+    border: '1px solid var(--tt-border)',
+    borderRadius: 20,
+    padding: 14,
   },
   statCard: {
     backgroundColor: 'var(--tt-surface)',
     border: '1px solid var(--tt-border)',
-    borderRadius: 'var(--tt-radius)',
-    boxShadow: 'var(--tt-shadow-sm)',
+    borderRadius: 16,
+    boxShadow: 'none',
     padding: '18px 18px 18px 20px',
     display: 'flex',
     alignItems: 'center',
-    gap: '14px',
-    borderLeft: '4px solid var(--tt-teal)',
-    transition: 'transform 0.25s var(--tt-ease), box-shadow 0.25s var(--tt-ease)',
+    gap: 14,
+    borderLeft: '4px solid var(--tt-ink)',
+    minHeight: 92,
   },
   grid: {
     display: 'grid',
-    gap: '24px'
+    gap: 20,
   },
   statIcon: (color: string) => ({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     color,
-    backgroundColor: `${color}20`,
-    padding: '12px',
-    borderRadius: 'var(--tt-radius-sm)',
+    backgroundColor: 'transparent',
+    padding: 0,
+    borderRadius: 0,
+    flexShrink: 0,
   }),
   statValue: {
-    fontSize: '26px',
-    fontWeight: 750,
+    fontSize: 28,
+    fontWeight: 700,
     fontFamily: 'var(--tt-font-display)',
-    letterSpacing: '-0.02em',
+    letterSpacing: '-0.03em',
+    color: 'var(--tt-text)',
+    lineHeight: 1.15,
   },
   statTitle: {
-    fontSize: '13px',
+    fontSize: 13,
     color: 'var(--tt-text-muted)',
-    fontWeight: 600,
-  },
-  section: {
-    backgroundColor: 'var(--tt-surface)',
-    border: '1px solid var(--tt-border)',
-    padding: '24px',
-    borderRadius: 'var(--tt-radius)',
-    boxShadow: 'var(--tt-shadow-sm)'
-  },
-  sectionTitle: {
-    fontSize: '18px',
-    fontWeight: 600,
-    marginBottom: '16px',
-    color: 'var(--tt-text)'
+    fontWeight: 550,
+    marginTop: 4,
   },
   employeeGrid: {
     display: 'grid',
@@ -1231,20 +1179,20 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     flex: 1
   },
   onlineBadge: {
-    fontSize: '10px',
+    fontSize: 10,
     fontWeight: 700,
     color: 'var(--tt-success)',
-    backgroundColor: '#d4edda',
-    padding: '2px 8px',
-    borderRadius: '4px'
+    backgroundColor: 'var(--tt-success-soft)',
+    padding: '4px 8px',
+    borderRadius: 999,
   },
   offlineBadge: {
-    fontSize: '10px',
+    fontSize: 10,
     fontWeight: 700,
     color: 'var(--tt-text-faint)',
     backgroundColor: 'var(--tt-surface-muted)',
-    padding: '2px 8px',
-    borderRadius: '4px'
+    padding: '4px 8px',
+    borderRadius: 999,
   },
   liveLayout: {
     display: 'grid',
@@ -1266,12 +1214,13 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     gap: 10,
     width: '100%',
     textAlign: 'left' as const,
-    padding: '10px 12px',
-    borderRadius: 10,
+    padding: '12px 14px',
+    borderRadius: 14,
     border: selected ? '1px solid var(--tt-ink)' : '1px solid var(--tt-border)',
     backgroundColor: selected ? 'var(--tt-surface-muted)' : 'var(--tt-surface)',
     cursor: 'pointer',
     opacity: online || selected ? 1 : 0.72,
+    boxShadow: selected ? 'var(--tt-shadow-sm)' : 'none',
   }),
   liveEmployeeName: {
     display: 'block',
@@ -1293,9 +1242,9 @@ const styles: { [key: string]: React.CSSProperties | any } = {
   },
   liveScreenPanel: {
     border: '1px solid var(--tt-border)',
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: 'var(--tt-surface-muted)',
-    padding: 14,
+    padding: 16,
     minHeight: 360,
     display: 'flex',
     flexDirection: 'column' as const,
@@ -1438,6 +1387,17 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     background: 'var(--tt-surface)',
     width: '100%',
     minHeight: 280,
+  },
+  livePrivacyLink: {
+    marginTop: 14,
+    padding: '8px 14px',
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'var(--tt-teal)',
+    background: 'transparent',
+    border: '1px solid var(--tt-teal)',
+    borderRadius: 6,
+    cursor: 'pointer',
   },
   suspiciousBadge: {
     fontSize: '10px',
@@ -1643,7 +1603,7 @@ const styles: { [key: string]: React.CSSProperties | any } = {
 
 // Loading Skeleton Component
 const DashboardSkeleton: React.FC = () => (
-  <div style={skeletonStyles.container}>
+  <div className="tt-page tt-page--wide" style={skeletonStyles.container}>
     <div style={skeletonStyles.header}>
       <div style={skeletonStyles.title} />
       <div style={skeletonStyles.subtitle} />

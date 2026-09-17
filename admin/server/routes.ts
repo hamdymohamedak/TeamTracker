@@ -38,6 +38,7 @@ import {
   ROLE_PROFILES
 } from './role-detector.js';
 import { requireAuth, requireDeviceAuth, requireAnyAuth, revokeEmployeeDeviceSessions } from './auth.js';
+import { parsePrivacyAliases, aliasesToJson, normalizePrivacyPattern } from './privacy-util.js';
 import { getConnectedEmployees } from './websocket.js';
 import { fixActivityClassification } from './server-classifier-fixer.js';
 
@@ -1096,17 +1097,23 @@ export function setupRoutes(app: Express): void {
     }
   });
 
-  // Capture privacy blocks — skip screenshots / live view when the foreground
-  // app or window title matches a pattern (org-wide or per-employee).
+  // Capture privacy blocks — skip screenshots / live view when app, window
+  // title, admin aliases, or browser tab URL matches (org-wide or per-employee).
   app.get('/api/privacy-blocks', requireAuth, async (req, res) => {
     try {
       const db = getDatabase();
       const rows = await db.all(
-        `SELECT id, org_id, employee_id, app_pattern, block_screenshots, block_live_view, created_at
+        `SELECT id, org_id, employee_id, app_pattern, aliases, block_screenshots, block_live_view, created_at
          FROM capture_privacy_blocks WHERE org_id = ? ORDER BY created_at DESC`,
         [req.orgId!]
       );
-      res.json({ success: true, data: rows });
+      res.json({
+        success: true,
+        data: (rows || []).map((r: any) => ({
+          ...r,
+          aliases: parsePrivacyAliases(r.aliases),
+        })),
+      });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
@@ -1117,6 +1124,7 @@ export function setupRoutes(app: Express): void {
       const {
         employeeId,
         appPattern,
+        aliases: aliasesRaw,
         blockScreenshots = true,
         blockLiveView = true,
       } = req.body || {};
@@ -1141,17 +1149,21 @@ export function setupRoutes(app: Express): void {
       const db = getDatabase();
       const id = uuidv4();
       const now = new Date().toISOString();
-      const pattern = appPattern.trim();
+      // URL/host patterns → canonical hostname; app names kept as trimmed text.
+      const { stored: pattern, host: normalizedHost } = normalizePrivacyPattern(appPattern);
+      const aliases = parsePrivacyAliases(aliasesRaw);
+      const aliasesJson = aliasesToJson(aliases);
 
       await db.run(
         `INSERT INTO capture_privacy_blocks
-          (id, org_id, employee_id, app_pattern, block_screenshots, block_live_view, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (id, org_id, employee_id, app_pattern, aliases, block_screenshots, block_live_view, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           req.orgId!,
           employeeId || null,
           pattern,
+          aliasesJson,
           blockScreenshots ? 1 : 0,
           blockLiveView ? 1 : 0,
           now,
@@ -1165,6 +1177,8 @@ export function setupRoutes(app: Express): void {
           orgId: req.orgId,
           employeeId: employeeId || null,
           appPattern: pattern,
+          normalizedHost,
+          aliases,
           blockScreenshots: !!blockScreenshots,
           blockLiveView: !!blockLiveView,
           createdAt: now,

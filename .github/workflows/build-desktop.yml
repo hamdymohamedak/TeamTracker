@@ -81,6 +81,9 @@ jobs:
 
       - name: Install deps and build
         working-directory: ${{ runner.temp }}/tt-build
+        env:
+          # Bake production dashboard URL into employee tracker (desktop only).
+          TEAMTRACKER_SERVER_URL: https://tracker.hostly-eg.com
         run: |
           npm install
           npm run build
@@ -190,6 +193,8 @@ jobs:
         shell: bash
         working-directory: ${{ runner.temp }}/tt-build
         env:
+          # Bake production dashboard URL into employee tracker (desktop only).
+          TEAMTRACKER_SERVER_URL: https://tracker.hostly-eg.com
           # Windows Authenticode only — do not reuse Mac CSC_LINK (.p12)
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
@@ -249,6 +254,9 @@ jobs:
 
       - name: Install, build, package
         working-directory: ${{ runner.temp }}/tt-build
+        env:
+          # Bake production dashboard URL into employee tracker (desktop only).
+          TEAMTRACKER_SERVER_URL: https://tracker.hostly-eg.com
         run: |
           npm install
           npm run dist:linux

@@ -15,6 +15,7 @@ type LiveFrameHandler = (message: {
     privacyBlocked?: boolean;
     appName?: string;
     windowTitle?: string;
+    pattern?: string;
   };
 }) => void;
 
