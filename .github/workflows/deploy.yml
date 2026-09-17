@@ -101,11 +101,23 @@ jobs:
             -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
             'set -euo pipefail
-             if [ -x /opt/teamtracker/deploy.sh ]; then
-               if sudo -n true 2>/dev/null; then sudo /opt/teamtracker/deploy.sh; else /opt/teamtracker/deploy.sh; fi
-             elif [ -x /opt/teamtracker/application/deploy.sh ]; then
-               if sudo -n true 2>/dev/null; then sudo /opt/teamtracker/application/deploy.sh; else /opt/teamtracker/application/deploy.sh; fi
-             else
-               echo "deploy.sh not found under /opt/teamtracker — finish first install on the VPS"
-               exit 1
-             fi'
+             run_deploy() {
+               local script="$1"
+               if sudo -n true 2>/dev/null; then sudo "$script"; else "$script"; fi
+             }
+             # Prefer enterprise update script (preserves /var/lib data + JWT)
+             for candidate in \
+               /opt/teamtracker/application/deploy-enterprise.sh \
+               /opt/teamtracker/deploy-enterprise.sh \
+               /opt/teamtracker/application/deploy.sh \
+               /opt/teamtracker/deploy.sh
+             do
+               if [ -x "$candidate" ] || [ -f "$candidate" ]; then
+                 chmod +x "$candidate" 2>/dev/null || true
+                 echo "Running $candidate"
+                 run_deploy "$candidate"
+                 exit 0
+               fi
+             done
+             echo "No deploy script under /opt/teamtracker — finish first install on the VPS"
+             exit 1'

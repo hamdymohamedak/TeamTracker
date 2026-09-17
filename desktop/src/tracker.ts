@@ -8,7 +8,7 @@ import {
   ActivityCategory,
 } from './classifier.js';
 import { startScreenshotService } from './screenshot.js';
-import { startRemoteCommandClient } from './remote.js';
+import { startRemoteCommandClient, stopRemoteCommandClient } from './remote.js';
 import { getActiveWindow, hasActiveWinModule } from './active-window.js';
 
 interface TrackedActivity {
@@ -141,14 +141,7 @@ export async function startTracking(): Promise<void> {
   );
 
   // Live presence + on-demand screenshot commands from the admin dashboard.
-  startRemoteCommandClient(
-    () => config.deviceToken || '',
-    () => ({
-      appName: lastActivity?.appName,
-      windowTitle: lastActivity?.windowTitle,
-      employeeName: config.employeeName,
-    })
-  );
+  startPresenceClient();
 
   console.log('✓ Smart tracking active');
   console.log('✓ Employee:', config.employeeName, `(${config.employeeId})`);
@@ -883,6 +876,8 @@ export async function enrollWithSetupToken(
 
     console.log(`[enroll] ✓ connected as ${data.data.employeeName} (${data.data.employeeId})`);
     isOnline = true;
+    // Re-open presence WS after sign-out (or first enroll while app already running).
+    startPresenceClient();
     void syncClockSkew();
     // Flush anything queued while offline / before auth.
     Promise.resolve().then(() => syncToServer()).catch(() => { /* ignore */ });
@@ -906,9 +901,23 @@ export function logoutDevice(): { success: boolean } {
   return { success: true };
 }
 
+function startPresenceClient(): void {
+  startRemoteCommandClient(
+    () => config.deviceToken || '',
+    () => ({
+      appName: lastActivity?.appName,
+      windowTitle: lastActivity?.windowTitle,
+      employeeName: config.employeeName,
+    })
+  );
+}
+
 function clearDeviceAuth(reason: string): void {
   if (!config.deviceToken && !config.employeeId) return;
   console.log(`[auth] clearing device credentials (${reason})`);
+  // Close presence WS first so admin shows offline immediately on sign-out
+  // (otherwise the authenticated socket stays open until the app quits).
+  stopRemoteCommandClient();
   config.deviceToken = '';
   config.employeeId = TEAMTRACKER_CONFIG.defaults.employeeId;
   config.employeeName = TEAMTRACKER_CONFIG.defaults.employeeName;

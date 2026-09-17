@@ -1,7 +1,8 @@
 #!/bin/bash
 # TeamTracker Quick Install Script
-# Fresh Ubuntu VPS bootstrap. Delegates durable layout to the same conventions
-# as deploy.sh: code under /opt/teamtracker/application, data under /var/lib/teamtracker.
+# Fresh Ubuntu VPS bootstrap. Durable layout:
+#   code → /opt/teamtracker/application
+#   data → /var/lib/teamtracker
 #
 # Usage: sudo bash install.sh
 
@@ -50,6 +51,9 @@ else
 fi
 
 ADMIN_DIR="$APP_DIR/admin"
+[ -f "$APP_DIR/scripts/deploy-lib.sh" ] || { echo "Missing scripts/deploy-lib.sh"; exit 1; }
+# shellcheck disable=SC1091
+source "$APP_DIR/scripts/deploy-lib.sh"
 
 echo "📦 Installing admin dependencies..."
 cd "$ADMIN_DIR"
@@ -58,70 +62,11 @@ npm install --include=dev
 echo "🔨 Building TeamTracker..."
 npm run build
 
-# Create or preserve persistent env — NEVER overwrite JWT_SECRET blindly
 echo "⚙️  Configuring environment ($ENV_FILE)..."
-if [ ! -f "$ENV_FILE" ]; then
-  JWT_SECRET="$(openssl rand -hex 32)"
-  HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
-  PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-http://${HOSTNAME_FQDN}}"
-  cat > "$ENV_FILE" << EOF
-# TeamTracker production environment (persistent)
-NODE_ENV=production
-PORT=${PORT}
-
-DATA_DIR=${DATA_DIR}
-DATABASE_PATH=${DATA_DIR}/database/admin.db
-UPLOADS_DIR=${DATA_DIR}/uploads
-BACKUPS_DIR=${DATA_DIR}/backups
-
-# IMPORTANT: Do not change after users/devices enroll.
-JWT_SECRET=${JWT_SECRET}
-
-PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
-EOF
-  echo "✓ Created $ENV_FILE with new JWT_SECRET"
-else
-  echo "✓ Keeping existing $ENV_FILE (JWT_SECRET preserved)"
-  # Ensure path keys exist without touching JWT_SECRET
-  for kv in \
-    "DATA_DIR=${DATA_DIR}" \
-    "DATABASE_PATH=${DATA_DIR}/database/admin.db" \
-    "UPLOADS_DIR=${DATA_DIR}/uploads" \
-    "BACKUPS_DIR=${DATA_DIR}/backups" \
-    "NODE_ENV=production"; do
-    key="${kv%%=*}"
-    val="${kv#*=}"
-    if grep -qE "^${key}=" "$ENV_FILE"; then
-      sed -i.bak "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
-      rm -f "${ENV_FILE}.bak"
-    else
-      printf '\n%s=%s\n' "$key" "$val" >> "$ENV_FILE"
-    fi
-  done
-  # Only generate JWT_SECRET if missing
-  if ! grep -qE '^JWT_SECRET=.+' "$ENV_FILE"; then
-    JWT_SECRET="$(openssl rand -hex 32)"
-    printf '\nJWT_SECRET=%s\n' "$JWT_SECRET" >> "$ENV_FILE"
-    echo "✓ Generated missing JWT_SECRET"
-  fi
-fi
-chmod 600 "$ENV_FILE"
-
-# Symlink admin/.env → persistent file (do not clobber secrets into a new file)
-if [ -e "$ADMIN_DIR/.env" ] && [ ! -L "$ADMIN_DIR/.env" ]; then
-  # Merge: if admin/.env had a JWT and ENV_FILE is new copy path-only, prefer ENV_FILE
-  cp "$ADMIN_DIR/.env" "$ADMIN_DIR/.env.install-bak.$(date +%s)" || true
-  rm -f "$ADMIN_DIR/.env"
-fi
-ln -sfn "$ENV_FILE" "$ADMIN_DIR/.env"
-
-# One-time legacy migrate (no overwrite)
-if [ -f "$ADMIN_DIR/data/admin.db" ] && [ ! -f "$DATA_DIR/database/admin.db" ]; then
-  mv "$ADMIN_DIR/data/admin.db" "$DATA_DIR/database/admin.db"
-  [ -f "$ADMIN_DIR/data/admin.db-wal" ] && mv "$ADMIN_DIR/data/admin.db-wal" "$DATA_DIR/database/admin.db-wal"
-  [ -f "$ADMIN_DIR/data/admin.db-shm" ] && mv "$ADMIN_DIR/data/admin.db-shm" "$DATA_DIR/database/admin.db-shm"
-  echo "✓ Migrated legacy admin.db → $DATA_DIR/database/"
-fi
+tt_ensure_data_dirs "$DATA_DIR"
+tt_migrate_legacy_database
+tt_migrate_legacy_uploads
+tt_ensure_production_env "$ENV_FILE"
 
 echo "🚀 Starting TeamTracker..."
 set -a
@@ -165,8 +110,7 @@ nginx -t && systemctl restart nginx
 HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
 PUBLIC_HINT="${PUBLIC_BASE_URL:-http://${HOSTNAME_FQDN}}"
 
-# Health checks
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/dev/null \
      && curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/ready" >/dev/null; then
     break
