@@ -284,6 +284,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Required for `gh release create --generate-notes` (needs git history).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
