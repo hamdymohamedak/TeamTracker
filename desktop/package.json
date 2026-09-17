@@ -21,7 +21,7 @@
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:all": "npm run build && electron-builder -mwl --publish never",
     "release": "npm run build && electron-builder -mwl --publish always",
-    "test": "../admin/node_modules/.bin/tsx --test src/__tests__/privacy-guard.test.ts"
+    "test": "../admin/node_modules/.bin/tsx --test src/__tests__/**/*.test.ts"
   },
   "build": {
     "appId": "com.teamtracker.tracker",

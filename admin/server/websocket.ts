@@ -8,6 +8,15 @@ import {
   markCommandDelivered,
   type PendingRemoteCommand,
 } from './remote-commands.js';
+import {
+  LIVE_VIEW_BINARY_HEADER_SIZE,
+  peekBinaryPayloadLength,
+  peekBinarySessionId,
+  peekLiveViewBinaryMagic,
+  parseLiveViewQualityMode,
+  type LiveViewQualityMode,
+} from '../shared/live-view/index.js';
+import { getLiveViewEnv, liveViewStartPayload } from './live-view-config.js';
 
 interface ConnectedClient {
   ws: WebSocket;
@@ -24,6 +33,7 @@ interface LiveViewSession {
   orgId: string;
   employeeId: string;
   adminWs: WebSocket;
+  quality: LiveViewQualityMode;
 }
 
 const clients = new Map<WebSocket, ConnectedClient>();
@@ -32,7 +42,8 @@ const liveByAdmin = new Map<WebSocket, LiveViewSession>();
 /** employeeId → session (at most one viewer per employee) */
 const liveByEmployee = new Map<string, LiveViewSession>();
 
-const MAX_LIVE_FRAME_CHARS = 350_000; // ~260KB jpeg base64
+/** Legacy Base64 JSON frame cap (compatibility only). */
+const MAX_LIVE_FRAME_CHARS = 350_000;
 
 export function setupWebSocket(wss: WebSocketServer): void {
   wss.on('connection', (ws: WebSocket, req: any) => {
@@ -94,9 +105,14 @@ export function setupWebSocket(wss: WebSocketServer): void {
       } catch { /* ignore */ }
     }
 
-    ws.on('message', async (data: Buffer) => {
+    ws.on('message', async (data: WebSocket.RawData, isBinary: boolean) => {
       try {
-        const message = JSON.parse(data.toString());
+        const buf = toBuffer(data);
+        if (isBinary || peekLiveViewBinaryMagic(buf)) {
+          handleBinaryLiveFrame(ws, buf);
+          return;
+        }
+        const message = JSON.parse(buf.toString('utf8'));
         await handleMessage(ws, message);
       } catch (err) {
         console.error('WebSocket message error:', err);
@@ -316,6 +332,7 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
         adminWs: ws,
         orgId: client.orgId,
         employeeId: String(message.employeeId),
+        quality: message.quality ?? message.data?.quality,
       });
       ws.send(JSON.stringify({
         type: 'admin:live-view-status',
@@ -334,7 +351,100 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
       break;
     }
 
+    case 'admin:live-view-quality': {
+      if (!client.isAdmin || !client.orgId) break;
+      const session = liveByAdmin.get(ws);
+      if (!session || session.orgId !== client.orgId) break;
+      const quality = parseLiveViewQualityMode(
+        message.quality ?? message.data?.quality,
+        session.quality
+      );
+      session.quality = quality;
+      const device = findClientByEmployeeId(session.orgId, session.employeeId);
+      const incoming = message.data && typeof message.data === 'object' ? message.data : {};
+      const qualityData = {
+        ...incoming,
+        sessionId: session.sessionId,
+        quality,
+      };
+      if (device && device.ws.readyState === WebSocket.OPEN) {
+        device.ws.send(JSON.stringify({
+          type: 'command:live-view-quality',
+          data: qualityData,
+        }));
+      }
+      ws.send(JSON.stringify({
+        type: 'admin:live-view-status',
+        data: {
+          active: true,
+          sessionId: session.sessionId,
+          quality,
+          qualityUpdated: true,
+        },
+      }));
+      console.log(`[live_view] quality_changed session=${session.sessionId} quality=${quality}`);
+      break;
+    }
+
+    case 'admin:live-view-signal': {
+      if (!client.isAdmin || !client.orgId) break;
+      relayLiveViewSignal({
+        fromAdmin: true,
+        ws,
+        orgId: client.orgId,
+        sessionId: String(message.data?.sessionId || message.sessionId || ''),
+        signal: message.data?.signal ?? message.signal,
+      });
+      break;
+    }
+
+    case 'live-view:signal': {
+      if (client.isAdmin || !client.employeeId || !client.orgId) break;
+      relayLiveViewSignal({
+        fromAdmin: false,
+        ws,
+        orgId: client.orgId,
+        employeeId: client.employeeId,
+        sessionId: String(message.data?.sessionId || ''),
+        signal: message.data?.signal,
+      });
+      break;
+    }
+
+    case 'live-view:transport': {
+      if (!client.orgId) break;
+      const session = client.isAdmin
+        ? liveByAdmin.get(ws)
+        : client.employeeId
+          ? liveByEmployee.get(client.employeeId)
+          : undefined;
+      if (!session || session.orgId !== client.orgId) break;
+      if (message.data?.sessionId && message.data.sessionId !== session.sessionId) break;
+      const payload = {
+        type: 'live-view:transport',
+        data: {
+          sessionId: session.sessionId,
+          employeeId: session.employeeId,
+          transport: message.data?.transport || null,
+          state: message.data?.state || null,
+          reason: message.data?.reason || null,
+          from: client.isAdmin ? 'admin' : 'device',
+        },
+      };
+      // Notify the peer (admin ↔ device).
+      if (client.isAdmin) {
+        const device = findClientByEmployeeId(session.orgId, session.employeeId);
+        if (device?.ws.readyState === WebSocket.OPEN) {
+          device.ws.send(JSON.stringify(payload));
+        }
+      } else if (session.adminWs.readyState === WebSocket.OPEN) {
+        session.adminWs.send(JSON.stringify(payload));
+      }
+      break;
+    }
+
     case 'live-view:frame': {
+      // Legacy Base64 JSON path — still accepted for older desktop builds.
       if (client.isAdmin || !client.employeeId || !client.orgId) break;
       const session = liveByEmployee.get(client.employeeId);
       if (!session || session.orgId !== client.orgId) break;
@@ -403,12 +513,103 @@ async function handleMessage(ws: WebSocket, message: any): Promise<void> {
   }
 }
 
+function toBuffer(data: WebSocket.RawData): Buffer {
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (Array.isArray(data)) return Buffer.concat(data);
+  return Buffer.from(data as Uint8Array);
+}
+
+/**
+ * Efficient binary relay: validate magic + size + session ownership, then
+ * forward raw bytes (no JPEG decode / Base64 / JSON round-trip).
+ */
+function handleBinaryLiveFrame(ws: WebSocket, buf: Buffer): void {
+  const client = clients.get(ws);
+  if (!client || client.isAdmin || !client.employeeId || !client.orgId) return;
+  if (!peekLiveViewBinaryMagic(buf)) return;
+
+  const cfg = getLiveViewEnv();
+  if (buf.byteLength > LIVE_VIEW_BINARY_HEADER_SIZE + cfg.maxFrameBytes) return;
+
+  const payloadLen = peekBinaryPayloadLength(buf);
+  if (payloadLen == null || payloadLen > cfg.maxFrameBytes) return;
+  if (buf.byteLength !== LIVE_VIEW_BINARY_HEADER_SIZE + payloadLen) return;
+
+  const sessionId = peekBinarySessionId(buf);
+  if (!sessionId) return;
+
+  const session = liveByEmployee.get(client.employeeId);
+  if (!session || session.orgId !== client.orgId) return;
+  if (session.sessionId !== sessionId) return;
+
+  if (session.adminWs.readyState !== WebSocket.OPEN) {
+    endLiveViewSession(session, 'viewer-gone');
+    return;
+  }
+  try {
+    session.adminWs.send(buf, { binary: true });
+  } catch {
+    endLiveViewSession(session, 'deliver-failed');
+  }
+}
+
+function relayLiveViewSignal(input: {
+  fromAdmin: boolean;
+  ws: WebSocket;
+  orgId: string;
+  employeeId?: string;
+  sessionId: string;
+  signal: unknown;
+}): void {
+  if (!input.sessionId || !input.signal || typeof input.signal !== 'object') return;
+
+  let session: LiveViewSession | undefined;
+  if (input.fromAdmin) {
+    session = liveByAdmin.get(input.ws);
+  } else if (input.employeeId) {
+    session = liveByEmployee.get(input.employeeId);
+  }
+  if (!session || session.orgId !== input.orgId) return;
+  if (session.sessionId !== input.sessionId) return;
+
+  const envelope = {
+    type: input.fromAdmin ? 'command:live-view-signal' : 'live-view:signal',
+    data: {
+      sessionId: session.sessionId,
+      employeeId: session.employeeId,
+      signal: input.signal,
+    },
+  };
+
+  if (input.fromAdmin) {
+    const device = findClientByEmployeeId(session.orgId, session.employeeId);
+    if (device && device.ws.readyState === WebSocket.OPEN) {
+      device.ws.send(JSON.stringify(envelope));
+    }
+  } else if (session.adminWs.readyState === WebSocket.OPEN) {
+    session.adminWs.send(JSON.stringify(envelope));
+  }
+}
+
 function startLiveView(input: {
   adminWs: WebSocket;
   orgId: string;
   employeeId: string;
-}): { active: boolean; online: boolean; delivered: boolean; sessionId?: string; error?: string } {
-  // Stop this admin's previous session first (only one employee streams at a time per admin).
+  quality?: unknown;
+}): {
+  active: boolean;
+  online: boolean;
+  delivered: boolean;
+  sessionId?: string;
+  quality?: LiveViewQualityMode;
+  webrtcEnabled?: boolean;
+  wsFallbackEnabled?: boolean;
+  maxFrameBytes?: number;
+  iceServers?: ReturnType<typeof liveViewStartPayload>['iceServers'];
+  autoConfig?: ReturnType<typeof liveViewStartPayload>['autoConfig'];
+  error?: string;
+} {
   endLiveViewForAdmin(input.adminWs, 'switched');
 
   const target = findClientByEmployeeId(input.orgId, input.employeeId);
@@ -416,18 +617,19 @@ function startLiveView(input: {
     return { active: false, online: false, delivered: false, error: 'Employee tracker is offline' };
   }
 
-  // If another admin is already watching this employee, take over and notify them.
   const existing = liveByEmployee.get(input.employeeId);
   if (existing && existing.adminWs !== input.adminWs) {
     endLiveViewSession(existing, 'taken-over');
   }
 
+  const startOpts = liveViewStartPayload(input.orgId, input.quality);
   const sessionId = randomUUID();
   const session: LiveViewSession = {
     sessionId,
     orgId: input.orgId,
     employeeId: input.employeeId,
     adminWs: input.adminWs,
+    quality: startOpts.quality,
   };
   liveByAdmin.set(input.adminWs, session);
   liveByEmployee.set(input.employeeId, session);
@@ -435,15 +637,27 @@ function startLiveView(input: {
   try {
     target.ws.send(JSON.stringify({
       type: 'command:live-view-start',
-      data: { sessionId, employeeId: input.employeeId },
+      data: {
+        sessionId,
+        employeeId: input.employeeId,
+        ...startOpts,
+      },
     }));
   } catch {
     endLiveViewSession(session, 'deliver-failed');
     return { active: false, online: true, delivered: false, error: 'Failed to reach device' };
   }
 
-  console.log(`📺 Live view started: employee=${input.employeeId} session=${sessionId}`);
-  return { active: true, online: true, delivered: true, sessionId };
+  console.log(
+    `[live_view] live_view_started employee=${input.employeeId} session=${sessionId} quality=${startOpts.quality}`
+  );
+  return {
+    active: true,
+    online: true,
+    delivered: true,
+    sessionId,
+    ...startOpts,
+  };
 }
 
 function endLiveViewForAdmin(adminWs: WebSocket, reason: string): void {

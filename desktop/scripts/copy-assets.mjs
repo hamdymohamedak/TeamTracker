@@ -8,10 +8,22 @@ const dist = path.join(root, 'dist');
 
 fs.mkdirSync(dist, { recursive: true });
 fs.copyFileSync(path.join(root, 'src/preload.cjs'), path.join(dist, 'preload.cjs'));
+fs.copyFileSync(
+  path.join(root, 'src/webrtc-capture-preload.cjs'),
+  path.join(dist, 'webrtc-capture-preload.cjs')
+);
+fs.copyFileSync(
+  path.join(root, 'src/webrtc-capture.html'),
+  path.join(dist, 'webrtc-capture.html')
+);
+fs.copyFileSync(
+  path.join(root, 'src/webrtc-capture-renderer.js'),
+  path.join(dist, 'webrtc-capture-renderer.js')
+);
 
 const uiSrc = path.join(root, 'src/ui');
 const uiDest = path.join(dist, 'ui');
 fs.rmSync(uiDest, { recursive: true, force: true });
 fs.cpSync(uiSrc, uiDest, { recursive: true });
 
-console.log('[copy-assets] copied preload.cjs and ui/ to dist/');
+console.log('[copy-assets] copied preload, webrtc capture assets, and ui/ to dist/');

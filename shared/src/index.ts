@@ -1,4 +1,5 @@
 export * from './classification';
+export * from './live-view/index';
 
 // Employee types
 export interface Employee {
