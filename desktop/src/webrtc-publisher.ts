@@ -4,6 +4,7 @@
  */
 
 import { BrowserWindow, desktopCapturer, ipcMain, screen, app } from 'electron';
+import * as fs from 'fs';
 import * as path from 'path';
 import type { LiveViewEncodeLevel, LiveViewIceServer, LiveViewSignalPayload } from './live-view-shared/index.js';
 import { getQualityPreset } from './live-view-shared/index.js';
@@ -18,8 +19,21 @@ let onStateCb: StateCb | null = null;
 let ipcReady = false;
 let privacyTimer: NodeJS.Timeout | null = null;
 
+const RENDERER_READY_TIMEOUT_MS = 15_000;
+
 function assetPath(...parts: string[]): string {
   return path.join(app.getAppPath(), 'dist', ...parts);
+}
+
+function assertCaptureAssets(): { html: string; preload: string; renderer: string } {
+  const html = assetPath('webrtc-capture.html');
+  const preload = assetPath('webrtc-capture-preload.cjs');
+  const renderer = assetPath('webrtc-capture-renderer.js');
+  const missing = [html, preload, renderer].filter((p) => !fs.existsSync(p));
+  if (missing.length) {
+    throw new Error(`webrtc_assets_missing:${missing.map((p) => path.basename(p)).join(',')}`);
+  }
+  return { html, preload, renderer };
 }
 
 function ensureIpc(): void {
@@ -73,6 +87,93 @@ function destroyWindow(): void {
   captureWin = null;
 }
 
+/**
+ * Wait for renderer-ready WITHOUT racing loadFile.
+ * Listener must be registered before the page can emit the event.
+ */
+function waitForRendererReady(win: BrowserWindow): {
+  promise: Promise<void>;
+  cancel: (err?: Error) => void;
+} {
+  let settled = false;
+  let finishErr!: (err: Error) => void;
+  let finishOk!: () => void;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      ipcMain.removeListener('live-view:renderer-ready', onReady);
+      try {
+        win.webContents.removeListener('did-fail-load', onFailLoad);
+        win.webContents.removeListener('render-process-gone', onGone);
+        win.webContents.removeListener('console-message', onConsole);
+        win.removeListener('closed', onClosed);
+      } catch { /* ignore */ }
+    };
+
+    finishOk = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    finishErr = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    const onReady = () => finishOk();
+
+    const onFailLoad = (
+      _e: Electron.Event,
+      code: number,
+      desc: string,
+      url: string
+    ) => {
+      finishErr(new Error(`webrtc_load_failed:${code}:${desc}:${url}`));
+    };
+
+    const onGone = (_e: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
+      finishErr(new Error(`webrtc_renderer_gone:${details.reason}`));
+    };
+
+    const onClosed = () => {
+      finishErr(new Error('webrtc_window_closed'));
+    };
+
+    const onConsole = (
+      _e: Electron.Event,
+      level: number,
+      message: string
+    ) => {
+      if (level >= 2) {
+        console.warn(`[live_view] capture_console level=${level} ${message}`);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      finishErr(new Error('webrtc_renderer_timeout'));
+    }, RENDERER_READY_TIMEOUT_MS);
+
+    // Register BEFORE loadFile so early ready events are not lost.
+    ipcMain.on('live-view:renderer-ready', onReady);
+    win.webContents.on('did-fail-load', onFailLoad);
+    win.webContents.on('render-process-gone', onGone);
+    win.webContents.on('console-message', onConsole);
+    win.on('closed', onClosed);
+  });
+
+  return {
+    promise,
+    cancel: (err?: Error) => {
+      finishErr(err || new Error('webrtc_ready_cancelled'));
+    },
+  };
+}
+
 export function isWebRtcPublisherActive(): boolean {
   return !!captureWin && !captureWin.isDestroyed();
 }
@@ -93,6 +194,7 @@ export async function startWebRtcPublisher(opts: {
   onSignalCb = opts.onSignal;
   onStateCb = opts.onState;
 
+  const assets = assertCaptureAssets();
   const preset = getQualityPreset(opts.encodeLevel === 'ultra' ? 'high' : opts.encodeLevel);
   const width = opts.width ?? preset.width;
   const fps = opts.fps ?? preset.fps;
@@ -110,9 +212,10 @@ export async function startWebRtcPublisher(opts: {
     focusable: false,
     resizable: false,
     webPreferences: {
-      preload: assetPath('webrtc-capture-preload.cjs'),
+      preload: assets.preload,
       contextIsolation: true,
       nodeIntegration: false,
+      // Sandbox + preload is fine for IPC; keep false only if capture APIs regress.
       sandbox: true,
       backgroundThrottling: false,
     },
@@ -122,17 +225,22 @@ export async function startWebRtcPublisher(opts: {
     captureWin = null;
   });
 
-  await captureWin.loadFile(assetPath('webrtc-capture.html'));
+  // Critical: arm ready waiter before loadFile to avoid lost renderer-ready IPC.
+  const readyWait = waitForRendererReady(captureWin);
 
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('webrtc_renderer_timeout')), 15_000);
-    const onReady = () => {
-      clearTimeout(timeout);
-      ipcMain.removeListener('live-view:renderer-ready', onReady);
-      resolve();
-    };
-    ipcMain.once('live-view:renderer-ready', onReady);
-  });
+  try {
+    await captureWin.loadFile(assets.html);
+    await readyWait.promise;
+  } catch (err) {
+    readyWait.cancel(err instanceof Error ? err : new Error(String(err)));
+    console.warn('[live_view] webrtc_publisher_start_failed', (err as Error).message);
+    destroyWindow();
+    throw err;
+  }
+
+  if (!captureWin || captureWin.isDestroyed()) {
+    throw new Error('webrtc_window_destroyed');
+  }
 
   captureWin.webContents.send('live-view:start', {
     sessionId: opts.sessionId,

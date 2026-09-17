@@ -93,21 +93,27 @@
 
   async function getDesktopStream(width, fps) {
     const source = await liveViewCapture.getSource();
+    const maxW = width || 1280;
+    const maxH = Math.round((maxW * 9) / 16) || 720;
     const constraints = {
       audio: false,
       video: {
         mandatory: {
           chromeMediaSource: 'desktop',
           chromeMediaSourceId: source.id,
-          maxWidth: width || 1280,
-          maxHeight: Math.round(((width || 1280) * 9) / 16) || 720,
+          maxWidth: maxW,
+          maxHeight: maxH,
           maxFrameRate: fps || 3,
         },
       },
     };
-    // Electron typed getUserMedia via legacy constraints.
-    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-    return mediaStream;
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      const msg = (err && err.message) || String(err);
+      console.error('[live_view] getUserMedia_failed', msg);
+      throw new Error(`desktop_capture_failed:${msg}`);
+    }
   }
 
   async function start(data) {
@@ -218,5 +224,15 @@
     applyPrivacyMute();
   });
   liveViewCapture.onConstraints((data) => { applyConstraints(data); });
-  liveViewCapture.rendererReady();
+
+  // Signal ready after handlers are bound. Main must listen before loadFile.
+  try {
+    if (typeof liveViewCapture === 'undefined' || !liveViewCapture.rendererReady) {
+      console.error('[live_view] preload bridge missing (liveViewCapture)');
+    } else {
+      liveViewCapture.rendererReady();
+    }
+  } catch (err) {
+    console.error('[live_view] renderer_ready_failed', err && err.message);
+  }
 })();
