@@ -36,7 +36,7 @@ jobs:
           if [ "$missing" -ne 0 ]; then
             echo "::error::Add secrets under Settings → Secrets and variables → Actions."
             echo "DEPLOY_SSH_KEY = private key whose public key is in VPS ~/.ssh/authorized_keys"
-            echo "GitHub Deploy keys (read-only) are only for the VPS to git pull — not for Actions→VPS SSH."
+            echo "GitHub Deploy keys (read-only) are only for the VPS to git pull - not for Actions→VPS SSH."
             exit 1
           fi
 
@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Connecting as ${DEPLOY_USER}@${DEPLOY_HOST} …"
+          echo "Connecting as ${DEPLOY_USER}@${DEPLOY_HOST} ..."
 
           if ! ssh \
             -o BatchMode=yes \
@@ -95,47 +95,49 @@ jobs:
             exit 255
           fi
 
+          # Heredoc body MUST stay indented inside this run: | block so YAML stays valid.
+          # (Unindented lines after <<'REMOTE' break the workflow file parser.)
           ssh \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
             'bash -s' <<'REMOTE'
-set -euo pipefail
-maybe_sudo() {
-  if sudo -n true 2>/dev/null; then sudo "$@"; else "$@"; fi
-}
-APP_DIR=""
-for candidate in \
-  /opt/teamtracker/application \
-  /opt/teamtracker/teamtracker \
-  /opt/teamtracker
-do
-  if [ -d "$candidate/.git" ] && [ -d "$candidate/admin" ]; then
-    APP_DIR="$candidate"
-    break
-  fi
-done
-if [ -z "$APP_DIR" ]; then
-  echo "No TeamTracker checkout under /opt/teamtracker — finish first install on the VPS"
-  exit 1
-fi
-echo "Syncing $APP_DIR to origin/main before deploy..."
-maybe_sudo git -C "$APP_DIR" fetch origin main
-maybe_sudo git -C "$APP_DIR" checkout -B main origin/main
-maybe_sudo git -C "$APP_DIR" reset --hard origin/main
-maybe_sudo git -C "$APP_DIR" clean -fd -e .env -e admin/.env
-for candidate in \
-  "$APP_DIR/deploy-enterprise.sh" \
-  "$APP_DIR/deploy.sh"
-do
-  if [ -f "$candidate" ]; then
-    chmod +x "$candidate" 2>/dev/null || true
-    echo "Running $candidate"
-    maybe_sudo "$candidate"
-    exit 0
-  fi
-done
-echo "No deploy script in $APP_DIR"
-exit 1
-REMOTE
+          set -euo pipefail
+          maybe_sudo() {
+            if sudo -n true 2>/dev/null; then sudo "$@"; else "$@"; fi
+          }
+          APP_DIR=""
+          for candidate in \
+            /opt/teamtracker/application \
+            /opt/teamtracker/teamtracker \
+            /opt/teamtracker
+          do
+            if [ -d "$candidate/.git" ] && [ -d "$candidate/admin" ]; then
+              APP_DIR="$candidate"
+              break
+            fi
+          done
+          if [ -z "$APP_DIR" ]; then
+            echo "No TeamTracker checkout under /opt/teamtracker - finish first install on the VPS"
+            exit 1
+          fi
+          echo "Syncing $APP_DIR to origin/main before deploy..."
+          maybe_sudo git -C "$APP_DIR" fetch origin main
+          maybe_sudo git -C "$APP_DIR" checkout -B main origin/main
+          maybe_sudo git -C "$APP_DIR" reset --hard origin/main
+          maybe_sudo git -C "$APP_DIR" clean -fd -e .env -e admin/.env
+          for candidate in \
+            "$APP_DIR/deploy-enterprise.sh" \
+            "$APP_DIR/deploy.sh"
+          do
+            if [ -f "$candidate" ]; then
+              chmod +x "$candidate" 2>/dev/null || true
+              echo "Running $candidate"
+              maybe_sudo "$candidate"
+              exit 0
+            fi
+          done
+          echo "No deploy script in $APP_DIR"
+          exit 1
+          REMOTE
