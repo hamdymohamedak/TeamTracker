@@ -14,6 +14,7 @@ import {
   endLiveViewSession,
 } from './live-view.js';
 import { requestScreenshotCommand } from './remote-commands.js';
+import { wsLog } from './log.js';
 
 export async function handleMessage(ws: WebSocket, message: any): Promise<void> {
   const client = clients.get(ws);
@@ -22,7 +23,7 @@ export async function handleMessage(ws: WebSocket, message: any): Promise<void> 
   switch (message.type) {
     case 'register':
       client.employeeName = message.employeeName;
-      console.log(`👤 ${client.employeeName} (${client.employeeId}) registered [org: ${client.orgId}]`);
+      wsLog(`👤 ${client.employeeName} (${client.employeeId}) registered [org: ${client.orgId}]`);
 
       if (!client.isAdmin && client.orgId && client.employeeId) {
         broadcastToAdmins(client.orgId, {
@@ -155,7 +156,7 @@ export async function handleMessage(ws: WebSocket, message: any): Promise<void> 
           qualityUpdated: true,
         },
       }));
-      console.log(`[live_view] quality_changed session=${session.sessionId} quality=${quality}`);
+      wsLog(`[live_view] quality_changed session=${session.sessionId} quality=${quality}`);
       break;
     }
 

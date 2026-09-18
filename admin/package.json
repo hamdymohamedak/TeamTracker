@@ -18,7 +18,7 @@
     "pretypecheck": "npm run ensure-shared",
     "typecheck": "tsc -p tsconfig.server.json --noEmit",
     "pretest": "npm run ensure-shared",
-    "test": "tsx --test server/__tests__/**/*.test.ts",
+    "test": "node --import tsx --test --test-isolation=none server/__tests__/**/*.test.ts",
     "test:conformance": "tsx scripts/conformance.mjs",
     "reset-password": "node scripts/reset-password.mjs"
   },

@@ -11,6 +11,7 @@ import {
 import { getLiveViewEnv, liveViewStartPayload } from '../live-view-config.js';
 import { clients, liveByAdmin, liveByEmployee, findClientByEmployeeId } from './clients.js';
 import type { LiveViewSession } from './types.js';
+import { wsLog } from './log.js';
 
 /** Legacy Base64 JSON frame cap (compatibility only). */
 export const MAX_LIVE_FRAME_CHARS = 350_000;
@@ -150,7 +151,7 @@ export function startLiveView(input: {
     return { active: false, online: true, delivered: false, error: 'Failed to reach device' };
   }
 
-  console.log(
+  wsLog(
     `[live_view] live_view_started employee=${input.employeeId} session=${sessionId} quality=${startOpts.quality}`
   );
   return {
@@ -197,5 +198,5 @@ export function endLiveViewSession(session: LiveViewSession, reason: string): vo
     } catch { /* ignore */ }
   }
 
-  console.log(`📺 Live view ended: employee=${session.employeeId} reason=${reason}`);
+  wsLog(`📺 Live view ended: employee=${session.employeeId} reason=${reason}`);
 }

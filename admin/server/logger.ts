@@ -36,6 +36,11 @@ function redact(value: unknown): unknown {
 }
 
 function write(level: Level, message: string, meta?: Record<string, unknown>): void {
+  // Keep test stdout free of noise — Node's test runner IPC shares the pipe with
+  // child stdout when isolation is on; even with isolation=none, quieter CI logs help.
+  if (process.env.NODE_ENV === 'test' && level !== 'error' && level !== 'warn') {
+    return;
+  }
   const entry = {
     ts: new Date().toISOString(),
     level,

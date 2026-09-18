@@ -4,10 +4,11 @@ import { authenticateConnection } from './auth.js';
 import { toBuffer, handleBinaryLiveFrame, endLiveViewForAdmin, endLiveViewSession } from './live-view.js';
 import { handleMessage } from './message-router.js';
 import { peekLiveViewBinaryMagic } from '../../shared/live-view/index.js';
+import { wsLog } from './log.js';
 
 export function setupWebSocket(wss: WebSocketServer): void {
   wss.on('connection', (ws: WebSocket, req: any) => {
-    console.log('🔌 New WebSocket connection');
+    wsLog('🔌 New WebSocket connection');
 
     void (async () => {
       const auth = await authenticateConnection(req);
@@ -77,7 +78,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
           });
         }
         clients.delete(ws);
-        console.log('🔌 WebSocket disconnected');
+        wsLog('🔌 WebSocket disconnected');
       });
 
       ws.on('error', (err) => {

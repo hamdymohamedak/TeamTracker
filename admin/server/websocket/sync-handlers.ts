@@ -7,13 +7,14 @@ import {
   updateActivity,
 } from '../database.js';
 import { clients, broadcastToAdmins } from './clients.js';
+import { wsLog } from './log.js';
 
 /** Handle `time-entry:started` — persist and broadcast to admins. */
 export async function handleTimeEntryStarted(ws: WebSocket, message: any): Promise<void> {
   const client = clients.get(ws);
   if (!client) return;
 
-  console.log(`⏱️ ${client.employeeName} started tracking`);
+  wsLog(`⏱️ ${client.employeeName} started tracking`);
   try {
     await createTimeEntry(client.orgId!, message.entry);
   } catch (err) {
@@ -35,7 +36,7 @@ export async function handleTimeEntryStopped(ws: WebSocket, message: any): Promi
   const client = clients.get(ws);
   if (!client) return;
 
-  console.log(`⏹️ ${client.employeeName} stopped tracking`);
+  wsLog(`⏹️ ${client.employeeName} stopped tracking`);
   try {
     await updateTimeEntry(client.orgId!, message.entry.id, {
       endTime: message.entry.endTime,
@@ -61,7 +62,7 @@ export async function handleTimeEntriesSync(ws: WebSocket, message: any): Promis
   const client = clients.get(ws);
   if (!client) return;
 
-  console.log(`📤 ${client.employeeName} synced ${message.entries?.length || 0} activities`);
+  wsLog(`📤 ${client.employeeName} synced ${message.entries?.length || 0} activities`);
 
   if (!message.entries || !Array.isArray(message.entries)) return;
 

@@ -25,7 +25,7 @@
     "dist:all": "npm run build && electron-builder -mwl --publish never",
     "release": "npm run build && electron-builder -mwl --publish always",
     "pretest": "npm run ensure-shared",
-    "test": "tsx --test src/__tests__/**/*.test.ts"
+    "test": "node --import tsx --test --test-isolation=none src/__tests__/**/*.test.ts"
   },
   "build": {
     "appId": "com.teamtracker.tracker",
