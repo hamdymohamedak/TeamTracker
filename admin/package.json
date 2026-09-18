@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "ensure-shared": "npm exec --prefix ../shared -- tsc -p ../shared/tsconfig.json",
+    "ensure-shared": "tsc -p ../shared/tsconfig.json",
     "predev": "npm run ensure-shared",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "tsx watch server/index.ts",

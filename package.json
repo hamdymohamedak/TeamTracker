@@ -22,7 +22,7 @@
     "typecheck:admin": "pnpm run build:shared && pnpm -C admin run typecheck",
     "typecheck:desktop": "pnpm run build:shared && pnpm -C desktop exec tsc --noEmit",
     "typecheck:desktop-admin": "pnpm -C desktop-admin exec tsc --noEmit",
-    "typecheck": "pnpm run build:shared && pnpm run typecheck:shared && pnpm -C admin run typecheck && pnpm -C desktop exec tsc --noEmit && pnpm run typecheck:desktop-admin",
+    "typecheck": "pnpm run build:shared && pnpm run typecheck:shared && pnpm -C admin run typecheck && pnpm -C desktop run ensure-shared && pnpm -C desktop exec tsc --noEmit && pnpm run typecheck:desktop-admin",
     "test": "pnpm run build:shared && pnpm -C admin run test && pnpm -C desktop run test",
     "test:admin": "pnpm run build:shared && pnpm -C admin run test",
     "test:desktop": "pnpm run build:shared && pnpm -C desktop run test",
