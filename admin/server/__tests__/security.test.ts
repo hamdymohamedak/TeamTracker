@@ -5,25 +5,13 @@
  * Run: cd admin && npm test
  */
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { ensureTestEnv, cleanupTestEnv, createOrgUser as createOrgUserFixture, mockReqRes } from './helpers/index.js';
 
-// Isolate test DB before importing server modules
-const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-test-'));
-process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long!!';
-process.env.DATA_DIR = testRoot;
-process.env.DATABASE_PATH = path.join(testRoot, 'database', 'admin.db');
-process.env.UPLOADS_DIR = path.join(testRoot, 'uploads');
-process.env.BACKUPS_DIR = path.join(testRoot, 'backups');
-process.env.BACKUP_ENABLED = '0';
-process.env.SEED_DEMO_DATA = '0';
+const testEnv = ensureTestEnv();
 
 const { initDatabase, getDatabase, createEmployee, createActivity, getEmployeeById } =
   await import('../database.js');
@@ -50,34 +38,13 @@ await initDatabase();
 ensureDataDirectories();
 
 async function createOrgUser(label: string) {
-  const db = getDatabase();
-  const now = new Date().toISOString();
-  const orgId = `org-${label}`;
-  const userId = `user-${label}`;
-  const empId = `emp-${label}`;
-  await db.run(
-    `INSERT INTO organizations (id, name, slug, owner_email, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [orgId, `Org ${label}`, `org-${label}`, `${label}@test.com`, now, now]
-  );
-  const passwordHash = await hashPassword('password123');
-  await db.run(
-    `INSERT INTO users (id, org_id, email, password_hash, name, role, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'owner', ?, ?)`,
-    [userId, orgId, `${label}@test.com`, passwordHash, `Owner ${label}`, now, now]
-  );
-  await createEmployee({
-    id: empId,
-    orgId,
-    name: `Employee ${label}`,
-    email: `emp-${label}@test.com`,
-    role: 'employee',
-    createdAt: now,
-    updatedAt: now,
+  return createOrgUserFixture(label, {
+    getDatabase,
+    hashPassword,
+    createEmployee,
+    generateDashboardToken,
+    generateDeviceToken,
   });
-  const dashboardToken = generateDashboardToken({ userId, orgId, email: `${label}@test.com` });
-  const deviceToken = generateDeviceToken({ employeeId: empId, orgId });
-  return { orgId, userId, empId, dashboardToken, deviceToken };
 }
 
 describe('paths', () => {
@@ -89,8 +56,7 @@ describe('paths', () => {
 
   it('rejects path traversal for screenshots', () => {
     assert.equal(resolveScreenshotAbsolutePath('../../etc/passwd'), null);
-    const { orgId } = { orgId: 'org-a' };
-    // relative under screenshots is ok structurally
+    const orgId = 'org-a';
     const abs = resolveScreenshotAbsolutePath(`${orgId}/emp/2020-01-01/x.jpg`);
     assert.ok(abs);
     assert.ok(abs!.includes('screenshots'));
@@ -99,29 +65,16 @@ describe('paths', () => {
 
 describe('auth middleware types', () => {
   it('dashboard token verifies as dashboard', () => {
-    const { orgId, userId } = { orgId: 'o1', userId: 'u1' };
-    const token = generateDashboardToken({ userId, orgId, email: 'a@b.c' });
+    const token = generateDashboardToken({ userId: 'u1', orgId: 'o1', email: 'a@b.c' });
     const payload = verifyToken(token);
     assert.equal(payload.type, 'dashboard');
   });
 
   it('requireAuth rejects device tokens', async () => {
     const a = await createOrgUser('auth1');
-    const req: any = { headers: { authorization: `Bearer ${a.deviceToken}` } };
-    const res: any = {
-      statusCode: 200,
-      body: null,
-      status(c: number) {
-        this.statusCode = c;
-        return this;
-      },
-      json(b: unknown) {
-        this.body = b;
-        return this;
-      },
-    };
+    const { req, res } = mockReqRes(`Bearer ${a.deviceToken}`);
     let nextCalled = false;
-    requireAuth(req, res, () => {
+    requireAuth(req as any, res as any, () => {
       nextCalled = true;
     });
     assert.equal(nextCalled, false);
@@ -130,21 +83,9 @@ describe('auth middleware types', () => {
 
   it('requireDeviceAuth rejects dashboard tokens', async () => {
     const a = await createOrgUser('auth2');
-    const req: any = { headers: { authorization: `Bearer ${a.dashboardToken}` } };
-    const res: any = {
-      statusCode: 200,
-      body: null,
-      status(c: number) {
-        this.statusCode = c;
-        return this;
-      },
-      json(b: unknown) {
-        this.body = b;
-        return this;
-      },
-    };
+    const { req, res } = mockReqRes(`Bearer ${a.dashboardToken}`);
     let nextCalled = false;
-    await requireDeviceAuth(req, res, () => {
+    await requireDeviceAuth(req as any, res as any, () => {
       nextCalled = true;
     });
     assert.equal(nextCalled, false);
@@ -169,21 +110,9 @@ describe('auth middleware types', () => {
       if (!denied.ok) assert.equal(denied.code, 'DEVICE_REVOKED');
     }
 
-    const req: any = { headers: { authorization: `Bearer ${accessToken}` } };
-    const res: any = {
-      statusCode: 200,
-      body: null as unknown,
-      status(c: number) {
-        this.statusCode = c;
-        return this;
-      },
-      json(b: unknown) {
-        this.body = b;
-        return this;
-      },
-    };
+    const { req, res } = mockReqRes(`Bearer ${accessToken}`);
     let nextCalled = false;
-    await requireDeviceAuth(req, res, () => {
+    await requireDeviceAuth(req as any, res as any, () => {
       nextCalled = true;
     });
     assert.equal(nextCalled, false);
@@ -278,9 +207,5 @@ describe('migrations', () => {
 });
 
 after(() => {
-  try {
-    fs.rmSync(testRoot, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  cleanupTestEnv(testEnv);
 });

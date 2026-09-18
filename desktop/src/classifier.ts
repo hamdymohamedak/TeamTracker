@@ -1,72 +1,36 @@
 // Activity Classification System for TeamTracker Desktop
-// Universal classification that works for ANY employee type
+// Types, identical constants and utility functions are imported from the
+// canonical shared dist.  Desktop-specific overrides (thresholds, rules and
+// the classifyActivity implementation) live below the import block.
+//
+// NOTE: imports resolve via .js → sibling .d.ts (type-only, no rootDir issue)
+//       and via .js → sibling .js at tsx/Node runtime.
 
-export type ActivityCategory =
-  | 'core_work'
-  | 'communication'
-  | 'research_learning'
-  | 'planning_docs'
-  | 'break_idle'
-  | 'entertainment'
-  | 'social_media'
-  | 'shopping_personal'
-  | 'other';
+// ---------------------------------------------------------------------------
+// Re-import shared items from canonical dist — then re-export unchanged ones
+// ---------------------------------------------------------------------------
+import type {
+  ActivityCategory,
+  ActivityClassification,
+  ProductivityLevel,
+  SuspiciousPattern,
+} from '../../shared/dist/classification.js';
 
-export type ProductivityLevel = 'productive' | 'neutral' | 'unproductive' | 'idle';
+import {
+  PRODUCTIVITY_SCORES,
+  CATEGORY_NAMES,
+  PRODUCTIVITY_LEVELS,
+  calculateTrueProductivity,
+  detectGamingAttempts,
+  generateDailySummary,
+} from '../../shared/dist/classification.js';
 
-export interface ActivityClassification {
-  category: ActivityCategory;
-  categoryName: string;
-  productivityScore: number;
-  productivityLevel: ProductivityLevel;
-  isSuspicious: boolean;
-  suspiciousReason?: string;
-  isIdle: boolean;
-}
+export type { ActivityCategory, ActivityClassification, ProductivityLevel, SuspiciousPattern };
+export { PRODUCTIVITY_SCORES, CATEGORY_NAMES, PRODUCTIVITY_LEVELS, calculateTrueProductivity, detectGamingAttempts, generateDailySummary };
 
-// Productivity scores by category (0-100)
-export const PRODUCTIVITY_SCORES: Record<ActivityCategory, number> = {
-  core_work: 95,
-  communication: 70,
-  research_learning: 85,
-  planning_docs: 80,
-  break_idle: 0,
-  entertainment: 5,
-  social_media: 10,
-  shopping_personal: 5,
-  other: 30
-};
-
-export const CATEGORY_NAMES: Record<ActivityCategory, string> = {
-  core_work: 'Core Work',
-  communication: 'Communication',
-  research_learning: 'Research & Learning',
-  planning_docs: 'Planning & Documentation',
-  break_idle: 'Break/Idle',
-  entertainment: 'Entertainment',
-  social_media: 'Social Media',
-  shopping_personal: 'Shopping/Personal',
-  other: 'Other'
-};
-
-export const PRODUCTIVITY_LEVELS: Record<ActivityCategory, ProductivityLevel> = {
-  core_work: 'productive',
-  communication: 'productive',
-  research_learning: 'productive',
-  planning_docs: 'productive',
-  break_idle: 'idle',
-  entertainment: 'unproductive',
-  social_media: 'unproductive',
-  shopping_personal: 'unproductive',
-  other: 'neutral'
-};
-
-// Universal app classification - works for ANY employee type
-interface AppRule {
-  patterns: string[];
-  category: ActivityCategory;
-  exceptions?: string[];
-}
+// ---------------------------------------------------------------------------
+// Desktop-specific additions and overrides
+// ---------------------------------------------------------------------------
 
 // FIX: System processes that should NEVER be tracked as suspicious
 export const SYSTEM_PROCESSES_TO_IGNORE = [
@@ -74,6 +38,13 @@ export const SYSTEM_PROCESSES_TO_IGNORE = [
   'screen saver', 'screensaver', 'lockscreen', 'lock screen',
   'securityagent', 'authorizationhost'
 ];
+
+// Universal app classification - works for ANY employee type
+interface AppRule {
+  patterns: string[];
+  category: ActivityCategory;
+  exceptions?: string[];
+}
 
 export const APP_CLASSIFICATION_RULES: AppRule[] = [
   // System/Break - Always mark as idle, never suspicious
@@ -85,8 +56,7 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
     ],
     category: 'break_idle'
   },
-
-  // Core Work Tools (generic - covers many professions)
+  // Core Work Tools
   {
     patterns: [
       'microsoft excel', 'excel', 'google sheets', 'spreadsheet',
@@ -102,20 +72,17 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
     ],
     category: 'core_work'
   },
-
-  // Communication (where the "ghost" tricks happen)
+  // Communication
   {
     patterns: ['slack', 'microsoft teams', 'teams -', 'zoom', 'google meet', 'webex', 'skype', 'discord', 'telegram', 'whatsapp'],
     category: 'communication'
   },
-
   // Email
   {
     patterns: ['outlook', 'gmail', 'mail', 'thunderbird', 'apple mail'],
     category: 'communication'
   },
-
-  // Research & Learning (work-related)
+  // Research & Learning
   {
     patterns: [
       'stackoverflow', 'github', 'gitlab', 'documentation', 'docs.',
@@ -125,15 +92,13 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
     category: 'research_learning',
     exceptions: ['facebook', 'instagram', 'twitter', 'reddit']
   },
-
-  // OpenClaw - Core Work (employee-specific context)
+  // OpenClaw - Core Work
   {
     patterns: [
       'openclaw', 'claw', 'mohltbot', 'mission-control', 'teamtracker', 'arch-track',
     ],
     category: 'core_work'
   },
-
   // Planning & Documentation
   {
     patterns: [
@@ -142,8 +107,7 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
     ],
     category: 'planning_docs'
   },
-
-  // Entertainment (the time wasters)
+  // Entertainment
   {
     patterns: [
       'youtube', 'netflix', 'hulu', 'disney+', 'amazon prime video',
@@ -153,8 +117,7 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
     category: 'entertainment',
     exceptions: ['tutorial', 'course', 'lecture', 'how to', 'documentation', 'workshop', 'training']
   },
-
-  // Social Media
+  // Social Media (desktop includes x.com — shared removed it after a false-positive incident)
   {
     patterns: [
       'facebook', 'instagram', 'twitter', 'x.com', 'linkedin', 'reddit',
@@ -162,7 +125,6 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
     ],
     category: 'social_media'
   },
-
   // Shopping/Personal
   {
     patterns: [
@@ -171,8 +133,7 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
     ],
     category: 'shopping_personal'
   },
-
-  // System apps (neutral) - NOTE: Browsers are handled separately above with work indicator detection
+  // System apps (neutral)
   {
     patterns: [
       'finder', 'explorer', 'desktop', 'system preferences', 'settings',
@@ -182,22 +143,17 @@ export const APP_CLASSIFICATION_RULES: AppRule[] = [
   }
 ];
 
-// Suspicious pattern detection
-export interface SuspiciousPattern {
-  type: 'video_idle' | 'communication_ghost' | 'rapid_switching' | 'fake_active' | 'long_idle';
-  description: string;
-  threshold: number;
-}
-
+// Desktop-specific thresholds — more lenient than shared to avoid false
+// positives on a developer/writer's focused session.
 export const SUSPICIOUS_THRESHOLDS = {
   videoIdleMinutes: 15,
   communicationGhostMinutes: 10,
   rapidSwitchSeconds: 3,
-  idleThresholdMinutes: 15,  // Changed from 5 to 15 minutes - more reasonable for focused work
-  sameWindowMinutes: 60,     // Changed from 30 to 60 minutes - reading docs/videos can take time
+  idleThresholdMinutes: 15,  // shared uses 5 min; desktop uses 15 min (focused work)
+  sameWindowMinutes: 60,     // shared uses 30 min; desktop uses 60 min (reading docs)
 };
 
-// Main classification function
+// Main classification function — desktop variant with system-process guard
 export function classifyActivity(
   appName: string,
   windowTitle: string,
@@ -213,11 +169,10 @@ export function classifyActivity(
   const appLower = appName.toLowerCase();
   const titleLower = windowTitle.toLowerCase();
 
-  // Default classification
   let category: ActivityCategory = 'other';
   let isIdle = false;
 
-  // EXCLUDE idle/loginwindow from suspicious detection - these are system states, not employee actions
+  // Never track system idle states as suspicious
   const systemIdleApps = ['idle', 'loginwindow', 'lockscreen', 'screensaver', 'window server'];
   const isSystemIdle = systemIdleApps.some(app => appLower.includes(app) || titleLower.includes(app));
 
@@ -227,69 +182,48 @@ export function classifyActivity(
       categoryName: CATEGORY_NAMES['break_idle'],
       productivityScore: 0,
       productivityLevel: 'idle',
-      isSuspicious: false, // Never mark system idle as suspicious
+      isSuspicious: false,
       suspiciousReason: undefined,
       isIdle: true
     };
   }
 
-  // SPECIAL CASE: Check window title FIRST for work indicators in browsers
-  // This ensures "mission-control" in a Chrome tab gets classified as Core Work
+  // Browser: check window title for work indicators first
   const browserApps = ['chrome', 'safari', 'firefox', 'edge', 'brave', 'opera'];
   const isBrowser = browserApps.some(b => appLower.includes(b));
 
   if (isBrowser) {
     const workIndicators = [
-        'openclaw', 'mission-control', 'debug', 'debugger', 'codex',
-        'github', 'gitlab', 'bitbucket', 'stackoverflow',
-        'docker', 'kubernetes', 'terminal', 'console',
-        'api', 'endpoint', 'webhook', 'integration',
-        'architecture', 'system design', 'workflow', 'automation',
-        'vscode', 'cursor', 'intellij', 'sublime', 'atom',
-        'pull request', 'issues', 'bug', 'fix', 'deploy', 'build'
-      ];
-
-      const hasWorkIndicator = workIndicators.some(indicator =>
-        titleLower.includes(indicator)
-      );
-
-    if (hasWorkIndicator) {
+      'openclaw', 'mission-control', 'debug', 'debugger', 'codex',
+      'github', 'gitlab', 'bitbucket', 'stackoverflow',
+      'docker', 'kubernetes', 'terminal', 'console',
+      'api', 'endpoint', 'webhook', 'integration',
+      'architecture', 'system design', 'workflow', 'automation',
+      'vscode', 'cursor', 'intellij', 'sublime', 'atom',
+      'pull request', 'issues', 'bug', 'fix', 'deploy', 'build'
+    ];
+    if (workIndicators.some(i => titleLower.includes(i))) {
       category = 'core_work';
     } else {
-      // Check for research/learning indicators
       const researchIndicators = [
         'documentation', 'docs.', 'readme', 'tutorial', 'how to',
         'wikipedia', 'confluence', 'notion', 'obsidian',
         'stackoverflow', 'github.com', 'gitlab.com'
       ];
-
-      const hasResearchIndicator = researchIndicators.some(indicator =>
-        titleLower.includes(indicator)
-      );
-
-      if (hasResearchIndicator) {
+      if (researchIndicators.some(i => titleLower.includes(i))) {
         category = 'research_learning';
       }
     }
   }
 
-  // If not a browser or no work indicator found, use normal rules
   if (category === 'other') {
-    // Find matching rule
     for (const rule of APP_CLASSIFICATION_RULES) {
-      const matchesPattern = rule.patterns.some(pattern =>
-        appLower.includes(pattern) || titleLower.includes(pattern)
-      );
-
+      const matchesPattern = rule.patterns.some(p => appLower.includes(p) || titleLower.includes(p));
       if (matchesPattern) {
         if (rule.exceptions) {
-          const hasException = rule.exceptions.some(ex =>
-            titleLower.includes(ex)
-          );
+          const hasException = rule.exceptions.some(ex => titleLower.includes(ex));
           if (hasException) {
-            if (rule.category === 'entertainment') {
-              category = 'research_learning';
-            }
+            if (rule.category === 'entertainment') category = 'research_learning';
             continue;
           }
         }
@@ -299,40 +233,34 @@ export function classifyActivity(
     }
   }
 
-  // Detect suspicious patterns
   let isSuspicious = false;
   let suspiciousReason: string | undefined;
 
-  // FIX: Never mark system processes as suspicious
-  const isSystemProcess = SYSTEM_PROCESSES_TO_IGNORE.some(proc => 
+  const isSystemProcess = SYSTEM_PROCESSES_TO_IGNORE.some(proc =>
     appLower.includes(proc) || titleLower.includes(proc)
   );
 
   if (context && !isSystemProcess) {
-    // Video Idle Trick
     if (category === 'entertainment' && context.isVideoPlaying) {
       if (!context.hasInputActivity || (context.lastInputMinutesAgo && context.lastInputMinutesAgo > 5)) {
         isSuspicious = true;
-        suspiciousReason = `Video playing (${appName}) with no interaction for ${context.lastInputMinutesAgo || 'unknown'} min - likely AFK trick`;
+        suspiciousReason = `Video playing (${appName}) with no interaction for ${context.lastInputMinutesAgo ?? 'unknown'} min`;
         category = 'break_idle';
         isIdle = true;
       }
     }
 
-    // Communication Ghost
     if (category === 'communication') {
       const noInput = !context.hasInputActivity || (context.lastInputMinutesAgo && context.lastInputMinutesAgo > SUSPICIOUS_THRESHOLDS.communicationGhostMinutes);
       const longDuration = context.durationMinutes && context.durationMinutes > SUSPICIOUS_THRESHOLDS.communicationGhostMinutes;
-
       if (noInput && longDuration) {
         isSuspicious = true;
-        suspiciousReason = `${appName} "active" but no input for ${context.lastInputMinutesAgo || context.durationMinutes} min - ghost presence`;
+        suspiciousReason = `${appName} "active" but no input for ${context.lastInputMinutesAgo ?? context.durationMinutes} min - ghost presence`;
         category = 'break_idle';
         isIdle = true;
       }
     }
 
-    // Long Idle
     if (context.lastInputMinutesAgo && context.lastInputMinutesAgo > SUSPICIOUS_THRESHOLDS.idleThresholdMinutes) {
       if (!isSuspicious) {
         isSuspicious = true;
@@ -342,22 +270,20 @@ export function classifyActivity(
       }
     }
 
-    // Same Window Too Long
     if (context.durationMinutes && context.durationMinutes > SUSPICIOUS_THRESHOLDS.sameWindowMinutes) {
       if (!context.hasInputActivity && !isSuspicious) {
         isSuspicious = true;
-        suspiciousReason = `Same window (${appName}) for ${context.durationMinutes} min with no interaction - possible AFK`;
+        suspiciousReason = `Same window (${appName}) for ${context.durationMinutes} min with no interaction`;
         category = 'break_idle';
         isIdle = true;
       }
     }
 
-    // Rapid Switching
     if (context.windowChangeCount && context.durationMinutes) {
       const switchesPerMinute = context.windowChangeCount / context.durationMinutes;
       if (switchesPerMinute > 10) {
         isSuspicious = true;
-        suspiciousReason = `Rapid window switching (${switchesPerMinute.toFixed(1)}/min) - distracted, not focused`;
+        suspiciousReason = `Rapid window switching (${switchesPerMinute.toFixed(1)}/min) - distracted`;
       }
     }
   }
@@ -370,163 +296,5 @@ export function classifyActivity(
     isSuspicious,
     suspiciousReason,
     isIdle
-  };
-}
-
-// Calculate true productivity (excluding idle time)
-export function calculateTrueProductivity(
-  activities: Array<{
-    category: ActivityCategory;
-    duration: number;
-    isIdle: boolean;
-    isSuspicious: boolean;
-  }>
-): {
-  productiveMinutes: number;
-  idleMinutes: number;
-  unproductiveMinutes: number;
-  totalMinutes: number;
-  productivityPercentage: number;
-} {
-  let productive = 0;
-  let idle = 0;
-  let unproductive = 0;
-
-  for (const activity of activities) {
-    const minutes = activity.duration / 60;
-
-    if (activity.isIdle) {
-      idle += minutes;
-    } else if (PRODUCTIVITY_LEVELS[activity.category] === 'productive') {
-      productive += minutes;
-    } else {
-      unproductive += minutes;
-    }
-  }
-
-  const total = productive + idle + unproductive;
-  const productivityPercentage = total > 0
-    ? Math.round((productive / total) * 100)
-    : 0;
-
-  return {
-    productiveMinutes: Math.round(productive),
-    idleMinutes: Math.round(idle),
-    unproductiveMinutes: Math.round(unproductive),
-    totalMinutes: Math.round(total),
-    productivityPercentage
-  };
-}
-
-// Detect if employee is trying to game the system
-export function detectGamingAttempts(
-  activities: Array<{
-    appName: string;
-    windowTitle: string;
-    duration: number;
-    hasInputActivity?: boolean;
-  }>
-): Array<{
-  type: string;
-  description: string;
-  severity: 'low' | 'medium' | 'high';
-}> {
-  const issues: Array<{ type: string; description: string; severity: 'low' | 'medium' | 'high' }> = [];
-
-  const hasYouTube = activities.some(a =>
-    a.appName.toLowerCase().includes('youtube') && a.duration > 900
-  );
-  const hasSlackTeams = activities.some(a =>
-    (a.appName.toLowerCase().includes('slack') || a.appName.toLowerCase().includes('teams')) &&
-    !a.hasInputActivity
-  );
-
-  if (hasYouTube && hasSlackTeams) {
-    issues.push({
-      type: 'video_with_communication',
-      description: 'YouTube/Video playing while communication app shows "active" - likely using video to keep status green',
-      severity: 'high'
-    });
-  }
-
-  const commApps = activities.filter(a =>
-    a.appName.toLowerCase().includes('slack') ||
-    a.appName.toLowerCase().includes('teams')
-  );
-  const totalCommTime = commApps.reduce((sum, a) => sum + a.duration, 0);
-  const hasInputInComm = commApps.some(a => a.hasInputActivity);
-
-  if (totalCommTime > 1800 && !hasInputInComm) {
-    issues.push({
-      type: 'ghost_presence',
-      description: 'Communication app open for extended period with no messages sent - ghost presence detected',
-      severity: 'medium'
-    });
-  }
-
-  return issues;
-}
-
-// Generate daily summary
-export function generateDailySummary(
-  employeeId: string,
-  activities: Array<{
-    category: ActivityCategory;
-    duration: number;
-    isIdle: boolean;
-    isSuspicious: boolean;
-    appName: string;
-    windowTitle: string;
-  }>
-): {
-  employeeId: string;
-  totalHours: number;
-  productiveHours: number;
-  idleHours: number;
-  unproductiveHours: number;
-  productivityScore: number;
-  suspiciousActivities: number;
-  topApps: Array<{ name: string; hours: number; category: ActivityCategory }>;
-  warnings: string[];
-} {
-  const { productiveMinutes, idleMinutes, unproductiveMinutes, totalMinutes, productivityPercentage } =
-    calculateTrueProductivity(activities);
-
-  const appUsage = new Map<string, { duration: number; category: ActivityCategory }>();
-  for (const activity of activities) {
-    const existing = appUsage.get(activity.appName);
-    if (existing) {
-      existing.duration += activity.duration;
-    } else {
-      appUsage.set(activity.appName, { duration: activity.duration, category: activity.category });
-    }
-  }
-
-  const topApps = Array.from(appUsage.entries())
-    .map(([name, data]) => ({
-      name,
-      hours: Math.round((data.duration / 3600) * 10) / 10,
-      category: data.category
-    }))
-    .sort((a, b) => b.hours - a.hours)
-    .slice(0, 5);
-
-  const suspiciousCount = activities.filter(a => a.isSuspicious).length;
-
-  const warnings: string[] = [];
-  if (idleMinutes > 120) warnings.push('High idle time detected');
-  if (suspiciousCount > 3) warnings.push('Multiple suspicious patterns detected');
-  if (productivityPercentage < 50) warnings.push('Low productivity score');
-
-  return {
-    employeeId,
-    totalHours: Math.round((totalMinutes / 60) * 10) / 10,
-    productiveHours: Math.round((productiveMinutes / 60) * 10) / 10,
-    idleHours: Math.round((idleMinutes / 60) * 10) / 10,
-    unproductiveHours: Math.round((unproductiveMinutes / 60) * 10) / 10,
-    productivityScore: productivityPercentage,
-    suspiciousActivities: suspiciousCount,
-    topApps,
-    warnings
   };
 }
