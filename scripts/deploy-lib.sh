@@ -237,13 +237,29 @@ tt_ensure_linux_native_deps() {
       ;;
   esac
 
-  (
-    cd "$root"
-    npm install --no-save --include=optional "${pkgs[@]}" || true
-  )
-  tt_ok "Ensured Linux native build binaries ($arch)"
-}
+  cd "$root"
+  # Force platform optional binaries (lockfiles from macOS omit these).
+  npm install --no-save --include=optional "${pkgs[@]}"
+  # Vite runs from admin/; ensure the binding is visible there too under workspaces.
+  if [ -d "$root/admin" ]; then
+    (cd "$root/admin" && npm install --no-save --include=optional "${pkgs[@]}" 2>/dev/null || true)
+  fi
 
+  local ok_native=0
+  local pkg
+  for pkg in "${pkgs[@]}"; do
+    if node -e "require('${pkg}')" 2>/dev/null; then
+      ok_native=1
+      break
+    fi
+  done
+  if [ "$ok_native" -ne 1 ]; then
+    tt_warn "platform native binary still missing — forcing reinstall of ${pkgs[*]}"
+    npm install --no-save --force "${pkgs[@]}"
+  fi
+
+  tt_ok "Ensured Linux native build binaries ($arch: ${pkgs[*]})"
+}
 # Clean install at monorepo root so workspace hoisting picks correct optional deps.
 tt_npm_install_and_build_admin() {
   local root="${1:-$APP_DIR}"
@@ -267,6 +283,9 @@ tt_npm_install_and_build_admin() {
     cd "$root"
     npm install iconv-lite@0.4.24 --no-save --include=dev 2>/dev/null || true
   )
+
+  # Re-assert native deps after any later npm installs may have pruned optionals
+  tt_ensure_linux_native_deps "$root"
 
   cd "$admin"
   npm run build
