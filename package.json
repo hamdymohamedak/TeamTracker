@@ -14,7 +14,7 @@
     "dev:admin": "pnpm -C admin run dev",
     "dev:desktop": "pnpm -C desktop run dev",
     "dev:desktop-admin": "pnpm -C desktop-admin run dev",
-    "build:shared": "pnpm -C shared run build",
+    "build:shared": "pnpm -C shared run build && node scripts/write-live-view-stubs.mjs",
     "build:admin": "pnpm run build:shared && pnpm -C admin run build",
     "build:desktop": "pnpm run build:shared && pnpm -C desktop run build",
     "build:desktop-admin": "pnpm -C desktop-admin run build",

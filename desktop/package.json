@@ -10,7 +10,7 @@
   "scripts": {
     "postinstall": "node scripts/ensure-electron.mjs",
     "ensure-electron": "node scripts/ensure-electron.mjs",
-    "ensure-shared": "tsc -p ../shared/tsconfig.json",
+    "ensure-shared": "tsc -p ../shared/tsconfig.json && node ../scripts/write-live-view-stubs.mjs",
     "predev": "npm run ensure-shared",
     "dev": "node scripts/ensure-electron.mjs && tsc && vite build --mode development && node scripts/copy-assets.mjs && electron .",
     "prebuild": "npm run ensure-shared",

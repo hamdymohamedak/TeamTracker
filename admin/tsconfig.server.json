@@ -18,6 +18,6 @@
       "@teamtracker/shared": ["./shared-types"]
     }
   },
-  "include": ["server/**/*", "shared-types.ts", "shared/**/*"],
-  "exclude": ["node_modules", "dist", "src/client", "server/__tests__"]
+  "include": ["server/**/*", "shared-types.ts"],
+  "exclude": ["node_modules", "dist", "src/client", "server/__tests__", "shared"]
 }

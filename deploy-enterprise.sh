@@ -119,7 +119,11 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-[ "$HEALTH_OK" -eq 1 ] || die "/api/health failed — see: pm2 logs $PM2_NAME"
+[ "$HEALTH_OK" -eq 1 ] || {
+  echo "----- pm2 logs $PM2_NAME (last 80 lines) -----" >&2
+  pm2 logs "$PM2_NAME" --lines 80 --nostream >&2 || true
+  die "/api/health failed — see pm2 logs above"
+}
 ok "/api/health"
 [ "$READY_OK" -eq 1 ] || die "/api/ready failed — DB/storage not ready (data: $DATA_DIR)"
 ok "/api/ready"

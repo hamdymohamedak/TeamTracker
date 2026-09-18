@@ -102,7 +102,7 @@ Canonical source is `shared/src/`. Admin and desktop consume it via **thin re-ex
 - `desktop/src/live-view-shared/*` → `shared/dist/live-view/*`
 - `desktop/src/classifier.ts` — imports shared classification; keeps desktop-specific thresholds/rules
 
-Always run `pnpm run build:shared` (or rely on admin/desktop `predev` / `prebuild` / `pretest` hooks) so `shared/dist` exists before typecheck, test, or dev. Edit `shared/src/` then rebuild shared — no manual file copies.
+Always run `pnpm run build:shared` (or rely on admin/desktop `predev` / `prebuild` / `pretest` hooks) so `shared/dist` exists and `scripts/write-live-view-stubs.mjs` writes the `.js` re-exports under `admin/shared/live-view/` and `desktop/src/live-view-shared/`. Edit `shared/src/` then rebuild shared — no manual file copies. Server production imports resolve those `.js` stubs (outside `admin/dist`), not a broken copy under `dist/shared/`.
 
 ## Desktop (`desktop/src/`)
 
