@@ -95,30 +95,44 @@ if grep -qE '^PORT=' "$ENV_FILE"; then
   PORT="$(tt_env_get "$ENV_FILE" PORT)"
   PORT="${PORT:-3001}"
 fi
+# Strip CR/quotes that break curl
+PORT="$(printf '%s' "$PORT" | tr -d '\r\"' )"
+PORT="${PORT:-3001}"
 
-pm2 describe "$PM2_NAME" >/dev/null 2>&1 && pm2 restart "$PM2_NAME" --update-env \
-  || pm2 start dist/server/index.js --name "$PM2_NAME" --cwd "$ADMIN_DIR" --update-env
+# Recreate PM2 process so cwd/script/env always match this deploy
+pm2 delete "$PM2_NAME" >/dev/null 2>&1 || true
+pm2 start dist/server/index.js --name "$PM2_NAME" --cwd "$ADMIN_DIR" --update-env
 pm2 save
-ok "PM2 restarted"
+ok "PM2 restarted (port ${PORT})"
 
 echo ""
-echo "⏳ Health checks..."
+echo "⏳ Health checks (http://127.0.0.1:${PORT})..."
 HEALTH_OK=0
 READY_OK=0
-for _ in $(seq 1 30); do
-  curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 && HEALTH_OK=1
-  if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/ready" >/dev/null 2>&1; then
+for _ in $(seq 1 45); do
+  if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 \
+    || curl -sf --max-time 2 "http://localhost:${PORT}/api/health" >/dev/null 2>&1; then
+    HEALTH_OK=1
+  fi
+  if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/ready" >/dev/null 2>&1 \
+    || curl -sf --max-time 2 "http://localhost:${PORT}/api/ready" >/dev/null 2>&1; then
     READY_OK=1
     break
   fi
   sleep 1
 done
 
-[ "$HEALTH_OK" -eq 1 ] || {
+if [ "$HEALTH_OK" -ne 1 ]; then
+  echo "----- diagnostics -----" >&2
+  echo "PORT=${PORT}" >&2
+  pm2 show "$PM2_NAME" >&2 || true
+  ss -lntp 2>/dev/null | grep -E ":${PORT}\\b" >&2 || netstat -lntp 2>/dev/null | grep -E ":${PORT}\\b" >&2 || true
+  echo "curl -v:" >&2
+  curl -v --max-time 3 "http://127.0.0.1:${PORT}/api/health" >&2 || true
   echo "----- pm2 logs $PM2_NAME (last 80 lines) -----" >&2
   pm2 logs "$PM2_NAME" --lines 80 --nostream >&2 || true
-  die "/api/health failed — see pm2 logs above"
-}
+  die "/api/health failed — see diagnostics above"
+fi
 ok "/api/health"
 [ "$READY_OK" -eq 1 ] || die "/api/ready failed — DB/storage not ready (data: $DATA_DIR)"
 ok "/api/ready"

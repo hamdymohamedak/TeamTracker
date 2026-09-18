@@ -203,10 +203,11 @@ async function startServer() {
     startScreenshotRetentionScheduler();
     startBackupScheduler();
 
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
       serverReady = true;
       logger.info('TeamTracker server listening', {
         port: PORT,
+        host: '0.0.0.0',
         health: `/api/health`,
         ready: `/api/ready`,
       });

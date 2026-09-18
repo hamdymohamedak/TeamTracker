@@ -256,6 +256,21 @@ tt_npm_install_and_build_admin() {
   npm install --include=dev --include=optional
   tt_ensure_linux_native_deps "$root"
 
+  # Repair known-broken nested iconv-lite (body-parser → raw-body missing encodings)
+  find "$root/node_modules" -type d -path '*/iconv-lite' 2>/dev/null | while read -r d; do
+    if [ ! -f "$d/encodings/index.js" ]; then
+      tt_warn "Removing broken iconv-lite at $d"
+      rm -rf "$d"
+    fi
+  done
+  (
+    cd "$root"
+    npm install iconv-lite@0.4.24 --no-save --include=dev 2>/dev/null || true
+  )
+
   cd "$admin"
   npm run build
+
+  # Fail deploy early if production live-view bundle cannot load
+  node --input-type=module -e "import('./dist/shared/live-view/index.js').then(() => console.log('live-view runtime ok')).catch((e) => { console.error(e); process.exit(1); })"
 }
