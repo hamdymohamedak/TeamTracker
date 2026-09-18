@@ -33,6 +33,11 @@ export function ensureTestEnv(prefix = 'tt-test-'): TestEnv {
   process.env.BACKUP_ENABLED = '0';
   process.env.SEED_DEMO_DATA = '0';
 
+  // Extra guard if a file forgot --import silence-stdout (IPC-safe tests).
+  console.log = () => {};
+  console.info = () => {};
+  console.debug = () => {};
+
   cached = { testRoot, databasePath, uploadsDir, backupsDir };
   return cached;
 }
