@@ -85,9 +85,38 @@ tt_ensure_production_env "$ENV_FILE"
 
 echo ""
 echo "🔨 Building..."
+cd "$APP_DIR"
+
+# Clean broken nested installs (iconv-lite encodings often missing under hoisted workspaces)
+rm -rf node_modules admin/node_modules shared/node_modules
+
+if [ -f "$APP_DIR/package.json" ]; then
+  npm install --include=dev
+fi
+
 cd "$ADMIN_DIR"
 npm install --include=dev
+
+# Repair known-broken nested iconv-lite (body-parser → raw-body)
+if [ -d "$APP_DIR/node_modules" ]; then
+  find "$APP_DIR/node_modules" -type d -path '*/iconv-lite' 2>/dev/null | while read -r d; do
+    if [ ! -f "$d/encodings/index.js" ]; then
+      warn "Removing broken iconv-lite at $d"
+      rm -rf "$d"
+    fi
+  done
+  npm install iconv-lite@0.4.24 --no-save --include=dev 2>/dev/null || true
+fi
+
+if [ "$(uname -m)" = "x86_64" ]; then
+  npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@4.59.0" 2>/dev/null || true
+  ok "Ensured Linux native build binaries (x86_64)"
+fi
+
 npm run build
+
+# Fail deploy early if production live-view bundle is broken
+node --input-type=module -e "import('./dist/shared/live-view/index.js').then(() => console.log('live-view runtime ok')).catch((e) => { console.error(e); process.exit(1); })"
 ok "Build complete"
 
 echo ""
@@ -100,30 +129,44 @@ if grep -qE '^PORT=' "$ENV_FILE"; then
   PORT="$(tt_env_get "$ENV_FILE" PORT)"
   PORT="${PORT:-3001}"
 fi
+# Strip CR/quotes that break curl
+PORT="$(printf '%s' "$PORT" | tr -d '\r\"' )"
+PORT="${PORT:-3001}"
 
-pm2 describe "$PM2_NAME" >/dev/null 2>&1 && pm2 restart "$PM2_NAME" --update-env \
-  || pm2 start dist/server/index.js --name "$PM2_NAME" --cwd "$ADMIN_DIR" --update-env
+# Recreate PM2 process so cwd/script/env always match this deploy
+pm2 delete "$PM2_NAME" >/dev/null 2>&1 || true
+pm2 start dist/server/index.js --name "$PM2_NAME" --cwd "$ADMIN_DIR" --update-env
 pm2 save
-ok "PM2 restarted"
+ok "PM2 restarted (port ${PORT})"
 
 echo ""
-echo "⏳ Health checks..."
+echo "⏳ Health checks (http://127.0.0.1:${PORT})..."
 HEALTH_OK=0
 READY_OK=0
-for _ in $(seq 1 30); do
-  curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 && HEALTH_OK=1
-  if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/ready" >/dev/null 2>&1; then
+for _ in $(seq 1 45); do
+  if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 \
+    || curl -sf --max-time 2 "http://localhost:${PORT}/api/health" >/dev/null 2>&1; then
+    HEALTH_OK=1
+  fi
+  if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/ready" >/dev/null 2>&1 \
+    || curl -sf --max-time 2 "http://localhost:${PORT}/api/ready" >/dev/null 2>&1; then
     READY_OK=1
     break
   fi
   sleep 1
 done
 
-[ "$HEALTH_OK" -eq 1 ] || {
+if [ "$HEALTH_OK" -ne 1 ]; then
+  echo "----- diagnostics -----" >&2
+  echo "PORT=${PORT}" >&2
+  pm2 show "$PM2_NAME" >&2 || true
+  ss -lntp 2>/dev/null | grep -E ":${PORT}\\b" >&2 || netstat -lntp 2>/dev/null | grep -E ":${PORT}\\b" >&2 || true
+  echo "curl -v:" >&2
+  curl -v --max-time 3 "http://127.0.0.1:${PORT}/api/health" >&2 || true
   echo "----- pm2 logs $PM2_NAME (last 80 lines) -----" >&2
   pm2 logs "$PM2_NAME" --lines 80 --nostream >&2 || true
-  die "/api/health failed — see pm2 logs above"
-}
+  die "/api/health failed — see diagnostics above"
+fi
 ok "/api/health"
 [ "$READY_OK" -eq 1 ] || die "/api/ready failed — DB/storage not ready (data: $DATA_DIR)"
 ok "/api/ready"
