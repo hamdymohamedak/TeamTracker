@@ -5,7 +5,11 @@ import WebSocket from 'ws';
 import { getEffectiveServerUrl } from './config.js';
 import { captureNow, refreshOrgCapturePolicy } from './screenshot.js';
 import {
+  applyLiveViewQuality,
+  configureLiveViewBinarySender,
   configureLiveViewSender,
+  handleLiveViewSignal,
+  refreshLiveViewPrivacyGate,
   startLiveViewSession,
   stopLiveViewSession,
 } from './live-view.js';
@@ -16,6 +20,7 @@ type GetContext = () => { appName?: string; windowTitle?: string; employeeName?:
 let ws: WebSocket | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let pollTimer: NodeJS.Timeout | null = null;
+let privacyLiveTimer: NodeJS.Timeout | null = null;
 let intentionalClose = false;
 let reconnectAttempt = 0;
 let getTokenFn: GetToken = () => '';
@@ -34,6 +39,15 @@ function sendMessage(message: Record<string, unknown>): void {
     ws.send(JSON.stringify(message));
   } catch (err) {
     console.warn('[remote] send failed:', (err as Error).message);
+  }
+}
+
+function sendBinary(data: Buffer | Uint8Array): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try {
+    ws.send(data, { binary: true });
+  } catch (err) {
+    console.warn('[remote] binary send failed:', (err as Error).message);
   }
 }
 
@@ -75,8 +89,6 @@ function handleMessage(raw: WebSocket.RawData): void {
       void handleScreenshotCommand(String(message.data.requestId));
     }
     if (message?.type === 'command:live-view-start' && message?.data?.sessionId) {
-      // Refresh privacy rules first so the first frames respect new blocks
-      // (e.g. WhatsApp / web.whatsapp.com added moments ago).
       const sessionId = String(message.data.sessionId);
       void (async () => {
         try {
@@ -84,17 +96,45 @@ function handleMessage(raw: WebSocket.RawData): void {
         } catch (err) {
           console.warn('[remote] privacy policy refresh failed:', (err as Error).message);
         }
-        startLiveViewSession(sessionId);
+        startLiveViewSession(sessionId, {
+          quality: message.data.quality,
+          webrtcEnabled: message.data.webrtcEnabled,
+          wsFallbackEnabled: message.data.wsFallbackEnabled,
+          maxFrameBytes: message.data.maxFrameBytes,
+          iceServers: message.data.iceServers,
+        });
+        startPrivacyLiveLoop();
       })();
     }
     if (message?.type === 'command:live-view-stop') {
+      stopPrivacyLiveLoop();
       stopLiveViewSession('admin-stop');
+    }
+    if (message?.type === 'command:live-view-quality') {
+      applyLiveViewQuality(message.data?.quality, message.data);
+    }
+    if (message?.type === 'command:live-view-signal' && message?.data?.signal) {
+      handleLiveViewSignal(message.data.signal);
     }
     if (message?.type === 'sync-request') {
       console.log('[remote] sync-request received (activity sync continues via HTTP)');
     }
   } catch (err) {
     console.warn('[remote] bad WS message:', (err as Error).message);
+  }
+}
+
+function startPrivacyLiveLoop(): void {
+  stopPrivacyLiveLoop();
+  privacyLiveTimer = setInterval(() => {
+    void refreshLiveViewPrivacyGate();
+  }, 800);
+}
+
+function stopPrivacyLiveLoop(): void {
+  if (privacyLiveTimer) {
+    clearInterval(privacyLiveTimer);
+    privacyLiveTimer = null;
   }
 }
 
@@ -124,7 +164,6 @@ async function pollCommands(): Promise<void> {
 function scheduleReconnect(): void {
   if (intentionalClose) return;
   if (reconnectTimer) clearTimeout(reconnectTimer);
-  // Fast first reconnects after refresh (300ms → 5s cap), not 30s.
   const delay = Math.min(300 * Math.pow(2, reconnectAttempt), 5000);
   reconnectAttempt += 1;
   console.log(`[remote] reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
@@ -134,14 +173,12 @@ function scheduleReconnect(): void {
 function connectSocket(): void {
   const token = getTokenFn();
   if (!token) {
-    // Not enrolled (or signed out) — do not spin reconnect forever.
     return;
   }
 
   if (ws) {
     try {
       ws.removeAllListeners();
-      // Avoid close→scheduleReconnect loop while we are intentionally replacing.
       ws.on('close', () => {});
       ws.close();
     } catch { /* ignore */ }
@@ -166,7 +203,6 @@ function connectSocket(): void {
     });
     console.log('[remote] WebSocket connected');
     void pollCommands();
-    // Pull privacy rules in the background — don't block live/screenshot.
     void refreshOrgCapturePolicy();
   });
 
@@ -174,6 +210,7 @@ function connectSocket(): void {
 
   ws.on('close', (code, reason) => {
     ws = null;
+    stopPrivacyLiveLoop();
     stopLiveViewSession('ws-disconnect');
     if (!intentionalClose) {
       console.log(`[remote] WebSocket disconnected (${code} ${reason?.toString() || ''}) — reconnecting`);
@@ -198,6 +235,7 @@ export function startRemoteCommandClient(
   intentionalClose = false;
   reconnectAttempt = 0;
   configureLiveViewSender(sendMessage, getCurrentContext);
+  configureLiveViewBinarySender(sendBinary);
   connectSocket();
 
   if (pollTimer) clearInterval(pollTimer);
@@ -206,6 +244,7 @@ export function startRemoteCommandClient(
 
 export function stopRemoteCommandClient(): void {
   intentionalClose = true;
+  stopPrivacyLiveLoop();
   stopLiveViewSession('client-stop');
   if (reconnectTimer) clearTimeout(reconnectTimer);
   if (pollTimer) clearInterval(pollTimer);

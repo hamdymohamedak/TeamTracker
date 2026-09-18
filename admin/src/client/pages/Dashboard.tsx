@@ -25,6 +25,12 @@ import { PageEmpty, PageHero, PagePanel } from '../components/PageHero';
 
 import type { Employee } from '../../../shared-types';
 import { formatDurationSeconds } from '../../../shared-types';
+import {
+  LiveViewSessionController,
+  type LiveViewMetrics,
+} from '../live-view/LiveViewSessionController';
+import type { LiveViewQualityMode } from '../../../shared/live-view/quality';
+import type { LiveViewSignalPayload } from '../../../shared/live-view/protocol';
 
 // Browser timezone sent to the server with every Dashboard stats request so
 // "today" is always the admin's local day, not the server's.
@@ -276,8 +282,12 @@ export const Dashboard: React.FC = () => {
   const [livePrivacyBlocked, setLivePrivacyBlocked] = useState(false);
   const [livePrivacyApp, setLivePrivacyApp] = useState<string | null>(null);
   const [livePrivacyPattern, setLivePrivacyPattern] = useState<string | null>(null);
+  const [liveQuality, setLiveQuality] = useState<LiveViewQualityMode>('auto');
+  const [liveMetrics, setLiveMetrics] = useState<LiveViewMetrics | null>(null);
+  const [liveShowDetails, setLiveShowDetails] = useState(false);
   const [httpOnlineIds, setHttpOnlineIds] = useState<Set<string>>(new Set());
   const liveImgRef = useRef<HTMLImageElement | null>(null);
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const liveStageRef = useRef<HTMLDivElement | null>(null);
   const liveSessionRef = useRef<string | null>(null);
   const liveEmployeeIdRef = useRef(liveEmployeeId);
@@ -286,8 +296,18 @@ export const Dashboard: React.FC = () => {
   const liveStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveResumeRef = useRef(false);
   const liveWasOfflineRef = useRef(false);
+  const liveControllerRef = useRef<LiveViewSessionController | null>(null);
+  const liveQualityRef = useRef(liveQuality);
   liveEmployeeIdRef.current = liveEmployeeId;
-  const { onlineEmployees, lastMessage, sendMessage, subscribeLiveFrames, isConnected } = useWebSocket();
+  liveQualityRef.current = liveQuality;
+  const {
+    onlineEmployees,
+    lastMessage,
+    sendMessage,
+    subscribeLiveFrames,
+    subscribeLiveBinary,
+    isConnected,
+  } = useWebSocket();
   const { org } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -320,12 +340,82 @@ export const Dashboard: React.FC = () => {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  const ensureController = useCallback(() => {
+    if (liveControllerRef.current) return liveControllerRef.current;
+    const controller = new LiveViewSessionController({
+      sendJson: (message) => sendMessage(message),
+      onMetrics: (m) => {
+        setLiveMetrics(m);
+        if (m.qualityMode && m.qualityMode !== liveQualityRef.current) {
+          // Controller may clamp Ultra off LAN — keep UI in sync
+          if (m.qualityMode !== 'ultra' || m.ultraAllowed) {
+            setLiveQuality(m.qualityMode);
+            liveQualityRef.current = m.qualityMode;
+          } else if (liveQualityRef.current === 'ultra') {
+            setLiveQuality('high');
+            liveQualityRef.current = 'high';
+          }
+        }
+      },
+      onPrivacy: (blocked) => {
+        setLivePrivacyBlocked(blocked);
+        if (blocked) {
+          if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
+        }
+      },
+      attachVideo: (stream) => {
+        const video = liveVideoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        if (stream) {
+          void video.play().catch(() => {});
+          setLiveStreaming(true);
+          setLiveStarting(false);
+          if (liveStartTimerRef.current) {
+            clearTimeout(liveStartTimerRef.current);
+            liveStartTimerRef.current = null;
+          }
+        }
+      },
+      attachBinaryFrame: (url, meta) => {
+        if (meta.privacyBlocked) {
+          setLivePrivacyBlocked(true);
+          if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
+          setLiveStreaming(true);
+          setLiveStarting(false);
+          return;
+        }
+        setLivePrivacyBlocked(false);
+        if (liveImgRef.current && url) liveImgRef.current.src = url;
+        setLiveStreaming(true);
+        setLiveStarting(false);
+        if (liveStartTimerRef.current) {
+          clearTimeout(liveStartTimerRef.current);
+          liveStartTimerRef.current = null;
+        }
+        const now = Date.now();
+        if (now - liveCaptionAtRef.current > 1000) {
+          liveCaptionAtRef.current = now;
+          setLiveFrameAt(new Date().toISOString());
+        }
+      },
+    });
+    liveControllerRef.current = controller;
+    return controller;
+  }, [sendMessage]);
+
   const stopLiveStream = useCallback((notifyServer = true) => {
     if (liveStartTimerRef.current) {
       clearTimeout(liveStartTimerRef.current);
       liveStartTimerRef.current = null;
     }
-    if (notifyServer) sendMessage({ type: 'admin:live-view-stop' });
+    if (liveControllerRef.current) {
+      if (notifyServer) liveControllerRef.current.stop();
+      else liveControllerRef.current.destroy();
+      liveControllerRef.current = null;
+    } else if (notifyServer) {
+      sendMessage({ type: 'admin:live-view-stop' });
+    }
     liveSessionRef.current = null;
     setLiveStreaming(false);
     setLiveStarting(false);
@@ -334,7 +424,9 @@ export const Dashboard: React.FC = () => {
     setLivePrivacyBlocked(false);
     setLivePrivacyApp(null);
     setLivePrivacyPattern(null);
+    setLiveMetrics(null);
     if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
+    if (liveVideoRef.current) liveVideoRef.current.srcObject = null;
     if (document.fullscreenElement === liveStageRef.current) {
       void document.exitFullscreen().catch(() => {});
     }
@@ -349,8 +441,10 @@ export const Dashboard: React.FC = () => {
     setLivePrivacyApp(null);
     setLivePrivacyPattern(null);
     setLiveFrameAt(null);
+    setLiveMetrics(null);
     liveResumeRef.current = true;
     if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
+    if (liveVideoRef.current) liveVideoRef.current.srcObject = null;
     if (liveStartTimerRef.current) clearTimeout(liveStartTimerRef.current);
     liveStartTimerRef.current = setTimeout(() => {
       setLiveStarting(prev => {
@@ -358,14 +452,46 @@ export const Dashboard: React.FC = () => {
         setLiveError(t('live.startTimeout'));
         return false;
       });
-    }, 10000);
-    const ok = sendMessage({ type: 'admin:live-view-start', employeeId });
+    }, 15000);
+    if (liveControllerRef.current) {
+      liveControllerRef.current.destroy();
+      liveControllerRef.current = null;
+    }
+    const controller = ensureController();
+    const ok = controller.start(employeeId, liveQualityRef.current);
     if (!ok) {
       if (liveStartTimerRef.current) clearTimeout(liveStartTimerRef.current);
       setLiveStarting(false);
       setLiveError(t('live.wsRequired'));
     }
-  }, [sendMessage, t]);
+  }, [ensureController, t]);
+
+  const changeLiveQuality = useCallback((mode: LiveViewQualityMode) => {
+    setLiveQuality(mode);
+    liveQualityRef.current = mode;
+    liveControllerRef.current?.setQualityMode(mode);
+  }, []);
+
+  const changeLiveFps = useCallback((fps: number) => {
+    liveControllerRef.current?.setTargetFps(fps);
+  }, []);
+
+  const liveTransportLabel = useCallback((metrics: LiveViewMetrics) => {
+    switch (metrics.networkPath) {
+      case 'webrtc-p2p-lan':
+        return t('live.pathLan');
+      case 'webrtc-p2p-internet':
+        return t('live.pathInternet');
+      case 'webrtc-turn':
+        return t('live.pathTurn');
+      case 'binary-ws':
+        return t('live.pathBinary');
+      default:
+        if (metrics.transport === 'webrtc') return t('live.pathUnknown');
+        if (metrics.transport === 'binary-ws') return t('live.pathBinary');
+        return t('live.transportUnknown');
+    }
+  }, [t]);
 
   const toggleLiveFullscreen = useCallback(async () => {
     const el = liveStageRef.current;
@@ -382,18 +508,32 @@ export const Dashboard: React.FC = () => {
   }, [t]);
 
   const captureLiveSnapshot = useCallback((employeeName: string) => {
-    const img = liveImgRef.current;
-    if (!img?.src || !img.naturalWidth) {
-      setLiveError(t('live.snapNoFrame'));
-      return;
-    }
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('canvas');
-      ctx.drawImage(img, 0, 0);
+      const video = liveVideoRef.current;
+      const img = liveImgRef.current;
+      let w = 0;
+      let h = 0;
+      if (video && video.videoWidth > 0 && liveMetrics?.transport === 'webrtc') {
+        w = video.videoWidth;
+        h = video.videoHeight;
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('canvas');
+        ctx.drawImage(video, 0, 0);
+      } else if (img?.src && img.naturalWidth) {
+        w = img.naturalWidth;
+        h = img.naturalHeight;
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('canvas');
+        ctx.drawImage(img, 0, 0);
+      } else {
+        setLiveError(t('live.snapNoFrame'));
+        return;
+      }
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const safeName = (employeeName || 'employee').replace(/[^\w.-]+/g, '_');
       const link = document.createElement('a');
@@ -406,7 +546,7 @@ export const Dashboard: React.FC = () => {
     } catch {
       setLiveError(t('live.snapFailed'));
     }
-  }, [t]);
+  }, [liveMetrics?.transport, t]);
 
   useEffect(() => {
     const onFs = () => {
@@ -422,7 +562,6 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Frames bypass React state (img.src) to keep the UI light at ~3.5 fps.
   useEffect(() => {
     return subscribeLiveFrames((message) => {
       if (message.type === 'live-view:ended') {
@@ -435,6 +574,8 @@ export const Dashboard: React.FC = () => {
             clearTimeout(liveStartTimerRef.current);
             liveStartTimerRef.current = null;
           }
+          liveControllerRef.current?.destroy();
+          liveControllerRef.current = null;
           const reason = message.data?.reason;
           if (reason === 'device-disconnect' || reason === 'ws-disconnect') {
             setLiveError(t('live.deviceReconnecting'));
@@ -444,51 +585,49 @@ export const Dashboard: React.FC = () => {
         }
         return;
       }
+      if (message.type === 'live-view:signal') {
+        const signal = message.data?.signal as LiveViewSignalPayload | undefined;
+        if (signal) liveControllerRef.current?.handleSignal(signal);
+        return;
+      }
+      if (message.type === 'live-view:transport') {
+        liveControllerRef.current?.handleTransport({
+          transport: message.data?.transport,
+          state: message.data?.state,
+          reason: message.data?.reason,
+        });
+        return;
+      }
       if (message.type !== 'live-view:frame') return;
       const empId = liveEmployeeIdRef.current;
       if (!empId || message.data?.employeeId !== empId) return;
-      if (liveSessionRef.current && message.data?.sessionId && message.data.sessionId !== liveSessionRef.current) return;
-
+      liveControllerRef.current?.handleLegacyFrame({
+        dataBase64: message.data?.dataBase64,
+        privacyBlocked: message.data?.privacyBlocked,
+        capturedAt: message.data?.capturedAt,
+        sessionId: message.data?.sessionId,
+      });
+      if (message.data?.sessionId) liveSessionRef.current = message.data.sessionId;
       if (message.data?.privacyBlocked) {
-        setLivePrivacyBlocked(true);
         setLivePrivacyPattern(message.data.pattern || null);
         setLivePrivacyApp(
           message.data.windowTitle || message.data.appName || message.data.pattern || null
         );
-        setLiveStreaming(prev => (prev ? prev : true));
-        setLiveStarting(prev => (prev ? false : prev));
-        if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
-        if (message.data?.sessionId) liveSessionRef.current = message.data.sessionId;
-        return;
-      }
-
-      const b64 = message.data?.dataBase64;
-      if (!b64) return;
-      const mime = message.data?.mimeType || 'image/jpeg';
-      const src = `data:${mime};base64,${b64}`;
-      if (liveImgRef.current) liveImgRef.current.src = src;
-      if (message.data?.sessionId) liveSessionRef.current = message.data.sessionId;
-      setLivePrivacyBlocked(false);
-      setLivePrivacyApp(null);
-      setLivePrivacyPattern(null);
-      setLiveStreaming(prev => (prev ? prev : true));
-      setLiveStarting(prev => (prev ? false : prev));
-      if (liveStartTimerRef.current) {
-        clearTimeout(liveStartTimerRef.current);
-        liveStartTimerRef.current = null;
-      }
-      const now = Date.now();
-      if (now - liveCaptionAtRef.current > 1000) {
-        liveCaptionAtRef.current = now;
-        setLiveFrameAt(message.data?.capturedAt || new Date().toISOString());
       }
     });
   }, [subscribeLiveFrames, t]);
+
+  useEffect(() => {
+    return subscribeLiveBinary((buffer) => {
+      liveControllerRef.current?.handleBinaryFrame(buffer);
+    });
+  }, [subscribeLiveBinary]);
 
   // Server ack / errors for start.
   useEffect(() => {
     if (!lastMessage || lastMessage.type !== 'admin:live-view-status') return;
     const data = lastMessage.data || {};
+    liveControllerRef.current?.handleStatus(data);
     if (data.active && data.sessionId) {
       liveSessionRef.current = data.sessionId;
       return;
@@ -787,7 +926,55 @@ export const Dashboard: React.FC = () => {
                                     : t('live.trackerOffline')}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--tt-text-muted)' }}>
+                          <span>{t('live.quality')}</span>
+                          <select
+                            value={
+                              liveQuality === 'ultra' && !liveMetrics?.ultraAllowed
+                                ? 'high'
+                                : liveQuality
+                            }
+                            onChange={(e) => changeLiveQuality(e.target.value as LiveViewQualityMode)}
+                            style={styles.liveQualitySelect}
+                            aria-label={t('live.quality')}
+                          >
+                            <option value="auto">{t('live.qualityAuto')}</option>
+                            <option value="low">{t('live.qualityLow')}</option>
+                            <option value="medium">{t('live.qualityMedium')}</option>
+                            <option value="high">{t('live.qualityHigh')}</option>
+                            {liveMetrics?.ultraAllowed && (
+                              <option value="ultra">{t('live.qualityUltra')}</option>
+                            )}
+                          </select>
+                        </label>
+                        {liveStreaming && liveMetrics && liveMetrics.allowedFps.length > 0 && liveQuality !== 'auto' && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--tt-text-muted)' }}>
+                            <span>{t('live.fpsTarget')}</span>
+                            <select
+                              value={String(
+                                liveMetrics.targetFps != null &&
+                                  liveMetrics.allowedFps.includes(liveMetrics.targetFps)
+                                  ? liveMetrics.targetFps
+                                  : liveMetrics.allowedFps[
+                                      Math.min(
+                                        1,
+                                        liveMetrics.allowedFps.length - 1
+                                      )
+                                    ]
+                              )}
+                              onChange={(e) => changeLiveFps(Number(e.target.value))}
+                              style={styles.liveQualitySelect}
+                              aria-label={t('live.fpsTarget')}
+                            >
+                              {liveMetrics.allowedFps.map((f) => (
+                                <option key={f} value={f}>
+                                  {f}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                         {liveStreaming && !livePrivacyBlocked && (
                           <button
                             type="button"
@@ -848,6 +1035,50 @@ export const Dashboard: React.FC = () => {
                       </div>
                     </div>
 
+                    {(liveStreaming || liveStarting) && liveMetrics && (
+                      <div style={styles.liveMetaRow}>
+                        <span style={styles.liveChip}>
+                          {t('live.transport')}: {liveTransportLabel(liveMetrics)}
+                        </span>
+                        <span style={styles.liveChip}>
+                          {t('live.connection')}: {t(`live.state.${liveMetrics.state}` as 'live.state.connected')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setLiveShowDetails((v) => !v)}
+                          style={styles.liveGhostBtn}
+                        >
+                          {liveShowDetails ? t('live.hideDetails') : t('live.showDetails')}
+                        </button>
+                      </div>
+                    )}
+                    {liveShowDetails && liveMetrics && (
+                      <div style={styles.liveDetails}>
+                        <span>{t('live.latency')}: {liveMetrics.latencyMs != null ? `${Math.round(liveMetrics.latencyMs)} ms` : '—'}</span>
+                        <span>
+                          {t('live.fps')}:{' '}
+                          {liveMetrics.fps != null ? liveMetrics.fps.toFixed(1) : '—'}
+                          {liveMetrics.targetFps != null ? ` / ${liveMetrics.targetFps}` : ''}
+                        </span>
+                        <span>
+                          {t('live.resolution')}:{' '}
+                          {liveMetrics.width && liveMetrics.height
+                            ? `${liveMetrics.width} × ${liveMetrics.height}`
+                            : '—'}
+                        </span>
+                        <span>
+                          {t('live.bitrate')}:{' '}
+                          {liveMetrics.bitrateKbps != null ? `${liveMetrics.bitrateKbps} kbps` : '—'}
+                        </span>
+                        <span>{t('live.encodeLevel')}: {liveMetrics.encodeLevel}</span>
+                        {(liveMetrics.iceLocalType || liveMetrics.iceRemoteType) && (
+                          <span>
+                            ICE: {liveMetrics.iceLocalType || '—'} → {liveMetrics.iceRemoteType || '—'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {liveError && <div style={styles.liveError}>{liveError}</div>}
                     {liveSnapMsg && <div style={styles.liveSnapOk}>{liveSnapMsg}</div>}
 
@@ -858,13 +1089,34 @@ export const Dashboard: React.FC = () => {
                         ...(liveFullscreen ? styles.liveScreenStageFullscreen : null),
                       }}
                     >
+                      <video
+                        ref={liveVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{
+                          ...styles.liveScreenImage,
+                          ...(liveFullscreen ? styles.liveScreenImageFullscreen : null),
+                          display:
+                            liveStreaming &&
+                            !livePrivacyBlocked &&
+                            liveMetrics?.transport === 'webrtc'
+                              ? 'block'
+                              : 'none',
+                        }}
+                      />
                       <img
                         ref={liveImgRef}
                         alt={t('live.screenAlt', { name: selected.name })}
                         style={{
                           ...styles.liveScreenImage,
                           ...(liveFullscreen ? styles.liveScreenImageFullscreen : null),
-                          display: liveStreaming && !livePrivacyBlocked ? 'block' : 'none',
+                          display:
+                            liveStreaming &&
+                            !livePrivacyBlocked &&
+                            liveMetrics?.transport !== 'webrtc'
+                              ? 'block'
+                              : 'none',
                         }}
                       />
                       {liveStreaming && livePrivacyBlocked && (
@@ -1291,6 +1543,41 @@ const styles: { [key: string]: React.CSSProperties | any } = {
     color: '#fff',
     fontSize: 12,
     fontWeight: 600,
+  },
+  liveQualitySelect: {
+    padding: '6px 8px',
+    borderRadius: 8,
+    border: '1px solid var(--tt-border-strong)',
+    background: 'var(--tt-surface)',
+    color: 'var(--tt-text)',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  liveMetaRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  liveChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 8px',
+    borderRadius: 999,
+    border: '1px solid var(--tt-border)',
+    background: 'var(--tt-surface-2, var(--tt-surface))',
+    fontSize: 11,
+    color: 'var(--tt-text-muted)',
+    fontWeight: 600,
+  },
+  liveDetails: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 8,
+    fontSize: 11,
+    color: 'var(--tt-text-muted)',
   },
   liveError: {
     backgroundColor: 'var(--tt-danger-soft)',

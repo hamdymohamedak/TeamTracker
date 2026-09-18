@@ -16,8 +16,13 @@ type LiveFrameHandler = (message: {
     appName?: string;
     windowTitle?: string;
     pattern?: string;
+    signal?: unknown;
+    transport?: string;
+    state?: string;
   };
 }) => void;
+
+type LiveBinaryHandler = (buffer: ArrayBuffer) => void;
 
 interface WebSocketContextType {
   isConnected: boolean;
@@ -34,6 +39,8 @@ interface WebSocketContextType {
   sendMessage: (message: Record<string, unknown>) => boolean;
   /** High-frequency live frames — do not go through React state. */
   subscribeLiveFrames: (handler: LiveFrameHandler) => () => void;
+  /** Binary TLV1 live frames. */
+  subscribeLiveBinary: (handler: LiveBinaryHandler) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType>({
@@ -45,6 +52,7 @@ const WebSocketContext = createContext<WebSocketContextType>({
   reconnect: () => {},
   sendMessage: () => false,
   subscribeLiveFrames: () => () => {},
+  subscribeLiveBinary: () => () => {},
 });
 
 export const useWebSocket = () => useContext(WebSocketContext);
@@ -67,6 +75,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const isMountedRef = useRef(true);
   const intentionalCloseRef = useRef(false);
   const liveFrameHandlersRef = useRef(new Set<LiveFrameHandler>());
+  const liveBinaryHandlersRef = useRef(new Set<LiveBinaryHandler>());
 
   const addActivity = useCallback((type: string, employeeName: string, message: string, timestamp: string) => {
     if (!isMountedRef.current) return;
@@ -79,12 +88,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const handleMessage = useCallback((message: any) => {
     const timestamp = new Date().toISOString();
 
-    // Hot path — skip React state for frames.
-    if (message.type === 'live-view:frame' || message.type === 'live-view:ended') {
+    // Hot path — skip React state for frames / signals / transport.
+    if (
+      message.type === 'live-view:frame' ||
+      message.type === 'live-view:ended' ||
+      message.type === 'live-view:signal' ||
+      message.type === 'live-view:transport'
+    ) {
       liveFrameHandlersRef.current.forEach(fn => {
         try { fn(message); } catch { /* ignore */ }
       });
-      if (message.type === 'live-view:ended') {
+      if (message.type === 'live-view:ended' || message.type === 'live-view:transport') {
         setLastMessage(message);
       }
       return;
@@ -193,6 +207,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -212,9 +227,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
 
     ws.onmessage = (event) => {
       if (!isMountedRef.current) return;
+      if (event.data instanceof ArrayBuffer) {
+        liveBinaryHandlersRef.current.forEach((fn) => {
+          try { fn(event.data as ArrayBuffer); } catch { /* ignore */ }
+        });
+        return;
+      }
       try {
-        const message = JSON.parse(event.data);
-        if (message.type !== 'live-view:frame') {
+        const message = JSON.parse(typeof event.data === 'string' ? event.data : String(event.data));
+        if (message.type !== 'live-view:frame' && message.type !== 'live-view:signal') {
           setLastMessage(message);
         }
         handleMessage(message);
@@ -309,6 +330,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     };
   }, []);
 
+  const subscribeLiveBinary = useCallback((handler: LiveBinaryHandler) => {
+    liveBinaryHandlersRef.current.add(handler);
+    return () => {
+      liveBinaryHandlersRef.current.delete(handler);
+    };
+  }, []);
+
   return (
     <WebSocketContext.Provider value={{
       isConnected,
@@ -319,6 +347,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       reconnect,
       sendMessage,
       subscribeLiveFrames,
+      subscribeLiveBinary,
     }}>
       {children}
     </WebSocketContext.Provider>
