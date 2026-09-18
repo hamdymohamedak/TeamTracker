@@ -192,3 +192,85 @@ tt_migrate_legacy_uploads() {
     tt_ok "Migrated legacy uploads → $dest"
   fi
 }
+
+# Force APP_DIR to match origin/$BRANCH. Deploy servers must not keep divergent local commits.
+tt_sync_app_git() {
+  local dir="${1:-$APP_DIR}"
+  local branch="${2:-${BRANCH:-main}}"
+  local remote_ref
+
+  [ -d "$dir/.git" ] || tt_die "Not a git checkout: $dir"
+  cd "$dir"
+
+  git fetch origin "$branch"
+  remote_ref="origin/$branch"
+  if ! git rev-parse --verify "$remote_ref" >/dev/null 2>&1; then
+    remote_ref="FETCH_HEAD"
+  fi
+
+  git checkout -B "$branch" "$remote_ref"
+  git reset --hard "$remote_ref"
+  # Drop untracked build junk; keep durable env files if present in-tree
+  git clean -fd -e '.env' -e 'admin/.env'
+
+  tt_ok "Synced $dir → $(git rev-parse --short HEAD) ($branch)"
+}
+
+# Vite/esbuild and Rollup ship platform-specific optional binaries. A lockfile or
+# node_modules tree from macOS/Windows leaves Linux builds broken.
+tt_ensure_linux_native_deps() {
+  local root="${1:-$APP_DIR}"
+  local arch
+  arch="$(uname -m)"
+  local pkgs=()
+
+  case "$arch" in
+    x86_64|amd64)
+      pkgs=("@esbuild/linux-x64" "@rollup/rollup-linux-x64-gnu")
+      ;;
+    aarch64|arm64)
+      pkgs=("@esbuild/linux-arm64" "@rollup/rollup-linux-arm64-gnu")
+      ;;
+    *)
+      tt_warn "Unknown arch $arch — skipping native optional deps"
+      return 0
+      ;;
+  esac
+
+  (
+    cd "$root"
+    npm install --no-save --include=optional "${pkgs[@]}" || true
+  )
+  tt_ok "Ensured Linux native build binaries ($arch)"
+}
+
+# Clean install at monorepo root so workspace hoisting picks correct optional deps.
+tt_npm_install_and_build_admin() {
+  local root="${1:-$APP_DIR}"
+  local admin="${2:-${ADMIN_DIR:-$root/admin}}"
+
+  cd "$root"
+  # Stale cross-platform node_modules are a common CI/VPS failure mode
+  rm -rf node_modules admin/node_modules shared/node_modules desktop/node_modules desktop-admin/node_modules 2>/dev/null || true
+
+  npm install --include=dev --include=optional
+  tt_ensure_linux_native_deps "$root"
+
+  # Repair known-broken nested iconv-lite (body-parser → raw-body missing encodings)
+  find "$root/node_modules" -type d -path '*/iconv-lite' 2>/dev/null | while read -r d; do
+    if [ ! -f "$d/encodings/index.js" ]; then
+      tt_warn "Removing broken iconv-lite at $d"
+      rm -rf "$d"
+    fi
+  done
+  (
+    cd "$root"
+    npm install iconv-lite@0.4.24 --no-save --include=dev 2>/dev/null || true
+  )
+
+  cd "$admin"
+  npm run build
+
+  # Fail deploy early if production live-view bundle cannot load
+  node --input-type=module -e "import('./dist/shared/live-view/index.js').then(() => console.log('live-view runtime ok')).catch((e) => { console.error(e); process.exit(1); })"
+}

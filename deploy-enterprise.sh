@@ -67,13 +67,10 @@ ok "App: $APP_DIR"
 ok "Data: $DATA_DIR"
 
 echo ""
-echo "📥 Pulling latest ($BRANCH)..."
-cd "$APP_DIR"
-git fetch --depth 1 origin "$BRANCH"
-git checkout "$BRANCH"
-git pull --ff-only origin "$BRANCH" || warn "ff-only pull failed; using current tree"
+echo "📥 Syncing latest ($BRANCH)..."
+tt_sync_app_git "$APP_DIR" "$BRANCH"
 
-# Re-source after pull in case helpers updated
+# Re-source after sync in case helpers updated
 # shellcheck disable=SC1091
 source "$APP_DIR/scripts/deploy-lib.sh"
 
@@ -85,38 +82,7 @@ tt_ensure_production_env "$ENV_FILE"
 
 echo ""
 echo "🔨 Building..."
-cd "$APP_DIR"
-
-# Clean broken nested installs (iconv-lite encodings often missing under hoisted workspaces)
-rm -rf node_modules admin/node_modules shared/node_modules
-
-if [ -f "$APP_DIR/package.json" ]; then
-  npm install --include=dev
-fi
-
-cd "$ADMIN_DIR"
-npm install --include=dev
-
-# Repair known-broken nested iconv-lite (body-parser → raw-body)
-if [ -d "$APP_DIR/node_modules" ]; then
-  find "$APP_DIR/node_modules" -type d -path '*/iconv-lite' 2>/dev/null | while read -r d; do
-    if [ ! -f "$d/encodings/index.js" ]; then
-      warn "Removing broken iconv-lite at $d"
-      rm -rf "$d"
-    fi
-  done
-  npm install iconv-lite@0.4.24 --no-save --include=dev 2>/dev/null || true
-fi
-
-if [ "$(uname -m)" = "x86_64" ]; then
-  npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@4.59.0" 2>/dev/null || true
-  ok "Ensured Linux native build binaries (x86_64)"
-fi
-
-npm run build
-
-# Fail deploy early if production live-view bundle is broken
-node --input-type=module -e "import('./dist/shared/live-view/index.js').then(() => console.log('live-view runtime ok')).catch((e) => { console.error(e); process.exit(1); })"
+tt_npm_install_and_build_admin "$APP_DIR" "$ADMIN_DIR"
 ok "Build complete"
 
 echo ""
