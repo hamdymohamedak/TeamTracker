@@ -8,6 +8,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared (dist required by admin/desktop stubs)
+        run: pnpm run build:shared
+
+      - name: Typecheck all packages
+        run: pnpm run typecheck
+
   admin:
     runs-on: ubuntu-latest
     defaults:
@@ -29,6 +53,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared (dist required by live-view stubs)
+        run: npx --yes -p typescript@5.9.3 tsc -p ../shared/tsconfig.json
+
       - name: Typecheck server
         run: pnpm run typecheck
 
@@ -39,6 +66,36 @@ jobs:
         run: pnpm run build
         env:
           NODE_ENV: production
+
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared (dist required by live-view stubs)
+        run: npx --yes -p typescript@5.9.3 tsc -p ../shared/tsconfig.json
+
+      - name: Typecheck desktop
+        run: pnpm exec tsc --noEmit
+
+      - name: Unit tests
+        run: pnpm test
 
   shared:
     runs-on: ubuntu-latest
@@ -52,11 +109,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Typecheck shared package
+      - name: Typecheck and build shared package
         run: |
           if [ -f tsconfig.json ]; then
-            # Use the real TypeScript compiler (not the abandoned npm package named "tsc")
             npx --yes -p typescript@5.9.3 tsc --noEmit -p tsconfig.json
+            npx --yes -p typescript@5.9.3 tsc -p tsconfig.json
           else
             echo "no tsconfig"
           fi

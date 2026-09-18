@@ -4,9 +4,65 @@
   "description": "Shared types for TeamTracker",
   "license": "MIT",
   "type": "module",
-  "main": "./index.ts",
-  "types": "./index.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
   "exports": {
-    ".": "./index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./live-view": {
+      "types": "./dist/live-view/index.d.ts",
+      "import": "./dist/live-view/index.js",
+      "default": "./dist/live-view/index.js"
+    },
+    "./live-view/quality": {
+      "types": "./dist/live-view/quality.d.ts",
+      "import": "./dist/live-view/quality.js",
+      "default": "./dist/live-view/quality.js"
+    },
+    "./live-view/auto": {
+      "types": "./dist/live-view/auto.d.ts",
+      "import": "./dist/live-view/auto.js",
+      "default": "./dist/live-view/auto.js"
+    },
+    "./live-view/binary": {
+      "types": "./dist/live-view/binary.d.ts",
+      "import": "./dist/live-view/binary.js",
+      "default": "./dist/live-view/binary.js"
+    },
+    "./live-view/states": {
+      "types": "./dist/live-view/states.d.ts",
+      "import": "./dist/live-view/states.js",
+      "default": "./dist/live-view/states.js"
+    },
+    "./live-view/protocol": {
+      "types": "./dist/live-view/protocol.d.ts",
+      "import": "./dist/live-view/protocol.js",
+      "default": "./dist/live-view/protocol.js"
+    },
+    "./live-view/unchanged": {
+      "types": "./dist/live-view/unchanged.d.ts",
+      "import": "./dist/live-view/unchanged.js",
+      "default": "./dist/live-view/unchanged.js"
+    },
+    "./live-view/transport-profiles": {
+      "types": "./dist/live-view/transport-profiles.d.ts",
+      "import": "./dist/live-view/transport-profiles.js",
+      "default": "./dist/live-view/transport-profiles.js"
+    },
+    "./classification": {
+      "types": "./dist/classification.d.ts",
+      "import": "./dist/classification.js",
+      "default": "./dist/classification.js"
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
   }
 }

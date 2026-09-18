@@ -41,6 +41,10 @@ That’s it. No manual logging. No spreadsheets.
 
 ---
 
+## Developers
+
+See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for package layout, where features/API/DB/WebSocket code lives, and how to run the full test suite.
+
 ## Getting started
 
 ### 1. Sign up

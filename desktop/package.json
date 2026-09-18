@@ -10,7 +10,10 @@
   "scripts": {
     "postinstall": "node scripts/ensure-electron.mjs",
     "ensure-electron": "node scripts/ensure-electron.mjs",
+    "ensure-shared": "npm exec --prefix ../shared -- tsc -p ../shared/tsconfig.json",
+    "predev": "npm run ensure-shared",
     "dev": "node scripts/ensure-electron.mjs && tsc && vite build --mode development && node scripts/copy-assets.mjs && electron .",
+    "prebuild": "npm run ensure-shared",
     "build": "tsc && vite build --mode production && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
@@ -21,13 +24,14 @@
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:all": "npm run build && electron-builder -mwl --publish never",
     "release": "npm run build && electron-builder -mwl --publish always",
-    "test": "../admin/node_modules/.bin/tsx --test src/__tests__/**/*.test.ts"
+    "pretest": "npm run ensure-shared",
+    "test": "tsx --test src/__tests__/**/*.test.ts"
   },
   "build": {
     "appId": "com.teamtracker.tracker",
     "productName": "TeamTracker",
     "executableName": "teamtracker",
-    "copyright": "Copyright \u00a9 2026 TeamTracker",
+    "copyright": "Copyright © 2026 TeamTracker",
     "electronVersion": "30.5.1",
     "extraMetadata": {
       "name": "teamtracker"
@@ -100,7 +104,7 @@
       "maintainer": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
       "vendor": "TeamTracker",
       "synopsis": "Employee activity tracker",
-      "description": "TeamTracker desktop tracker \u2014 samples the active window and syncs productivity data to your admin dashboard.",
+      "description": "TeamTracker desktop tracker — samples the active window and syncs productivity data to your admin dashboard.",
       "target": [
         {
           "target": "AppImage",
@@ -165,6 +169,7 @@
     "concurrently": "^8.2.2",
     "electron": "^30.5.1",
     "electron-builder": "^24.9.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.3.0",
     "vite": "^5.0.8",
     "vite-plugin-electron": "^0.28.0",
