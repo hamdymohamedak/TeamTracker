@@ -34,7 +34,7 @@ export interface LiveViewProfileConfig {
 export const DEFAULT_LIVE_VIEW_PROFILE_CONFIG: LiveViewProfileConfig = {
   wsMaxFps: 4,
   wsMinFps: 1,
-  lanMaxFps: 30,
+  lanMaxFps: 60,
   lanDefaultFps: 12,
   internetMaxFps: 4,
   turnMaxFps: 4,
@@ -52,7 +52,7 @@ export interface EffectiveLiveViewPreset {
 }
 
 /** Discrete FPS choices exposed in the Dashboard per path. */
-export const LAN_FPS_OPTIONS = [5, 10, 12, 15, 20, 30] as const;
+export const LAN_FPS_OPTIONS = [5, 10, 12, 15, 20, 30, 60] as const;
 export const INTERNET_FPS_OPTIONS = [1, 2, 3, 4] as const;
 
 /** LAN Auto: raise FPS at 720p before bumping resolution. */
@@ -316,7 +316,14 @@ export function resolveEffectivePreset(
     fps = Math.max(fps, cfg.wsMinFps);
   }
 
-  const intervalMs = Math.max(33, Math.round(1000 / fps));
+  // Floor at 1ms so LAN WebRTC can reach 60 FPS (old Math.max(33, …) capped ~30).
+  const intervalMs = Math.max(1, Math.round(1000 / Math.max(0.5, fps)));
+
+  // Scale bitrate when LAN FPS override exceeds the level's baseline (e.g. Ultra 30→60).
+  let maxBitrateBps = spec.maxBitrateBps;
+  if (path === 'webrtc-p2p-lan' && fps > spec.fps && spec.fps > 0) {
+    maxBitrateBps = Math.round(spec.maxBitrateBps * (fps / spec.fps));
+  }
 
   return {
     level: safeLevel,
@@ -324,7 +331,7 @@ export function resolveEffectivePreset(
     jpegQuality: spec.jpegQuality,
     fps,
     intervalMs,
-    maxBitrateBps: spec.maxBitrateBps,
+    maxBitrateBps,
     networkPath: path,
   };
 }

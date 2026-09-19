@@ -113,7 +113,7 @@ function currentPreset() {
     width: effectiveWidth ?? base.width,
     jpegQuality: effectiveJpegQuality ?? base.jpegQuality,
     fps,
-    intervalMs: Math.max(33, Math.round(1000 / Math.max(0.5, fps))),
+    intervalMs: Math.max(1, Math.round(1000 / Math.max(0.5, fps))),
     maxBitrateBps: effectiveMaxBitrateBps ?? base.maxBitrateBps,
   };
 }

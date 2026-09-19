@@ -145,6 +145,19 @@ describe('live-view transport profiles', () => {
     assert.ok(!allowedFpsOptions('binary-ws').includes(30));
     assert.ok(!allowedFpsOptions('webrtc-turn').includes(30));
     assert.ok(allowedFpsOptions('webrtc-p2p-lan').includes(30));
+    assert.ok(allowedFpsOptions('webrtc-p2p-lan').includes(60));
+    assert.ok(!allowedFpsOptions('binary-ws').includes(60));
+  });
+
+  it('allows 60 FPS on LAN WebRTC with ~16ms interval and scaled bitrate', () => {
+    const lan60 = resolveEffectivePreset('ultra', 'webrtc-p2p-lan', undefined, 60);
+    assert.equal(lan60.fps, 60);
+    assert.ok(lan60.intervalMs <= 17);
+    assert.ok(lan60.intervalMs >= 16);
+    // Ultra baseline is 30 @ 6 Mbps → 60 scales to ~12 Mbps
+    assert.ok(lan60.maxBitrateBps >= 11_000_000);
+    assert.equal(clampFpsForPath(60, 'webrtc-p2p-lan'), 60);
+    assert.equal(clampFpsForPath(60, 'binary-ws'), 4);
   });
 
   it('clampFpsForPath snaps to allowed discrete options', () => {

@@ -44,28 +44,6 @@ function formatRelativeAgo(
   return t('live.agoDays', { n: Math.max(1, Math.round(diffSec / 86400)) });
 }
 
-function compactEmployeeStats(
-  empActivity: EmployeeActivity | undefined,
-  lastSeenIso: string | null | undefined,
-  t: (key: string, vars?: Record<string, string | number>) => string
-): string {
-  const parts: string[] = [];
-  if (typeof empActivity?.hoursToday === 'number') {
-    parts.push(t('live.hoursToday', { hours: empActivity.hoursToday }));
-  }
-  if (typeof empActivity?.productivityScore === 'number') {
-    parts.push(t('live.score', { score: empActivity.productivityScore }));
-  }
-  const ago = formatRelativeAgo(lastSeenIso || empActivity?.lastActivityAt, t);
-  if (ago) {
-    parts.push(t('live.lastSeenShort', { ago }));
-  }
-  if (empActivity && empActivity.suspiciousActivityCount > 0) {
-    parts.push(t('live.suspiciousShort', { count: empActivity.suspiciousActivityCount }));
-  }
-  return parts.join(' · ');
-}
-
 export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employeeActivity }) => {
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -582,7 +560,7 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                 (online ? t('live.online') : t('live.offline'));
               const presence = onlineEmployees.get(emp.id);
               const lastSeenIso = presence?.lastSeen || empActivity?.lastActivityAt || null;
-              const statsLine = compactEmployeeStats(empActivity, lastSeenIso, t);
+              const lastSeenAgo = formatRelativeAgo(lastSeenIso, t);
               return (
                 <button
                   key={emp.id}
@@ -594,26 +572,78 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                 >
                   <span style={(styles.statusIndicator as (o: boolean) => React.CSSProperties)(online)} />
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
-                    <span style={styles.liveEmployeeName as React.CSSProperties}>{emp.name}</span>
-                    <span style={styles.liveEmployeeMeta as React.CSSProperties}>
-                      {activityLabel}
-                    </span>
-                    {statsLine ? (
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span style={{ ...styles.liveEmployeeName as React.CSSProperties, flex: 1, minWidth: 0 }}>
+                        {emp.name}
+                      </span>
                       <span
                         style={{
-                          ...styles.liveEmployeeMeta as React.CSSProperties,
-                          fontSize: 10,
-                          opacity: 0.85,
-                          marginTop: 1,
+                          ...(online
+                            ? (styles.onlineBadge as React.CSSProperties)
+                            : (styles.offlineBadge as React.CSSProperties)),
+                          flexShrink: 0,
                         }}
-                        title={t('live.lastSeenTracker')}
                       >
-                        {statsLine}
+                        {online ? t('live.onlineBadge') : t('live.offlineBadge')}
                       </span>
-                    ) : null}
-                  </span>
-                  <span style={online ? (styles.onlineBadge as React.CSSProperties) : (styles.offlineBadge as React.CSSProperties)}>
-                    {online ? t('live.onlineBadge') : t('live.offlineBadge')}
+                    </span>
+                    <span
+                      style={{
+                        ...styles.liveEmployeeMeta as React.CSSProperties,
+                        whiteSpace: 'normal',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical' as const,
+                        overflow: 'hidden',
+                      }}
+                      title={activityLabel}
+                    >
+                      {activityLabel}
+                    </span>
+                    <span
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 2,
+                        marginTop: 6,
+                        fontSize: 11,
+                        lineHeight: 1.35,
+                        color: 'var(--tt-text-muted)',
+                      }}
+                    >
+                      {lastSeenAgo ? (
+                        <span title={t('live.lastSeenTracker')}>
+                          {t('live.lastSeenShort', { ago: lastSeenAgo })}
+                        </span>
+                      ) : null}
+                      {typeof empActivity?.productivityScore === 'number' ? (
+                        <span>
+                          {t('live.metricProductivityLine', {
+                            score: empActivity.productivityScore,
+                          })}
+                        </span>
+                      ) : null}
+                      {typeof empActivity?.hoursToday === 'number' ? (
+                        <span>
+                          {t('live.metricHoursLine', { hours: empActivity.hoursToday })}
+                        </span>
+                      ) : null}
+                      {empActivity && empActivity.suspiciousActivityCount > 0 ? (
+                        <span style={{ color: 'var(--tt-danger)' }}>
+                          {t('live.suspiciousShort', {
+                            count: empActivity.suspiciousActivityCount,
+                          })}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                 </button>
               );
