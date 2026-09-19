@@ -20,6 +20,18 @@ interface ScreenshotRow {
   createdAt: string;
 }
 
+interface AutomationSession {
+  sessionId: string;
+  employeeId: string;
+  mode: 'fixed' | 'random';
+  intervalSec?: number;
+  minIntervalSec?: number;
+  maxIntervalSec?: number;
+  startedAt?: string;
+}
+
+const AUTO_INTERVAL_OPTIONS = [30, 60, 120, 300, 600, 900];
+
 function todayLocal(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -48,6 +60,12 @@ export const Screenshots: React.FC = () => {
   const [delaySec, setDelaySec] = useState<number>(0);
   const [countdownLeft, setCountdownLeft] = useState<number | null>(null);
   const [httpOnlineIds, setHttpOnlineIds] = useState<Set<string>>(new Set());
+  const [autoMode, setAutoMode] = useState<'fixed' | 'random'>('fixed');
+  const [autoIntervalSec, setAutoIntervalSec] = useState(60);
+  const [autoMinSec, setAutoMinSec] = useState(30);
+  const [autoMaxSec, setAutoMaxSec] = useState(120);
+  const [autoSessions, setAutoSessions] = useState<Record<string, AutomationSession>>({});
+  const [autoBusy, setAutoBusy] = useState(false);
   const pendingRequestRef = useRef<{ requestId: string; employeeId: string } | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const delayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -61,6 +79,24 @@ export const Screenshots: React.FC = () => {
     api.get('/api/employees').then(res => {
       if (res?.success) setEmployees(res.data);
     }).catch(() => { /* silent */ });
+  }, []);
+
+  // Restore active automation sessions after refresh.
+  useEffect(() => {
+    let cancelled = false;
+    const loadAutomation = async () => {
+      try {
+        const res = await api.get('/api/screenshots/automation');
+        if (cancelled || !res?.success) return;
+        const next: Record<string, AutomationSession> = {};
+        for (const s of res.data?.sessions || []) {
+          if (s?.employeeId) next[s.employeeId] = s as AutomationSession;
+        }
+        setAutoSessions(next);
+      } catch { /* ignore */ }
+    };
+    void loadAutomation();
+    return () => { cancelled = true; };
   }, []);
 
   // HTTP presence fallback — covers the case where the admin dashboard
@@ -178,6 +214,56 @@ export const Screenshots: React.FC = () => {
     }));
   }, [lastMessage, employeeId, t]);
 
+  // Automation session sync from WebSocket + stop on employee offline.
+  useEffect(() => {
+    if (!lastMessage) return;
+    const type = lastMessage.type as string;
+    const data = lastMessage.data || {};
+
+    if (type === 'screenshot-automation:started' && data.employeeId) {
+      setAutoSessions(prev => ({
+        ...prev,
+        [data.employeeId]: {
+          sessionId: data.sessionId,
+          employeeId: data.employeeId,
+          mode: data.mode === 'random' ? 'random' : 'fixed',
+          intervalSec: data.intervalSec,
+          minIntervalSec: data.minIntervalSec,
+          maxIntervalSec: data.maxIntervalSec,
+          startedAt: data.startedAt,
+        },
+      }));
+      return;
+    }
+
+    if (type === 'screenshot-automation:ended' && data.employeeId) {
+      setAutoSessions(prev => {
+        if (!(data.employeeId in prev)) return prev;
+        const next = { ...prev };
+        delete next[data.employeeId];
+        return next;
+      });
+      if (data.employeeId === employeeId) {
+        const reason = data.reason as string | undefined;
+        if (reason === 'device-disconnect' || reason === 'device-offline') {
+          setFlash(t('screenshots.autoEndedDisconnect'));
+        } else if (reason === 'admin-stop') {
+          setFlash(t('screenshots.autoStopped'));
+        }
+      }
+      return;
+    }
+
+    if (type === 'employee:offline' && data.employeeId) {
+      setAutoSessions(prev => {
+        if (!(data.employeeId in prev)) return prev;
+        const next = { ...prev };
+        delete next[data.employeeId];
+        return next;
+      });
+    }
+  }, [lastMessage, employeeId, t]);
+
   useEffect(() => {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
@@ -200,6 +286,75 @@ export const Screenshots: React.FC = () => {
 
   const selectedOnline = employeeId ? isEmployeeOnline(employeeId) : false;
   const scheduling = countdownLeft !== null;
+  const activeAuto = employeeId ? autoSessions[employeeId] : undefined;
+  const autoRunning = !!activeAuto;
+
+  const handleStartAutomation = async () => {
+    if (!employeeId) {
+      setError(t('screenshots.autoNeedEmployee'));
+      return;
+    }
+    if (!selectedOnline) {
+      setError(t('screenshots.offline'));
+      return;
+    }
+    setError(null);
+    setAutoBusy(true);
+    try {
+      const body =
+        autoMode === 'fixed'
+          ? { employeeId, mode: 'fixed', intervalSec: autoIntervalSec }
+          : {
+              employeeId,
+              mode: 'random',
+              minIntervalSec: Math.min(autoMinSec, autoMaxSec),
+              maxIntervalSec: Math.max(autoMinSec, autoMaxSec),
+            };
+      const res = await api.post('/api/screenshots/automation/start', body);
+      if (!res?.success) throw new Error(res?.error || t('screenshots.offline'));
+      const session = res.data as AutomationSession;
+      setAutoSessions(prev => ({ ...prev, [employeeId]: session }));
+      setFlash(t('screenshots.autoStarted'));
+      setDate(todayLocal());
+      void load({ silent: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
+  const handleStopAutomation = async () => {
+    if (!employeeId) return;
+    setError(null);
+    setAutoBusy(true);
+    try {
+      await api.post('/api/screenshots/automation/stop', { employeeId });
+      setAutoSessions(prev => {
+        if (!(employeeId in prev)) return prev;
+        const next = { ...prev };
+        delete next[employeeId];
+        return next;
+      });
+      setFlash(t('screenshots.autoStopped'));
+    } catch (e) {
+      const status = (e as { status?: number }).status;
+      // Already gone (disconnect race) — treat as stopped.
+      if (status === 404) {
+        setAutoSessions(prev => {
+          if (!(employeeId in prev)) return prev;
+          const next = { ...prev };
+          delete next[employeeId];
+          return next;
+        });
+        setFlash(t('screenshots.autoStopped'));
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setAutoBusy(false);
+    }
+  };
 
   const requestScreenshotNow = async () => {
     if (!employeeId) {
@@ -409,6 +564,128 @@ export const Screenshots: React.FC = () => {
               }}
             >
               {selectedOnline ? `● ${t('screenshots.online')}` : `○ ${t('screenshots.offlineBadge')}`}
+            </span>
+          )}
+        </div>
+
+        <div
+          className="tt-toolbar"
+          style={{ marginTop: 12, flexWrap: 'wrap', gap: 8, alignItems: 'center' }}
+          title={t('screenshots.autoHint')}
+        >
+          <span className="tt-muted" style={{ fontWeight: 600 }}>{t('screenshots.auto')}</span>
+          <select
+            className="tt-input"
+            value={autoMode}
+            onChange={e => setAutoMode(e.target.value === 'random' ? 'random' : 'fixed')}
+            disabled={autoRunning || autoBusy}
+            style={{ width: 'auto', minWidth: '140px' }}
+            aria-label={t('screenshots.autoMode')}
+          >
+            <option value="fixed">{t('screenshots.autoFixed')}</option>
+            <option value="random">{t('screenshots.autoRandom')}</option>
+          </select>
+          {autoMode === 'fixed' ? (
+            <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {t('screenshots.autoInterval')}:
+              <select
+                className="tt-input"
+                value={autoIntervalSec}
+                onChange={e => setAutoIntervalSec(Number(e.target.value))}
+                disabled={autoRunning || autoBusy}
+                style={{ width: 'auto', minWidth: '100px' }}
+              >
+                {AUTO_INTERVAL_OPTIONS.map(sec => (
+                  <option key={sec} value={sec}>
+                    {sec < 60
+                      ? t('screenshots.timerSeconds', { n: sec })
+                      : sec === 60
+                        ? t('screenshots.timerMinute')
+                        : t('screenshots.timerMinutes', { n: sec / 60 })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <>
+              <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {t('screenshots.autoMin')}:
+                <select
+                  className="tt-input"
+                  value={autoMinSec}
+                  onChange={e => setAutoMinSec(Number(e.target.value))}
+                  disabled={autoRunning || autoBusy}
+                  style={{ width: 'auto', minWidth: '100px' }}
+                >
+                  {AUTO_INTERVAL_OPTIONS.map(sec => (
+                    <option key={sec} value={sec}>
+                      {sec < 60
+                        ? t('screenshots.timerSeconds', { n: sec })
+                        : sec === 60
+                          ? t('screenshots.timerMinute')
+                          : t('screenshots.timerMinutes', { n: sec / 60 })}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {t('screenshots.autoMax')}:
+                <select
+                  className="tt-input"
+                  value={autoMaxSec}
+                  onChange={e => setAutoMaxSec(Number(e.target.value))}
+                  disabled={autoRunning || autoBusy}
+                  style={{ width: 'auto', minWidth: '100px' }}
+                >
+                  {AUTO_INTERVAL_OPTIONS.map(sec => (
+                    <option key={sec} value={sec}>
+                      {sec < 60
+                        ? t('screenshots.timerSeconds', { n: sec })
+                        : sec === 60
+                          ? t('screenshots.timerMinute')
+                          : t('screenshots.timerMinutes', { n: sec / 60 })}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+          {!autoRunning ? (
+            <button
+              type="button"
+              className="tt-btn tt-btn-primary"
+              onClick={() => void handleStartAutomation()}
+              disabled={autoBusy || !employeeId || !selectedOnline}
+              title={
+                !employeeId
+                  ? t('screenshots.autoNeedEmployee')
+                  : selectedOnline
+                    ? t('screenshots.autoHint')
+                    : t('screenshots.offline')
+              }
+            >
+              {autoBusy ? t('screenshots.autoStarting') : t('screenshots.autoStart')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="tt-btn tt-btn-ghost"
+              onClick={() => void handleStopAutomation()}
+              disabled={autoBusy || !employeeId}
+            >
+              {autoBusy ? t('screenshots.autoStopping') : t('screenshots.autoStop')}
+            </button>
+          )}
+          {autoRunning && activeAuto && (
+            <span className="tt-badge" style={{ color: 'var(--tt-success)' }}>
+              {activeAuto.mode === 'random'
+                ? t('screenshots.autoRunningRandom', {
+                    min: activeAuto.minIntervalSec ?? autoMinSec,
+                    max: activeAuto.maxIntervalSec ?? autoMaxSec,
+                  })
+                : t('screenshots.autoRunningFixed', {
+                    seconds: activeAuto.intervalSec ?? autoIntervalSec,
+                  })}
             </span>
           )}
         </div>
