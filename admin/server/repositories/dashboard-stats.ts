@@ -28,6 +28,46 @@ export const SYSTEM_APP_BLACKLIST = [
   'notificationcenter'
 ];
 
+const BROWSER_APP_HINTS = [
+  'chrome',
+  'firefox',
+  'safari',
+  'edge',
+  'brave',
+  'opera',
+  'vivaldi',
+  'arc',
+  'dia',
+  'chromium',
+];
+
+function isBrowserAppName(appName: string): boolean {
+  const n = appName.toLowerCase();
+  return BROWSER_APP_HINTS.some(h => n.includes(h));
+}
+
+/**
+ * Short sidebar/dashboard label for "what is this employee doing?"
+ * Prefer the OS app name so a Chrome tab titled "WhatsApp" is never shown as
+ * if WhatsApp were the focused desktop app. For browsers, append a truncated
+ * tab title for context.
+ */
+export function formatCurrentActivity(
+  appName?: string | null,
+  windowTitle?: string | null
+): string | undefined {
+  const app = (appName || '').trim();
+  const title = (windowTitle || '').trim();
+  if (!app && !title) return undefined;
+  if (!app) return title;
+  if (!title || title.toLowerCase() === app.toLowerCase()) return app;
+  if (isBrowserAppName(app)) {
+    const short = title.length > 40 ? `${title.slice(0, 37)}…` : title;
+    return `${app} · ${short}`;
+  }
+  return app;
+}
+
 export async function getDashboardStats(
   orgId: string,
   viewTimezone?: string,
@@ -212,7 +252,10 @@ export async function getEmployeeActivityStats(orgId: string, tz?: string): Prom
     results.push({
       employeeId: emp.id,
       employeeName: emp.name,
-      currentActivity: latestActivity?.window_title,
+      currentActivity: formatCurrentActivity(
+        latestActivity?.app_name,
+        latestActivity?.window_title
+      ),
       currentCategory: latestActivity?.category_name,
       productivityScore: stats.productivityScore,
       hoursToday: Math.round(stats.totalSeconds / 3600 * 10) / 10,

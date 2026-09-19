@@ -28,9 +28,9 @@ Admins configure **capture privacy blocks** with a **site URL** (e.g. `https://w
 
 The desktop **PrivacyGuard** is the single gate for screenshots and Live Activity (there is no separate video-recording pipeline — continuous viewing is JPEG frames over the live session).
 
-- **Site hostnames (blocklist mode):** blocks capture when a listed host is the **active tab**.
-- **Site hostnames (allowlist mode):** blocks capture for **every** website except listed hosts on the active tab.
-- **App names:** match open window / process names for native apps.
+- **Site hostnames (blocklist mode):** blocks capture when a listed host is the **active tab of the focused browser**. Background browser windows (e.g. WhatsApp Web behind Cursor) do **not** block.
+- **Site hostnames (allowlist mode):** blocks capture for **every** website except listed hosts on the focused browser’s front tab; desktop apps (no browser focused) are allowed.
+- **App names:** match the **foreground** window / process name only.
 - **Fail-closed:** when URL rules require browser state and it cannot be verified, PrivacyGuard returns **unknown** and adapters **do not** capture.
 
 When a block matches (or state is unknown with URL rules present):

@@ -3,6 +3,7 @@
 // All capture decisions go through PrivacyGuard (same gate as screenshots).
 
 import { desktopCapturer, screen } from 'electron';
+import { getActiveWindow } from './active-window.js';
 import { decide, isCaptureBlocked } from './privacy-guard.js';
 import {
   LIVE_VIEW_DEFAULT_MAX_FRAME_BYTES,
@@ -56,6 +57,45 @@ let effectiveWidth: number | null = null;
 let effectiveFps: number | null = null;
 let effectiveJpegQuality: number | null = null;
 let effectiveMaxBitrateBps: number | null = null;
+let lastContextSentAt = 0;
+let lastContextKey = '';
+const CONTEXT_MIN_INTERVAL_MS = 1500;
+
+function formatLiveLabel(appName?: string | null, windowTitle?: string | null): string {
+  const app = (appName || '').trim();
+  const title = (windowTitle || '').trim();
+  if (app && title && title.toLowerCase() !== app.toLowerCase()) {
+    const browser =
+      /chrome|firefox|safari|edge|brave|opera|vivaldi|arc|dia|chromium/i.test(app);
+    if (browser) {
+      const short = title.length > 40 ? `${title.slice(0, 37)}…` : title;
+      return `${app} · ${short}`;
+    }
+    return app;
+  }
+  return app || title || '';
+}
+
+function sendLiveContext(meta: { appName?: string | null; windowTitle?: string | null }): void {
+  if (!sendFn || !activeSessionId) return;
+  const appName = meta.appName || null;
+  const windowTitle = meta.windowTitle || null;
+  const key = `${appName || ''}|${windowTitle || ''}`;
+  const now = Date.now();
+  if (key === lastContextKey && now - lastContextSentAt < CONTEXT_MIN_INTERVAL_MS) return;
+  lastContextKey = key;
+  lastContextSentAt = now;
+  sendFn({
+    type: 'live-view:context',
+    data: {
+      sessionId: activeSessionId,
+      appName,
+      windowTitle,
+      label: formatLiveLabel(appName, windowTitle) || null,
+      capturedAt: new Date().toISOString(),
+    },
+  });
+}
 
 function stopCaptureLoop(): void {
   if (frameTimer) {
@@ -173,14 +213,25 @@ async function privacyTick(): Promise<{
   windowTitle?: string | null;
 }> {
   const fallback = getContextFn?.() || {};
+  let appName = fallback.appName ?? null;
+  let windowTitle = fallback.windowTitle ?? null;
+  try {
+    const win = await getActiveWindow();
+    if (win?.owner?.name) {
+      appName = win.owner.name;
+      windowTitle = win.title || windowTitle;
+    }
+  } catch { /* keep fallback */ }
+
   try {
     const force = forcePrivacyRefresh;
     forcePrivacyRefresh = false;
     const privacy = await decide('liveView', {
-      appName: fallback.appName,
-      windowTitle: fallback.windowTitle,
+      appName,
+      windowTitle,
       forceRefresh: force,
     });
+    sendLiveContext({ appName, windowTitle });
     if (isCaptureBlocked(privacy)) {
       const pattern =
         privacy.state === 'block'
@@ -188,25 +239,25 @@ async function privacyTick(): Promise<{
           : privacy.state === 'unknown'
             ? `(unavailable: ${privacy.reason})`
             : '(blocked)';
-      const windowTitle =
+      const blockedTitle =
         privacy.state === 'block'
-          ? privacy.matchedUrl || fallback.windowTitle
-          : fallback.windowTitle;
+          ? privacy.matchedUrl || windowTitle
+          : windowTitle;
       return {
         blocked: true,
         pattern,
-        appName: fallback.appName,
-        windowTitle,
+        appName,
+        windowTitle: blockedTitle,
       };
     }
-    return { blocked: false, appName: fallback.appName, windowTitle: fallback.windowTitle };
+    return { blocked: false, appName, windowTitle };
   } catch (err) {
     console.warn('[live-view] privacy check failed:', (err as Error).message);
     return {
       blocked: true,
       pattern: '(unavailable: privacy_check_error)',
-      appName: fallback.appName,
-      windowTitle: fallback.windowTitle,
+      appName,
+      windowTitle,
     };
   }
 }
@@ -448,6 +499,8 @@ export function startLiveViewSession(
   activeSessionId = sessionId;
   lastPrivacyBlocked = false;
   forcePrivacyRefresh = true;
+  lastContextSentAt = 0;
+  lastContextKey = '';
   webrtcFailCount = 0;
   throttleState = createUnchangedThrottleState();
   effectiveWidth = null;

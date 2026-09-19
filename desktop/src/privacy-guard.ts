@@ -4,14 +4,14 @@
  * Flow: BrowserDetection → URL normalization → host match → decide(purpose)
  *   → ALLOW | BLOCK | UNKNOWN
  *
- * URL rules match the **active tab** of each browser window only (not background tabs).
+ * URL rules match the **frontmost tab of the OS-focused browser** only.
+ * Background browser windows (e.g. WhatsApp behind Cursor) do not block.
  * Fail-safe: when URL rules exist and browser state cannot be verified,
  * decide() returns UNKNOWN and capture adapters must not grab/transmit pixels.
  */
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { desktopCapturer } from 'electron';
 import { getActiveWindow } from './active-window.js';
 import {
   type BrowserProbeResult,
@@ -65,10 +65,31 @@ const MAC_BROWSER_APPS = [
   'Safari',
 ];
 
+/** True when the OS-focused app is a browser we can probe for tab URLs. */
+export function matchMacBrowserApp(appName: string | null | undefined): string | null {
+  const n = (appName || '').trim().toLowerCase();
+  if (!n) return null;
+  for (const app of MAC_BROWSER_APPS) {
+    const al = app.toLowerCase();
+    if (n === al) return app;
+  }
+  // Common short / helper process names
+  if (n === 'chrome' || n.startsWith('google chrome')) return 'Google Chrome';
+  if (n === 'brave' || n.startsWith('brave')) return 'Brave Browser';
+  if (n === 'msedge' || n === 'edge' || n.startsWith('microsoft edge')) return 'Microsoft Edge';
+  if (n === 'safari' || n.startsWith('safari')) return 'Safari';
+  if (n === 'vivaldi' || n.startsWith('vivaldi')) return 'Vivaldi';
+  if (n === 'opera' || n.startsWith('opera')) return 'Opera';
+  if (n === 'arc') return 'Arc';
+  if (n === 'dia') return 'Dia';
+  if (n === 'chromium' || n.startsWith('chromium')) return 'Chromium';
+  return null;
+}
+
 let blocks: CapturePrivacyBlock[] = [];
 let urlMode: PrivacyUrlMode = 'blocklist';
 
-let browserProbeCache: { at: number; result: BrowserProbeResult } | null = null;
+let browserProbeCache: { at: number; fg: string; result: BrowserProbeResult } | null = null;
 let browserProbeInFlight: Promise<BrowserProbeResult> | null = null;
 /** Short TTL so live view picks up navigations quickly; screenshots force refresh. */
 const BROWSER_PROBE_CACHE_MS = 300;
@@ -130,28 +151,25 @@ async function listRunningMacBrowserApps(): Promise<{ ok: true; apps: string[] }
 type TabProbe = { ok: true; urls: string[] } | { ok: false; reason: string };
 
 /**
- * Active-tab URLs only (one per browser window).
- * Background tabs must NOT block capture — only what can appear on screen.
+ * Frontmost-window active-tab URL only.
+ * Background browser windows (e.g. WhatsApp behind Cursor) must NOT block capture.
  * Safari uses "current tab"; Chromium-family uses "active tab".
  */
-async function probeActiveTabUrls(app: string): Promise<TabProbe> {
+async function probeFrontActiveTabUrl(app: string): Promise<TabProbe> {
   const tabRef = app === 'Safari' ? 'current tab' : 'active tab';
   const script = `
     tell application "${app}"
       if not running then return ""
-      set out to ""
-      repeat with w in windows
-        try
-          set out to out & (URL of ${tabRef} of w) & linefeed
-        end try
-      end repeat
-      return out
+      try
+        return URL of ${tabRef} of front window
+      end try
+      return ""
     end tell
   `;
   try {
     const { stdout } = await execFileAsync('osascript', ['-e', script], {
       timeout: BROWSER_PROBE_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
+      maxBuffer: 256 * 1024,
     });
     const urls = String(stdout || '')
       .split(/\r?\n/)
@@ -164,54 +182,79 @@ async function probeActiveTabUrls(app: string): Promise<TabProbe> {
 }
 
 /**
- * Probe browser tab URLs. Distinguishes success (possibly empty) from failure.
+ * Probe the frontmost browser tab URL when a browser is OS-focused.
+ * Distinguishes success (possibly empty) from failure.
  * Never treats a probe error as “no tabs.”
+ *
+ * When the foreground app is not a browser (Cursor, VS Code, Slack, …),
+ * returns an empty URL list so background WhatsApp tabs cannot block capture.
  */
-export async function probeBrowserUrls(force = false): Promise<BrowserProbeResult> {
+export async function probeBrowserUrls(
+  force = false,
+  foregroundAppName?: string | null
+): Promise<BrowserProbeResult> {
   if (process.platform !== 'darwin') {
     return { ok: false, reason: 'url_probe_unsupported_platform' };
   }
 
   const now = Date.now();
-  if (!force && browserProbeCache && now - browserProbeCache.at < BROWSER_PROBE_CACHE_MS) {
+  const cacheKey = (foregroundAppName || '').trim().toLowerCase();
+  if (
+    !force &&
+    browserProbeCache &&
+    browserProbeCache.fg === cacheKey &&
+    now - browserProbeCache.at < BROWSER_PROBE_CACHE_MS
+  ) {
     return browserProbeCache.result;
   }
   if (browserProbeInFlight) return browserProbeInFlight;
 
   browserProbeInFlight = (async (): Promise<BrowserProbeResult> => {
+    let fgName = (foregroundAppName || '').trim();
+    if (!fgName) {
+      try {
+        const win = await getActiveWindow();
+        fgName = win?.owner?.name || '';
+      } catch { /* ignore */ }
+    }
+    const fgKey = fgName.toLowerCase();
+
+    const matchedBrowser = matchMacBrowserApp(fgName);
+    if (!matchedBrowser) {
+      // Desktop app focused — URL privacy does not apply (tab not on screen).
+      const result: BrowserProbeResult = { ok: true, urls: [], browsers: [] };
+      console.log(`[privacy] skip URL probe — foreground is not a browser (${fgName || 'unknown'})`);
+      browserProbeCache = { at: Date.now(), fg: fgKey, result };
+      return result;
+    }
+
     const running = await listRunningMacBrowserApps();
     if (!running.ok) {
       const result: BrowserProbeResult = { ok: false, reason: running.reason };
-      browserProbeCache = { at: Date.now(), result };
+      browserProbeCache = { at: Date.now(), fg: fgKey, result };
       return result;
     }
 
-    if (running.apps.length === 0) {
+    if (!running.apps.includes(matchedBrowser)) {
+      // Focused name mapped to a browser that System Events does not list — treat as no tabs.
       const result: BrowserProbeResult = { ok: true, urls: [], browsers: [] };
-      console.log('[privacy] active tabs: 0 url(s) from no browsers');
-      browserProbeCache = { at: Date.now(), result };
+      browserProbeCache = { at: Date.now(), fg: fgKey, result };
       return result;
     }
 
-    const settled = await Promise.all(
-      running.apps.map(async app => ({ app, probe: await probeActiveTabUrls(app) }))
-    );
-    const failures = settled.filter(s => !s.probe.ok);
-    if (failures.length) {
-      // Any browser we could not query → fail-closed (might hide a protected active tab).
-      const reason = failures[0].probe.ok === false ? failures[0].probe.reason : 'browser_probe_error';
-      const result: BrowserProbeResult = { ok: false, reason };
-      browserProbeCache = { at: Date.now(), result };
+    const probe = await probeFrontActiveTabUrl(matchedBrowser);
+    if (!probe.ok) {
+      const result: BrowserProbeResult = { ok: false, reason: probe.reason };
+      browserProbeCache = { at: Date.now(), fg: fgKey, result };
       return result;
     }
 
-    const urls = [...new Set(settled.flatMap(s => (s.probe.ok ? s.probe.urls : [])))];
-    const browsers = running.apps;
+    const urls = [...new Set(probe.urls)];
     console.log(
-      `[privacy] active tabs: ${urls.length} url(s) from ${browsers.join(', ') || 'no browsers'}`
+      `[privacy] front tab: ${urls.length} url(s) from ${matchedBrowser}`
     );
-    const result: BrowserProbeResult = { ok: true, urls, browsers };
-    browserProbeCache = { at: Date.now(), result };
+    const result: BrowserProbeResult = { ok: true, urls, browsers: [matchedBrowser] };
+    browserProbeCache = { at: Date.now(), fg: fgKey, result };
     return result;
   })().finally(() => {
     browserProbeInFlight = null;
@@ -234,6 +277,7 @@ async function collectWindowLabels(input?: {
   appName?: string | null;
   windowTitle?: string | null;
 }): Promise<string[]> {
+  // Foreground only — a background Slack/WhatsApp window must not block capture.
   const labels: string[] = [];
   if (input?.appName) labels.push(String(input.appName));
   if (input?.windowTitle) labels.push(String(input.windowTitle));
@@ -241,15 +285,6 @@ async function collectWindowLabels(input?: {
     const win = await getActiveWindow();
     if (win?.owner?.name) labels.push(win.owner.name);
     if (win?.title) labels.push(win.title);
-  } catch { /* ignore */ }
-  try {
-    const sources = await desktopCapturer.getSources({
-      types: ['window'],
-      thumbnailSize: { width: 1, height: 1 },
-    });
-    for (const s of sources) {
-      if (s?.name) labels.push(s.name);
-    }
   } catch { /* ignore */ }
   return [...new Set(labels.map(l => l.trim()).filter(Boolean))];
 }
@@ -299,15 +334,27 @@ export async function decide(
     return { state: 'allow' };
   }
 
+  // Prefer a fresh OS focus read so stale "Chrome · WhatsApp" context cannot
+  // keep blocking (or labeling) while the user is in Cursor / VS Code.
+  let appName = input?.appName ?? null;
+  let windowTitle = input?.windowTitle ?? null;
+  try {
+    const win = await getActiveWindow();
+    if (win?.owner?.name) {
+      appName = win.owner.name;
+      windowTitle = win.title || windowTitle;
+    }
+  } catch { /* keep input fallback */ }
+
   let probe: BrowserProbeResult | null = null;
   if (needsUrlProbe) {
-    probe = await probeBrowserUrls(input?.forceRefresh === true);
+    probe = await probeBrowserUrls(input?.forceRefresh === true, appName);
   }
 
   let labels: string[] = [];
   const appBlocks = relevant.filter(b => !isUrlPattern(b.appPattern));
   if (appBlocks.length) {
-    labels = await collectWindowLabels(input);
+    labels = await collectWindowLabels({ appName, windowTitle });
   }
 
   const decision = decideFromProbe(purpose, blocks, probe, labels, urlMode);

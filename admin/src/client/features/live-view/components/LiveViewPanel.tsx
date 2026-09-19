@@ -83,6 +83,8 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
   const [liveQuality, setLiveQuality] = useState<LiveViewQualityMode>('auto');
   const [liveMetrics, setLiveMetrics] = useState<LiveViewMetrics | null>(null);
   const [liveShowDetails, setLiveShowDetails] = useState(false);
+  /** Fresh focused-app labels from the device during an active live session. */
+  const [liveContextByEmployee, setLiveContextByEmployee] = useState<Record<string, string>>({});
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const liveImgRef = useRef<HTMLImageElement | null>(null);
@@ -349,6 +351,7 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
     return subscribeLiveFrames((message) => {
       if (message.type === 'live-view:ended') {
         const sid = message.data?.sessionId;
+        const endedEmp = message.data?.employeeId as string | undefined;
         if (!liveSessionRef.current || !sid || sid === liveSessionRef.current) {
           liveSessionRef.current = null;
           setLiveStreaming(false);
@@ -366,6 +369,35 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
             setLiveError(t('live.ended'));
           }
         }
+        if (endedEmp) {
+          setLiveContextByEmployee((prev) => {
+            if (!(endedEmp in prev)) return prev;
+            const next = { ...prev };
+            delete next[endedEmp];
+            return next;
+          });
+        } else if (liveEmployeeIdRef.current) {
+          const empId = liveEmployeeIdRef.current;
+          setLiveContextByEmployee((prev) => {
+            if (!(empId in prev)) return prev;
+            const next = { ...prev };
+            delete next[empId];
+            return next;
+          });
+        }
+        return;
+      }
+      if (message.type === 'live-view:context') {
+        const empId = message.data?.employeeId as string | undefined;
+        if (!empId) return;
+        const label =
+          (typeof message.data?.label === 'string' && message.data.label) ||
+          (typeof message.data?.appName === 'string' && message.data.appName) ||
+          null;
+        if (!label) return;
+        setLiveContextByEmployee((prev) =>
+          prev[empId] === label ? prev : { ...prev, [empId]: label }
+        );
         return;
       }
       if (message.type === 'live-view:signal') {
@@ -501,6 +533,10 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
               const empActivity = employeeActivity.find((e) => e.employeeId === emp.id);
               const online = isEmployeeOnline(emp.id);
               const selected = liveEmployeeId === emp.id;
+              const activityLabel =
+                liveContextByEmployee[emp.id] ||
+                empActivity?.currentActivity ||
+                (online ? t('live.online') : t('live.offline'));
               return (
                 <button
                   key={emp.id}
@@ -514,7 +550,7 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                     <span style={styles.liveEmployeeName as React.CSSProperties}>{emp.name}</span>
                     <span style={styles.liveEmployeeMeta as React.CSSProperties}>
-                      {empActivity?.currentActivity || (online ? t('live.online') : t('live.offline'))}
+                      {activityLabel}
                     </span>
                   </span>
                   <span style={online ? (styles.onlineBadge as React.CSSProperties) : (styles.offlineBadge as React.CSSProperties)}>
@@ -557,11 +593,11 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                       {liveStreaming && livePrivacyBlocked
                         ? t('live.privacyBlocked')
                         : liveStreaming
-                          ? t('live.streaming')
+                          ? (liveContextByEmployee[liveEmployeeId] || t('live.streaming'))
                           : liveStarting
                             ? t('live.connecting')
-                            : empActivity?.currentActivity
-                              ? `${empActivity.currentActivity}${empActivity.currentCategory ? ` · ${empActivity.currentCategory}` : ''}`
+                            : (liveContextByEmployee[liveEmployeeId] || empActivity?.currentActivity)
+                              ? `${liveContextByEmployee[liveEmployeeId] || empActivity?.currentActivity}${empActivity?.currentCategory && !liveContextByEmployee[liveEmployeeId] ? ` · ${empActivity.currentCategory}` : ''}`
                               : online
                                 ? t('live.ready')
                                 : t('live.trackerOffline')}

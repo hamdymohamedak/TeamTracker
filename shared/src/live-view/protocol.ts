@@ -18,6 +18,8 @@ export const LV_MSG = {
   SIGNAL: 'live-view:signal',
   TRANSPORT: 'live-view:transport',
   ENDED: 'live-view:ended',
+  /** Fresh focused app/title while a live session is active. */
+  CONTEXT: 'live-view:context',
   /** Legacy Base64 JSON frames — deprecated; binary is default. */
   FRAME_JSON: 'live-view:frame',
 } as const;

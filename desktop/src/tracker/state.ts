@@ -21,6 +21,8 @@ export const trackerState = {
   /** Pending activities not yet synced to the server. */
   offlineQueue: [] as TrackedActivity[],
   lastActivity: null as TrackedActivity | null,
+  /** Latest focused window observed by the capture loop (even when not recorded). */
+  currentFocus: null as { appName: string; windowTitle: string } | null,
   lastSyncTime: 0,
   isOnline: true,
   queueOverflow: false,

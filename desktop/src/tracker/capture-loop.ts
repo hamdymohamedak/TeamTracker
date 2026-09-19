@@ -40,8 +40,8 @@ export function startPresenceClient(): void {
   startRemoteCommandClient(
     () => config.deviceToken || '',
     () => ({
-      appName: trackerState.lastActivity?.appName,
-      windowTitle: trackerState.lastActivity?.windowTitle,
+      appName: trackerState.currentFocus?.appName ?? trackerState.lastActivity?.appName,
+      windowTitle: trackerState.currentFocus?.windowTitle ?? trackerState.lastActivity?.windowTitle,
       employeeName: config.employeeName,
     })
   );
@@ -151,6 +151,7 @@ async function checkActivity(): Promise<void> {
       }
       windowTitle = winInfo.title || 'Untitled';
       appName = winInfo.owner?.name || 'Unknown';
+      trackerState.currentFocus = { appName, windowTitle };
     } catch (err) {
       console.error('Failed to get active window:', err);
       return;

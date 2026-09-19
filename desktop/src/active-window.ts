@@ -32,9 +32,26 @@ let activeWinFn: (() => Promise<any>) | null = null;
 let activeWinLoadAttempted = false;
 let linuxBackendLogged = false;
 let lastWindow: ActiveWindowInfo | null = null;
+/** Wall-clock of the last successful lookup (not a timeout/error fallback). */
+let lastWindowAt = 0;
 let inFlightLookup: Promise<ActiveWindowInfo | null> | null = null;
 let lastErrorLogAt = 0;
 const LOOKUP_TIMEOUT_MS = 450;
+/** Do not reuse a prior window after this age — avoids stale Chrome/WhatsApp labels. */
+const MAX_STALE_MS = 1500;
+
+function rememberWindow(info: ActiveWindowInfo): ActiveWindowInfo {
+  lastWindow = info;
+  lastWindowAt = Date.now();
+  return info;
+}
+
+/** Fresh success only; never an aged cache entry. */
+function freshCachedWindow(): ActiveWindowInfo | null {
+  if (!lastWindow || !lastWindowAt) return null;
+  if (Date.now() - lastWindowAt > MAX_STALE_MS) return null;
+  return lastWindow;
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   return new Promise((resolve) => {
@@ -337,6 +354,10 @@ function normalizeActiveWin(raw: any): ActiveWindowInfo | null {
  * Resolve the currently focused window. Safe to call frequently —
  * concurrent callers share one in-flight lookup, results are cached briefly,
  * and slow/failing backends time out instead of hanging the live stream.
+ *
+ * On timeout/error we return null (or a very fresh cache ≤ MAX_STALE_MS) —
+ * never an aged prior window, which used to keep reporting Chrome/WhatsApp
+ * after the user focused Cursor/VS Code.
  */
 export async function getActiveWindow(): Promise<ActiveWindowInfo | null> {
   if (inFlightLookup) return inFlightLookup;
@@ -347,10 +368,13 @@ export async function getActiveWindow(): Promise<ActiveWindowInfo | null> {
       if (fn) {
         try {
           const raw = await withTimeout(Promise.resolve().then(() => fn()), LOOKUP_TIMEOUT_MS);
+          if (raw == null) {
+            // Timed out — prefer null over a stale Chrome/WhatsApp label.
+            return freshCachedWindow();
+          }
           const normalized = normalizeActiveWin(raw);
           if (normalized && (normalized.title || normalized.owner.name !== 'Unknown')) {
-            lastWindow = normalized;
-            return normalized;
+            return rememberWindow(normalized);
           }
         } catch (err) {
           const now = Date.now();
@@ -358,19 +382,18 @@ export async function getActiveWindow(): Promise<ActiveWindowInfo | null> {
             lastErrorLogAt = now;
             console.warn('[active-window] active-win error:', (err as Error).message);
           }
-          if (!isLinux()) return lastWindow;
+          if (!isLinux()) return freshCachedWindow();
         }
       }
 
       if (isLinux()) {
         const linux = await withTimeout(fromLinuxFallbacks(), LOOKUP_TIMEOUT_MS);
         if (linux) {
-          lastWindow = linux;
-          return linux;
+          return rememberWindow(linux);
         }
       }
 
-      return lastWindow;
+      return freshCachedWindow();
     } finally {
       inFlightLookup = null;
     }
