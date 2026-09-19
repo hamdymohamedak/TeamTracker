@@ -44,16 +44,23 @@ function formatRelativeAgo(
   return t('live.agoDays', { n: Math.max(1, Math.round(diffSec / 86400)) });
 }
 
-function compactEmployeeStats(empActivity: EmployeeActivity | undefined, t: (key: string, vars?: Record<string, string | number>) => string): string {
-  if (!empActivity) return '';
+function compactEmployeeStats(
+  empActivity: EmployeeActivity | undefined,
+  lastSeenIso: string | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string {
   const parts: string[] = [];
-  if (typeof empActivity.productivityScore === 'number') {
-    parts.push(t('live.score', { score: empActivity.productivityScore }));
-  }
-  if (typeof empActivity.hoursToday === 'number') {
+  if (typeof empActivity?.hoursToday === 'number') {
     parts.push(t('live.hoursToday', { hours: empActivity.hoursToday }));
   }
-  if (empActivity.suspiciousActivityCount > 0) {
+  if (typeof empActivity?.productivityScore === 'number') {
+    parts.push(t('live.score', { score: empActivity.productivityScore }));
+  }
+  const ago = formatRelativeAgo(lastSeenIso || empActivity?.lastActivityAt, t);
+  if (ago) {
+    parts.push(t('live.lastSeenShort', { ago }));
+  }
+  if (empActivity && empActivity.suspiciousActivityCount > 0) {
     parts.push(t('live.suspiciousShort', { count: empActivity.suspiciousActivityCount }));
   }
   return parts.join(' · ');
@@ -115,6 +122,12 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
   const [liveShowDetails, setLiveShowDetails] = useState(false);
   /** Fresh focused-app labels from the device during an active live session. */
   const [liveContextByEmployee, setLiveContextByEmployee] = useState<Record<string, string>>({});
+  /** Keep relative “last seen” labels fresh. */
+  const [, setRelativeTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setRelativeTick(n => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const liveImgRef = useRef<HTMLImageElement | null>(null);
@@ -567,7 +580,9 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                 liveContextByEmployee[emp.id] ||
                 empActivity?.currentActivity ||
                 (online ? t('live.online') : t('live.offline'));
-              const statsLine = compactEmployeeStats(empActivity, t);
+              const presence = onlineEmployees.get(emp.id);
+              const lastSeenIso = presence?.lastSeen || empActivity?.lastActivityAt || null;
+              const statsLine = compactEmployeeStats(empActivity, lastSeenIso, t);
               return (
                 <button
                   key={emp.id}
@@ -591,6 +606,7 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                           opacity: 0.85,
                           marginTop: 1,
                         }}
+                        title={t('live.lastSeenTracker')}
                       >
                         {statsLine}
                       </span>
