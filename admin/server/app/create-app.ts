@@ -17,6 +17,7 @@ import { setupAuthRoutes } from '../routes/auth-routes.js';
 import { setupOrgRoutes } from '../routes/org-routes.js';
 import { setupSummaryScreenshotRoutes } from '../routes/summary-screenshot-routes.js';
 import { requireAuth } from '../auth.js';
+import { setupLanRoutes } from '../lan-discovery.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,6 +105,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }
   });
 
+  setupLanRoutes(app, env.port);
   setupAuthRoutes(app);
   setupOrgRoutes(app);
   setupSummaryScreenshotRoutes(app);

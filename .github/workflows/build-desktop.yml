@@ -73,17 +73,31 @@ jobs:
               ;;
           esac
 
+      - name: Bundle embedded admin server
+        if: matrix.app_dir == 'desktop-admin'
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.0 --activate
+          pnpm install --frozen-lockfile
+          FORCE_ADMIN_BUILD=1 node desktop-admin/scripts/bundle-admin-server.mjs
+          test -f desktop-admin/server-bundle/dist/server/index.js
+
       - name: Prepare standalone build dir
         run: |
           mkdir -p "$RUNNER_TEMP/tt-build"
           cp -R "${{ matrix.app_dir }}/." "$RUNNER_TEMP/tt-build/"
           rm -rf "$RUNNER_TEMP/tt-build/node_modules" "$RUNNER_TEMP/tt-build/release"
+          # Drop server-bundle node_modules rebuild logs noise; keep the tree for packaging
+          if [ "${{ matrix.app_dir }}" = "desktop-admin" ]; then
+            test -f "$RUNNER_TEMP/tt-build/server-bundle/dist/server/index.js"
+          fi
 
       - name: Install deps and build
         working-directory: ${{ runner.temp }}/tt-build
         env:
           # Bake production dashboard URL into employee tracker (desktop only).
           TEAMTRACKER_SERVER_URL: https://tracker.hostly-eg.com
+          SKIP_ADMIN_SERVER_BUNDLE: "1"
         run: |
           npm install
           npm run build
@@ -182,6 +196,16 @@ jobs:
         with:
           node-version: 22
 
+      - name: Bundle embedded admin server
+        if: matrix.app_dir == 'desktop-admin'
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.0 --activate
+          pnpm install --frozen-lockfile
+          FORCE_ADMIN_BUILD=1 node desktop-admin/scripts/bundle-admin-server.mjs
+          test -f desktop-admin/server-bundle/dist/server/index.js
+
       - name: Prepare standalone build dir
         shell: bash
         run: |
@@ -195,6 +219,7 @@ jobs:
         env:
           # Bake production dashboard URL into employee tracker (desktop only).
           TEAMTRACKER_SERVER_URL: https://tracker.hostly-eg.com
+          SKIP_ADMIN_SERVER_BUNDLE: "1"
           # Windows Authenticode only — do not reuse Mac CSC_LINK (.p12)
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
@@ -208,7 +233,12 @@ jobs:
             echo "WIN_CSC_LINK present — Authenticode signing enabled."
           fi
           npm install
-          npm run dist:win
+          if [ "${{ matrix.app_dir }}" = "desktop-admin" ]; then
+            npm run build
+            npx electron-builder --win --publish never
+          else
+            npm run dist:win
+          fi
 
       - name: Collect artifacts
         shell: bash
@@ -246,6 +276,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm fakeroot dpkg
 
+      - name: Bundle embedded admin server
+        if: matrix.app_dir == 'desktop-admin'
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.0 --activate
+          pnpm install --frozen-lockfile
+          FORCE_ADMIN_BUILD=1 node desktop-admin/scripts/bundle-admin-server.mjs
+          test -f desktop-admin/server-bundle/dist/server/index.js
+
       - name: Prepare standalone build dir
         run: |
           mkdir -p "$RUNNER_TEMP/tt-build"
@@ -257,9 +296,15 @@ jobs:
         env:
           # Bake production dashboard URL into employee tracker (desktop only).
           TEAMTRACKER_SERVER_URL: https://tracker.hostly-eg.com
+          SKIP_ADMIN_SERVER_BUNDLE: "1"
         run: |
           npm install
-          npm run dist:linux
+          if [ "${{ matrix.app_dir }}" = "desktop-admin" ]; then
+            npm run build
+            npx electron-builder --linux --publish never
+          else
+            npm run dist:linux
+          fi
 
       - name: Collect artifacts
         run: |

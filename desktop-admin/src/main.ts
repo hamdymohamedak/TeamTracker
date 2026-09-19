@@ -1,5 +1,5 @@
-// TeamTracker Admin — lightweight Electron shell around the web dashboard.
-// Menu / tray includes "Open Website" so admins can use the browser instead.
+// TeamTracker Admin — Electron shell that embeds a local admin server (LAN office)
+// or can point at a remote dashboard URL.
 
 import {
   app,
@@ -13,28 +13,43 @@ import {
 } from 'electron';
 import Store from 'electron-store';
 import * as path from 'path';
+import {
+  shouldEmbedLocalServer,
+  startLocalServer,
+  stopLocalServer,
+  restartLocalServer,
+  LOCAL_ADMIN_URL,
+  isLocalServerRunning,
+} from './local-server.js';
 
-const DEFAULT_ADMIN_URL =
+const DEFAULT_REMOTE_URL =
   process.env.TEAMTRACKER_ADMIN_URL ||
   'http://localhost:3001';
 
-const store = new Store<{ adminUrl: string }>({
-  defaults: { adminUrl: DEFAULT_ADMIN_URL },
+const store = new Store<{
+  adminUrl: string;
+  /** When true (default when packaged), spawn embedded server. */
+  useEmbeddedServer: boolean;
+}>({
+  defaults: {
+    adminUrl: DEFAULT_REMOTE_URL,
+    useEmbeddedServer: true,
+  },
 });
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let embedMode = false;
 
 function getAdminUrl(): string {
+  if (embedMode) return LOCAL_ADMIN_URL;
   const fromEnv = process.env.TEAMTRACKER_ADMIN_URL;
   if (fromEnv && /^https?:\/\//i.test(fromEnv)) return fromEnv.replace(/\/+$/, '');
-  const stored = String(store.get('adminUrl') || DEFAULT_ADMIN_URL).trim();
-  return (stored || DEFAULT_ADMIN_URL).replace(/\/+$/, '');
+  const stored = String(store.get('adminUrl') || DEFAULT_REMOTE_URL).trim();
+  return (stored || DEFAULT_REMOTE_URL).replace(/\/+$/, '');
 }
 
 function asset(...parts: string[]): string {
-  // Packaged: extraResources → process.resourcesPath/assets
-  // Dev: next to dist via ../assets
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'assets', ...parts);
   }
@@ -98,32 +113,50 @@ async function changeAdminUrl(): Promise<void> {
   const current = getAdminUrl();
   const result = await dialog.showMessageBox({
     type: 'question',
-    buttons: ['Copy current URL', 'Use localhost:3001', 'Use localhost:5174', 'Cancel'],
+    buttons: [
+      'Use embedded local server',
+      'Use localhost:3001 (external)',
+      'Copy current URL',
+      'Cancel',
+    ],
     defaultId: 0,
     cancelId: 3,
     title: 'Admin dashboard URL',
-    message: 'Choose a dashboard URL for this app',
+    message: 'Choose how this app connects to the dashboard',
     detail:
-      `Current: ${current}\n\n` +
-      'Tip: set TEAMTRACKER_ADMIN_URL for production (e.g. https://track.example.com).\n' +
-      'Or pick a local preset below. You can also paste a URL after Copy.',
+      `Current: ${current}\n` +
+      `Mode: ${embedMode ? 'embedded local office' : 'remote / external URL'}\n\n` +
+      'Embedded mode runs TeamTracker on this computer and advertises it on your LAN.\n' +
+      'Set TEAMTRACKER_ADMIN_URL to force a remote cloud dashboard.',
   });
 
-  if (result.response === 0) {
+  if (result.response === 3) return;
+
+  if (result.response === 2) {
     clipboard.writeText(current);
     return;
   }
-  if (result.response === 1) {
+
+  if (result.response === 0) {
+    store.set('useEmbeddedServer', true);
+    try {
+      await startLocalServer();
+      embedMode = true;
+    } catch (err) {
+      await dialog.showErrorBox('Local server failed', String(err));
+      return;
+    }
+  } else if (result.response === 1) {
+    store.set('useEmbeddedServer', false);
+    stopLocalServer();
+    embedMode = false;
     store.set('adminUrl', 'http://localhost:3001');
-  } else if (result.response === 2) {
-    store.set('adminUrl', 'http://localhost:5174');
-  } else {
-    return;
   }
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     void mainWindow.loadURL(getAdminUrl());
   }
+  createTray();
 }
 
 function buildMenu(): void {
@@ -139,8 +172,22 @@ function buildMenu(): void {
           click: () => { void openWebsiteInBrowser(); },
         },
         {
-          label: 'Change Dashboard URL…',
+          label: 'Change Dashboard Mode…',
           click: () => { void changeAdminUrl(); },
+        },
+        {
+          label: 'Restart Local Server',
+          enabled: embedMode,
+          click: async () => {
+            try {
+              await restartLocalServer();
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                void mainWindow.loadURL(LOCAL_ADMIN_URL);
+              }
+            } catch (err) {
+              await dialog.showErrorBox('Restart failed', String(err));
+            }
+          },
         },
         { type: 'separator' },
         { role: 'quit' },
@@ -181,13 +228,26 @@ function buildMenu(): void {
 }
 
 function createTray(): void {
+  if (tray) {
+    try {
+      tray.destroy();
+    } catch {
+      /* ignore */
+    }
+    tray = null;
+  }
   const iconPath = asset('tray-icon.png');
   let image = nativeImage.createFromPath(iconPath);
   if (image.isEmpty()) {
     image = nativeImage.createFromPath(asset('icon.png')).resize({ width: 16, height: 16 });
   }
   tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
-  tray.setToolTip('TeamTracker Admin');
+  const status = embedMode
+    ? isLocalServerRunning()
+      ? 'Local office running'
+      : 'Local office starting…'
+    : 'Remote dashboard';
+  tray.setToolTip(`TeamTracker Admin — ${status}`);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Show Dashboard', click: () => createWindow() },
     {
@@ -196,7 +256,7 @@ function createTray(): void {
     },
     { type: 'separator' },
     {
-      label: 'Change Dashboard URL…',
+      label: 'Change Dashboard Mode…',
       click: () => { void changeAdminUrl(); },
     },
     { type: 'separator' },
@@ -205,13 +265,37 @@ function createTray(): void {
   tray.on('click', () => createWindow());
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
     try {
       const dockIcon = nativeImage.createFromPath(asset('icon.png'));
       if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
     } catch { /* ignore */ }
   }
+
+  const wantEmbed =
+    store.get('useEmbeddedServer') !== false &&
+    (shouldEmbedLocalServer() || process.env.TEAMTRACKER_EMBED_SERVER === '1');
+
+  if (wantEmbed) {
+    try {
+      await startLocalServer();
+      embedMode = true;
+      store.set('adminUrl', LOCAL_ADMIN_URL);
+    } catch (err) {
+      embedMode = false;
+      console.error('[local-server]', err);
+      await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Local server unavailable',
+        message: 'Could not start the embedded TeamTracker server.',
+        detail:
+          String(err) +
+          '\n\nYou can point this app at an already-running server via Change Dashboard Mode.',
+      });
+    }
+  }
+
   buildMenu();
   createTray();
   createWindow();
@@ -222,9 +306,10 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', () => {
+  stopLocalServer();
+});
+
 app.on('window-all-closed', () => {
-  // Keep running in tray on macOS; quit elsewhere when all windows close.
-  if (process.platform !== 'darwin') {
-    // Stay in tray on Windows/Linux too so "Open Website" remains available.
-  }
+  // Keep running in tray so the local office server stays up.
 });

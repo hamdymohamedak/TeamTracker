@@ -47,6 +47,8 @@ See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for package layout, where
 
 ## Getting started
 
+### Cloud dashboard
+
 ### 1. Sign up
 Open your TeamTracker signup page, create your company account, and **save your recovery codes** — you’ll need them if you ever reset your password.
 
@@ -69,6 +71,16 @@ For each employee, generate a **Setup Token** from the dashboard, share it with 
 | **Linux** | Use the AppImage or `.deb`. Grant screen-share permission when asked. |
 
 After enrollment with the setup token, the employee should appear on your dashboard within about a minute.
+
+### Local office (no cloud, no source code)
+
+Run everything on your LAN with packaged apps:
+
+1. Install **TeamTracker Admin** from [Releases](https://github.com/hamdymohamedak/TeamTracker/releases) on the manager’s computer — it embeds the server and advertises the office on the network.
+2. Install **TeamTracker** (employee) on each workstation — pick the office from the list, paste the setup token (or use the QR / activation file).
+3. Keep Admin running while the team is tracked.
+
+Full guide: [LAN_SETUP.md](LAN_SETUP.md).
 
 ### 4. Watch it work
 Open the dashboard on any device. You’ll see apps in use, time breakdowns, and productivity scores as they update.

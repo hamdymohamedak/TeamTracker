@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { useI18n } from '@/contexts/I18nContext';
 import { ModalCloseButton } from '@/components/Icon';
+import { buildActivationPayload } from '@/lib/lanInfo';
 import type { InstallPromptState, SetupTokenState } from '../types';
 
 interface Props {
@@ -17,6 +19,33 @@ export const EmployeeSetupActions: React.FC<Props> = ({
   setInstallPrompt,
 }) => {
   const { t } = useI18n();
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQrDataUrl(null);
+    if (!setupToken?.token || !setupToken.serverUrl) return;
+
+    const payload = buildActivationPayload({
+      setupToken: setupToken.token,
+      serverUrl: setupToken.serverUrl,
+      employeeName: setupToken.employeeName,
+    });
+
+    void QRCode.toDataURL(JSON.stringify(payload), {
+      width: 200,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    }).then((url) => {
+      if (!cancelled) setQrDataUrl(url);
+    }).catch(() => {
+      if (!cancelled) setQrDataUrl(null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setupToken]);
 
   return (
     <>
@@ -37,6 +66,20 @@ export const EmployeeSetupActions: React.FC<Props> = ({
             </div>
             <div className="tt-modal-body">
               <div style={styles.tokenBox}>{setupToken.token}</div>
+              {setupToken.serverUrl ? (
+                <p style={{ fontSize: 12, color: 'var(--tt-text-muted)', margin: '0 0 12px' }}>
+                  {t('employees.serverUrlLabel')}:{' '}
+                  <code style={{ fontSize: 11 }}>{setupToken.serverUrl}</code>
+                </p>
+              ) : null}
+              {qrDataUrl ? (
+                <div style={styles.qrBlock}>
+                  <img src={qrDataUrl} alt={t('employees.qrAlt')} width={200} height={200} />
+                  <p style={{ fontSize: 12, color: 'var(--tt-text-muted)', margin: '8px 0 0', textAlign: 'center' }}>
+                    {t('employees.qrHint')}
+                  </p>
+                </div>
+              ) : null}
               <div style={styles.infoCallout}>
                 <p style={{ fontSize: '13px', color: 'var(--tt-text)', margin: '0 0 8px', lineHeight: '1.5' }}>
                   {t('employees.tokenShare', { name: setupToken.employeeName })}
@@ -101,17 +144,15 @@ export const EmployeeSetupActions: React.FC<Props> = ({
             </div>
             <div className="tt-modal-body">
               <p style={{ color: 'var(--tt-text)', margin: '0 0 12px', fontSize: '14px', lineHeight: 1.5 }}>
-                An activation file for <strong>{installPrompt.employeeName}</strong> has been saved to
-                your Downloads folder.
+                {t('employees.installSaved', { name: installPrompt.employeeName })}
               </p>
               <div style={styles.successCallout}>
-                <div style={{ fontWeight: 650, marginBottom: '6px' }}>Next steps on this laptop:</div>
+                <div style={{ fontWeight: 650, marginBottom: '6px' }}>{t('employees.installNextTitle')}</div>
                 <ol style={{ margin: 0, paddingLeft: '18px' }}>
-                  <li>Click the button below to download the TeamTracker installer</li>
-                  <li>Run the installer</li>
+                  <li>{t('employees.installStep1')}</li>
+                  <li>{t('employees.installStep2')}</li>
                   <li>
-                    That's it — the tracker will auto-connect as{' '}
-                    <strong>{installPrompt.employeeName}</strong> on first launch
+                    {t('employees.installStep3', { name: installPrompt.employeeName })}
                   </li>
                 </ol>
               </div>
@@ -131,7 +172,7 @@ export const EmployeeSetupActions: React.FC<Props> = ({
                 className="tt-btn tt-btn-primary"
                 style={{ textDecoration: 'none' }}
               >
-                Download Installer
+                {t('employees.downloadInstaller')}
               </a>
             </div>
           </div>
@@ -152,6 +193,16 @@ const styles: Record<string, React.CSSProperties> = {
     wordBreak: 'break-all',
     color: 'var(--tt-text)',
     marginBottom: 12,
+  },
+  qrBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 'var(--tt-radius-sm)',
+    border: '1px solid var(--tt-border)',
+    background: 'var(--tt-surface)',
   },
   infoCallout: {
     backgroundColor: 'var(--tt-info-soft)',

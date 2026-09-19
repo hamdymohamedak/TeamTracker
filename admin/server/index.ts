@@ -22,6 +22,11 @@ import { startDailySummaryScheduler } from './daily-summary.js';
 import { startScreenshotRetentionScheduler } from './screenshot-retention.js';
 import { startBackupScheduler } from './backup.js';
 import { requireAuth } from './auth.js';
+import {
+  setupLanRoutes,
+  startLanAdvertising,
+  stopLanAdvertising,
+} from './lan-discovery.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +40,8 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 const PORT = env.port;
+
+setupLanRoutes(app, PORT);
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: env.corsOrigin }));
@@ -211,6 +218,7 @@ async function startServer() {
         health: `/api/health`,
         ready: `/api/ready`,
       });
+      void startLanAdvertising(PORT);
     });
   } catch (error) {
     startupError = String(error);
@@ -219,6 +227,16 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+function shutdown(signal: string) {
+  logger.info('Shutting down', { signal });
+  stopLanAdvertising();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 process.on('unhandledRejection', (error) => {
   logger.error('Unhandled rejection', { error: String(error) });

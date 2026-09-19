@@ -68,6 +68,15 @@ describe('HTTP health', () => {
     assert.equal(res.status, 200);
     assert.equal(res.json.status, 'ok');
   });
+
+  it('GET /api/lan/info is public', async () => {
+    const res = await api('GET', '/api/lan/info');
+    assert.equal(res.status, 200);
+    assert.equal(typeof res.json.officeName, 'string');
+    assert.equal(typeof res.json.port, 'number');
+    assert.equal(typeof res.json.discovery, 'boolean');
+    assert.ok(Array.isArray(res.json.lanUrls));
+  });
 });
 
 describe('HTTP auth', () => {
