@@ -176,14 +176,24 @@ async function checkActivity(): Promise<void> {
       return;
     }
 
-    // Skip recording if user has been idle for more than 5 minutes.
-    // Only record an idle entry once per idle session.
+    // Away from keyboard > 5 minutes: keep writing Idle heartbeats so
+    // duration_seconds accumulates (previously only one ~10s row was stored).
     if (idleTimeSec > 300) {
-      if (
-        !trackerState.lastActivity ||
-        !trackerState.lastActivity.isIdle ||
-        trackerState.lastActivity.appName !== 'Idle'
-      ) {
+      const alreadyIdle =
+        !!trackerState.lastActivity?.isIdle &&
+        trackerState.lastActivity.appName === 'Idle';
+      const lastIdleTs = alreadyIdle && trackerState.lastActivity
+        ? new Date(trackerState.lastActivity.timestamp).getTime()
+        : 0;
+      const msSinceLastIdle = alreadyIdle ? now - lastIdleTs : Number.POSITIVE_INFINITY;
+      // First idle row immediately; then one heartbeat about every 60s.
+      const shouldRecordIdle = !alreadyIdle || msSinceLastIdle >= 60_000;
+
+      if (shouldRecordIdle) {
+        const durationSeconds = alreadyIdle
+          ? Math.min(Math.max(Math.round(msSinceLastIdle / 1000), 1), 90)
+          : Math.max(Math.round(timeSinceLastCheck), 1);
+
         const idleActivity: TrackedActivity = {
           id: generateId(),
           timestamp: new Date().toISOString(),
@@ -197,7 +207,7 @@ async function checkActivity(): Promise<void> {
           suspiciousReason: undefined,
           isIdle: true,
           idleTimeSeconds: idleTimeSec,
-          durationSeconds: Math.round(timeSinceLastCheck),
+          durationSeconds,
           hasInputActivity: false
         };
 
@@ -207,7 +217,8 @@ async function checkActivity(): Promise<void> {
 
         console.log(
           `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ` +
-          `💤 IDLE | User away for ${Math.round(idleTimeSec / 60)} minutes`
+          `💤 IDLE | User away for ${Math.round(idleTimeSec / 60)} minutes` +
+          ` (+${durationSeconds}s)`
         );
       }
       return;

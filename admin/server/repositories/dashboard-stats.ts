@@ -68,6 +68,87 @@ export function formatCurrentActivity(
   return app;
 }
 
+function normalizeMatchText(s: string | undefined | null): string {
+  return String(s || '')
+    .normalize('NFKC')
+    .replace(/[\u200E\u200F\u202A-\u202E]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+type PrivacyPatternRow = {
+  employee_id: string | null;
+  app_pattern: string;
+  aliases: string;
+};
+
+/** Heuristic: activity app/title contains a privacy pattern or alias (estimate only). */
+export function activityMatchesPrivacyPatterns(
+  appName: string | undefined | null,
+  windowTitle: string | undefined | null,
+  patterns: Array<{ needles: string[] }>
+): boolean {
+  if (!patterns.length) return false;
+  const hay = normalizeMatchText(`${appName || ''} ${windowTitle || ''}`);
+  if (!hay) return false;
+  for (const p of patterns) {
+    for (const needle of p.needles) {
+      if (needle && hay.includes(needle)) return true;
+    }
+  }
+  return false;
+}
+
+function buildPrivacyNeedles(row: PrivacyPatternRow): string[] {
+  const needles: string[] = [];
+  const raw = (row.app_pattern || '').trim();
+  if (raw) {
+    needles.push(normalizeMatchText(raw));
+    // Host-like patterns: also match the first label (whatsapp from web.whatsapp.com).
+    const hostish = raw.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
+    if (hostish) {
+      needles.push(normalizeMatchText(hostish));
+      const label = hostish.split('.').filter(Boolean);
+      if (label.length >= 2) {
+        // web.whatsapp.com → whatsapp
+        needles.push(normalizeMatchText(label[label.length - 2]));
+      }
+    }
+  }
+  try {
+    const aliases = JSON.parse(row.aliases || '[]');
+    if (Array.isArray(aliases)) {
+      for (const a of aliases) {
+        const n = normalizeMatchText(String(a));
+        if (n) needles.push(n);
+      }
+    }
+  } catch { /* ignore */ }
+  return [...new Set(needles.filter(Boolean))];
+}
+
+function topAppFromRows(rows: Array<{ app_name?: string; duration_seconds?: number }>): {
+  topAppName?: string;
+  topAppSeconds: number;
+} {
+  const byApp = new Map<string, number>();
+  for (const r of rows) {
+    const name = (r.app_name || '').trim() || 'Unknown';
+    if (name.toLowerCase() === 'idle') continue;
+    const sec = Number(r.duration_seconds) || 0;
+    byApp.set(name, (byApp.get(name) || 0) + sec);
+  }
+  let topAppName: string | undefined;
+  let topAppSeconds = 0;
+  for (const [name, sec] of byApp) {
+    if (sec > topAppSeconds) {
+      topAppSeconds = sec;
+      topAppName = name;
+    }
+  }
+  return { topAppName, topAppSeconds };
+}
+
 export async function getDashboardStats(
   orgId: string,
   viewTimezone?: string,
@@ -153,8 +234,26 @@ export async function getDashboardStats(
     )
   ]);
 
-  // Compute unified stats across the whole org for today.
-  const mappedToday = (todayActivities as any[]).map(mapActivity);
+  // Compute unified stats across the whole org for the selected scope.
+  // Apply each employee's business hours so org tiles match per-employee cards.
+  const employeesForBh = await withTimeout(
+    db.all(
+      `SELECT id, timezone, business_hours_start, business_hours_end, business_hours_days
+       FROM employees WHERE is_active = 1 AND org_id = ?`,
+      [orgId]
+    ),
+    5000,
+    []
+  );
+  const empById = new Map((employeesForBh as any[]).map((e: any) => [e.id, e]));
+  const mappedToday = (todayActivities as any[]).map((row: any) => {
+    const base = mapActivity(row);
+    const emp = empById.get(row.employee_id);
+    if (!hasBusinessHours(emp)) {
+      return { ...base, outsideBusinessHours: false };
+    }
+    return annotateOutsideHours([base], emp, tz)[0];
+  });
   const stats = computeProductivityStats(mappedToday);
 
   // Minutes per bucket for the dashboard's "Time Breakdown (Today)" grid.
@@ -211,14 +310,31 @@ export async function getEmployeeActivityStats(orgId: string, tz?: string): Prom
 
   const orgRow = await db.get('SELECT timezone FROM organizations WHERE id = ?', [orgId]);
   const resolvedTz = resolveTimezone(tz || orgRow?.timezone);
-  const [startTodayUtc, endTodayUtc] = getLocalDayBounds(resolvedTz, 0);
 
-  const employees = await db.all(
-    `SELECT id, name, timezone, business_hours_start, business_hours_end, business_hours_days
-     FROM employees
-     WHERE is_active = 1 AND org_id = ?`,
-    [orgId]
-  );
+  const [employees, privacyRows] = await Promise.all([
+    db.all(
+      `SELECT id, name, timezone, business_hours_start, business_hours_end, business_hours_days
+       FROM employees
+       WHERE is_active = 1 AND org_id = ?`,
+      [orgId]
+    ),
+    db.all(
+      `SELECT employee_id, app_pattern, aliases
+       FROM capture_privacy_blocks WHERE org_id = ?`,
+      [orgId]
+    ),
+  ]);
+
+  const orgPrivacy = (privacyRows as PrivacyPatternRow[])
+    .filter(r => !r.employee_id)
+    .map(r => ({ needles: buildPrivacyNeedles(r) }));
+  const empPrivacy = new Map<string, Array<{ needles: string[] }>>();
+  for (const r of privacyRows as PrivacyPatternRow[]) {
+    if (!r.employee_id) continue;
+    const list = empPrivacy.get(r.employee_id) || [];
+    list.push({ needles: buildPrivacyNeedles(r) });
+    empPrivacy.set(r.employee_id, list);
+  }
 
   const results = [];
   for (const emp of employees) {
@@ -248,6 +364,20 @@ export async function getEmployeeActivityStats(orgId: string, tz?: string): Prom
       ? annotateOutsideHours(mapped, emp, resolvedTz)
       : mapped.map(a => ({ ...a, outsideBusinessHours: false }));
     const stats = computeProductivityStats(annotated);
+    const { topAppName, topAppSeconds } = topAppFromRows(todayRows as any[]);
+
+    const privacyPatterns = [
+      ...orgPrivacy,
+      ...(empPrivacy.get(emp.id) || []),
+    ];
+    let privacyMatchedSeconds = 0;
+    for (const row of todayRows as any[]) {
+      if (
+        activityMatchesPrivacyPatterns(row.app_name, row.window_title, privacyPatterns)
+      ) {
+        privacyMatchedSeconds += Number(row.duration_seconds) || 0;
+      }
+    }
 
     results.push({
       employeeId: emp.id,
@@ -257,9 +387,17 @@ export async function getEmployeeActivityStats(orgId: string, tz?: string): Prom
         latestActivity?.window_title
       ),
       currentCategory: latestActivity?.category_name,
+      lastActivityAt: latestActivity?.timestamp || null,
       productivityScore: stats.productivityScore,
       hoursToday: Math.round(stats.totalSeconds / 3600 * 10) / 10,
       secondsToday: stats.totalSeconds,
+      productiveSeconds: stats.productiveSeconds,
+      unproductiveSeconds: stats.unproductiveSeconds,
+      neutralSeconds: stats.neutralSeconds,
+      idleSeconds: stats.idleSeconds,
+      topAppName: topAppName || null,
+      topAppSeconds,
+      privacyMatchedSeconds,
       suspiciousActivityCount: suspiciousCount?.count || 0,
       isIdle: latestActivity?.is_idle === 1,
       hasBusinessHours: hasBusinessHours(emp),

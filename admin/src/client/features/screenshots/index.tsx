@@ -5,7 +5,7 @@ import { useI18n } from '@/contexts/I18nContext';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { PageHero, PageEmpty, PagePanel } from '@/components/PageHero';
 import { StatusLine } from '@/components/Icon';
-import { Camera } from 'lucide-react';
+import { Camera, RefreshCw, Repeat, Timer } from 'lucide-react';
 
 interface ScreenshotRow {
   id: string;
@@ -27,10 +27,24 @@ interface AutomationSession {
   intervalSec?: number;
   minIntervalSec?: number;
   maxIntervalSec?: number;
+  durationHours?: number;
+  endsAt?: string | null;
   startedAt?: string;
 }
 
 const AUTO_INTERVAL_OPTIONS = [30, 60, 120, 300, 600, 900];
+const AUTO_DURATION_HOURS = [0, 1, 2, 4, 8, 12];
+
+function sessionsFromApi(list: unknown): Record<string, AutomationSession> {
+  const next: Record<string, AutomationSession> = {};
+  if (!Array.isArray(list)) return next;
+  for (const s of list) {
+    if (!s || typeof s !== 'object') continue;
+    const row = s as AutomationSession;
+    if (row.employeeId) next[row.employeeId] = row;
+  }
+  return next;
+}
 
 function todayLocal(): string {
   const d = new Date();
@@ -64,8 +78,10 @@ export const Screenshots: React.FC = () => {
   const [autoIntervalSec, setAutoIntervalSec] = useState(60);
   const [autoMinSec, setAutoMinSec] = useState(30);
   const [autoMaxSec, setAutoMaxSec] = useState(120);
+  const [autoDurationHours, setAutoDurationHours] = useState(8);
   const [autoSessions, setAutoSessions] = useState<Record<string, AutomationSession>>({});
   const [autoBusy, setAutoBusy] = useState(false);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
   const pendingRequestRef = useRef<{ requestId: string; employeeId: string } | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const delayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -81,23 +97,20 @@ export const Screenshots: React.FC = () => {
     }).catch(() => { /* silent */ });
   }, []);
 
-  // Restore active automation sessions after refresh.
-  useEffect(() => {
-    let cancelled = false;
-    const loadAutomation = async () => {
-      try {
-        const res = await api.get('/api/screenshots/automation');
-        if (cancelled || !res?.success) return;
-        const next: Record<string, AutomationSession> = {};
-        for (const s of res.data?.sessions || []) {
-          if (s?.employeeId) next[s.employeeId] = s as AutomationSession;
-        }
-        setAutoSessions(next);
-      } catch { /* ignore */ }
-    };
-    void loadAutomation();
-    return () => { cancelled = true; };
+  // Restore + poll active automation sessions (survives navigation; shows all).
+  const refreshAutomation = useCallback(async () => {
+    try {
+      const res = await api.get('/api/screenshots/automation');
+      if (!res?.success) return;
+      setAutoSessions(sessionsFromApi(res.data?.sessions));
+    } catch { /* ignore */ }
   }, []);
+
+  useEffect(() => {
+    void refreshAutomation();
+    const id = setInterval(() => void refreshAutomation(), 5000);
+    return () => clearInterval(id);
+  }, [refreshAutomation]);
 
   // HTTP presence fallback — covers the case where the admin dashboard
   // connected after the tracker and missed the employee:online event.
@@ -230,6 +243,8 @@ export const Screenshots: React.FC = () => {
           intervalSec: data.intervalSec,
           minIntervalSec: data.minIntervalSec,
           maxIntervalSec: data.maxIntervalSec,
+          durationHours: data.durationHours,
+          endsAt: data.endsAt ?? null,
           startedAt: data.startedAt,
         },
       }));
@@ -243,13 +258,13 @@ export const Screenshots: React.FC = () => {
         delete next[data.employeeId];
         return next;
       });
-      if (data.employeeId === employeeId) {
-        const reason = data.reason as string | undefined;
-        if (reason === 'device-disconnect' || reason === 'device-offline') {
-          setFlash(t('screenshots.autoEndedDisconnect'));
-        } else if (reason === 'admin-stop') {
-          setFlash(t('screenshots.autoStopped'));
-        }
+      const reason = data.reason as string | undefined;
+      if (reason === 'device-disconnect' || reason === 'device-offline') {
+        setFlash(t('screenshots.autoEndedDisconnect'));
+      } else if (reason === 'admin-stop') {
+        setFlash(t('screenshots.autoStopped'));
+      } else if (reason === 'duration-elapsed') {
+        setFlash(t('screenshots.autoEndedDuration'));
       }
       return;
     }
@@ -288,6 +303,7 @@ export const Screenshots: React.FC = () => {
   const scheduling = countdownLeft !== null;
   const activeAuto = employeeId ? autoSessions[employeeId] : undefined;
   const autoRunning = !!activeAuto;
+  const activeSessionList = Object.values(autoSessions);
 
   const handleStartAutomation = async () => {
     if (!employeeId) {
@@ -303,12 +319,18 @@ export const Screenshots: React.FC = () => {
     try {
       const body =
         autoMode === 'fixed'
-          ? { employeeId, mode: 'fixed', intervalSec: autoIntervalSec }
+          ? {
+              employeeId,
+              mode: 'fixed',
+              intervalSec: autoIntervalSec,
+              durationHours: autoDurationHours,
+            }
           : {
               employeeId,
               mode: 'random',
               minIntervalSec: Math.min(autoMinSec, autoMaxSec),
               maxIntervalSec: Math.max(autoMinSec, autoMaxSec),
+              durationHours: autoDurationHours,
             };
       const res = await api.post('/api/screenshots/automation/start', body);
       if (!res?.success) throw new Error(res?.error || t('screenshots.offline'));
@@ -317,6 +339,7 @@ export const Screenshots: React.FC = () => {
       setFlash(t('screenshots.autoStarted'));
       setDate(todayLocal());
       void load({ silent: true });
+      void refreshAutomation();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -324,27 +347,30 @@ export const Screenshots: React.FC = () => {
     }
   };
 
-  const handleStopAutomation = async () => {
-    if (!employeeId) return;
+  const handleStopAutomation = async (targetEmployeeId?: string) => {
+    const id = targetEmployeeId || employeeId;
+    if (!id) return;
     setError(null);
+    setStoppingId(id);
     setAutoBusy(true);
     try {
-      await api.post('/api/screenshots/automation/stop', { employeeId });
+      await api.post('/api/screenshots/automation/stop', { employeeId: id });
       setAutoSessions(prev => {
-        if (!(employeeId in prev)) return prev;
+        if (!(id in prev)) return prev;
         const next = { ...prev };
-        delete next[employeeId];
+        delete next[id];
         return next;
       });
       setFlash(t('screenshots.autoStopped'));
+      void refreshAutomation();
     } catch (e) {
       const status = (e as { status?: number }).status;
       // Already gone (disconnect race) — treat as stopped.
       if (status === 404) {
         setAutoSessions(prev => {
-          if (!(employeeId in prev)) return prev;
+          if (!(id in prev)) return prev;
           const next = { ...prev };
-          delete next[employeeId];
+          delete next[id];
           return next;
         });
         setFlash(t('screenshots.autoStopped'));
@@ -352,6 +378,7 @@ export const Screenshots: React.FC = () => {
         setError(e instanceof Error ? e.message : String(e));
       }
     } finally {
+      setStoppingId(null);
       setAutoBusy(false);
     }
   };
@@ -472,6 +499,45 @@ export const Screenshots: React.FC = () => {
     return `${(b / 1024 / 1024).toFixed(1)} MB`;
   };
 
+  const fieldLabel: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--tt-text-muted)',
+    minWidth: 0,
+  };
+
+  const fieldRow: React.CSSProperties = {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: 12,
+  };
+
+  const actionRow: React.CSSProperties = {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+  };
+
+  const statusBanner = (running: boolean): React.CSSProperties => ({
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+    padding: '10px 14px',
+    borderRadius: 'var(--tt-radius-sm)',
+    border: running ? '1px solid var(--tt-success)' : '1px solid var(--tt-border)',
+    background: running ? 'var(--tt-success-soft)' : 'var(--tt-surface-muted)',
+    fontSize: 13,
+    color: running ? 'var(--tt-success)' : 'var(--tt-text-muted)',
+  });
+
   return (
     <div className="tt-page tt-page--wide">
       <PageHero
@@ -481,32 +547,51 @@ export const Screenshots: React.FC = () => {
         help={t('help.screenshots')}
       />
 
-      <PagePanel>
-        <div className="tt-toolbar">
-          <select
-            className="tt-input"
-            value={employeeId}
-            onChange={e => setEmployeeId(e.target.value)}
-            style={{ width: 'auto', minWidth: '220px' }}
-          >
-            <option value="">{t('common.allEmployees')}</option>
-            {employees.map(e => {
-              const online = isEmployeeOnline(e.id);
-              return (
-                <option key={e.id} value={e.id}>
-                  {e.name} · {online ? t('screenshots.online') : t('screenshots.offlineBadge')}
-                </option>
-              );
-            })}
-          </select>
-          <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {t('common.date')}:
+      {/* 1) Browse filters — gallery only */}
+      <PagePanel
+        title={t('screenshots.browseTitle')}
+        hint={t('screenshots.browseHint')}
+        headAction={
+          employeeId ? (
+            <span
+              className="tt-badge"
+              style={{
+                color: selectedOnline ? 'var(--tt-success)' : 'var(--tt-text-faint)',
+              }}
+            >
+              {selectedOnline ? `● ${t('screenshots.online')}` : `○ ${t('screenshots.offlineBadge')}`}
+            </span>
+          ) : undefined
+        }
+      >
+        <div style={fieldRow}>
+          <label style={{ ...fieldLabel, minWidth: 200, flex: '1 1 200px' }}>
+            {t('screenshots.employee')}
+            <select
+              className="tt-input"
+              value={employeeId}
+              onChange={e => setEmployeeId(e.target.value)}
+              style={{ width: '100%', fontWeight: 500 }}
+            >
+              <option value="">{t('common.allEmployees')}</option>
+              {employees.map(e => {
+                const online = isEmployeeOnline(e.id);
+                return (
+                  <option key={e.id} value={e.id}>
+                    {e.name} · {online ? t('screenshots.online') : t('screenshots.offlineBadge')}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label style={{ ...fieldLabel, minWidth: 150 }}>
+            {t('common.date')}
             <input
               type="date"
               className="tt-input"
               value={date}
               onChange={e => setDate(e.target.value)}
-              style={{ width: 'auto' }}
+              style={{ width: 'auto', minWidth: 150 }}
             />
           </label>
           <button
@@ -514,17 +599,28 @@ export const Screenshots: React.FC = () => {
             className="tt-btn tt-btn-ghost"
             onClick={() => load()}
             disabled={loading}
+            style={{ alignSelf: 'flex-end' }}
           >
+            <RefreshCw size={14} style={{ marginInlineEnd: 6 }} />
             {loading ? t('common.loading') : t('common.refresh')}
           </button>
-          <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {t('screenshots.timer')}:
+        </div>
+      </PagePanel>
+
+      {/* 2) One-shot capture */}
+      <PagePanel
+        title={t('screenshots.captureTitle')}
+        hint={t('screenshots.captureHint')}
+      >
+        <div style={fieldRow}>
+          <label style={{ ...fieldLabel, minWidth: 140 }}>
+            {t('screenshots.timer')}
             <select
               className="tt-input"
               value={delaySec}
               onChange={e => setDelaySec(Number(e.target.value))}
-              disabled={taking || scheduling}
-              style={{ width: 'auto', minWidth: '120px' }}
+              disabled={taking || scheduling || !employeeId}
+              style={{ width: 'auto', minWidth: 140 }}
               title={t('screenshots.timerHint')}
             >
               <option value={0}>{t('screenshots.timerNow')}</option>
@@ -536,13 +632,22 @@ export const Screenshots: React.FC = () => {
               <option value={300}>{t('screenshots.timerMinutes', { n: 5 })}</option>
             </select>
           </label>
+        </div>
+        <div style={actionRow}>
           <button
             type="button"
             className="tt-btn tt-btn-primary"
             onClick={handleTakeScreenshot}
-            disabled={taking || scheduling || !employeeId}
-            title={!employeeId ? t('screenshots.selectEmployee') : selectedOnline ? undefined : t('screenshots.offline')}
+            disabled={taking || scheduling || !employeeId || (!selectedOnline && delaySec <= 0)}
+            title={
+              !employeeId
+                ? t('screenshots.selectEmployee')
+                : selectedOnline
+                  ? undefined
+                  : t('screenshots.offline')
+            }
           >
+            <Camera size={15} style={{ marginInlineEnd: 6 }} />
             {taking
               ? t('screenshots.taking')
               : scheduling
@@ -556,44 +661,140 @@ export const Screenshots: React.FC = () => {
               {t('screenshots.timerCancel')}
             </button>
           )}
-          {employeeId && (
-            <span
-              className="tt-badge"
-              style={{
-                color: selectedOnline ? 'var(--tt-success)' : 'var(--tt-text-faint)',
-              }}
-            >
-              {selectedOnline ? `● ${t('screenshots.online')}` : `○ ${t('screenshots.offlineBadge')}`}
+          {!employeeId && (
+            <span className="tt-muted" style={{ fontSize: 13 }}>
+              {t('screenshots.selectEmployee')}
+            </span>
+          )}
+          {employeeId && !selectedOnline && (
+            <span className="tt-muted" style={{ fontSize: 13 }}>
+              {t('screenshots.offline')}
             </span>
           )}
         </div>
+      </PagePanel>
 
-        <div
-          className="tt-toolbar"
-          style={{ marginTop: 12, flexWrap: 'wrap', gap: 8, alignItems: 'center' }}
-          title={t('screenshots.autoHint')}
-        >
-          <span className="tt-muted" style={{ fontWeight: 600 }}>{t('screenshots.auto')}</span>
-          <select
-            className="tt-input"
-            value={autoMode}
-            onChange={e => setAutoMode(e.target.value === 'random' ? 'random' : 'fixed')}
-            disabled={autoRunning || autoBusy}
-            style={{ width: 'auto', minWidth: '140px' }}
-            aria-label={t('screenshots.autoMode')}
+      {/* 3) Automation — visually separate from one-shot */}
+      <PagePanel
+        title={t('screenshots.autoTitle')}
+        hint={t('screenshots.autoHint')}
+        headAction={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--tt-text-faint)' }}>
+            <Repeat size={16} />
+            {activeSessionList.length > 0 ? (
+              <span className="tt-badge" style={{ color: 'var(--tt-success)' }}>
+                {t('screenshots.autoActiveCount', { count: activeSessionList.length })}
+              </span>
+            ) : null}
+          </span>
+        }
+      >
+        {activeSessionList.length > 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              border: '1px solid var(--tt-success)',
+              background: 'var(--tt-success-soft)',
+              borderRadius: 'var(--tt-radius-sm)',
+              padding: 12,
+            }}
           >
-            <option value="fixed">{t('screenshots.autoFixed')}</option>
-            <option value="random">{t('screenshots.autoRandom')}</option>
-          </select>
+            <div style={{ fontWeight: 650, fontSize: 13, marginBottom: 8, color: 'var(--tt-text)' }}>
+              {t('screenshots.autoActiveTitle')}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {activeSessionList.map(session => {
+                const empName =
+                  employees.find(e => e.id === session.employeeId)?.name ||
+                  session.employeeId.slice(0, 8);
+                const intervalLabel =
+                  session.mode === 'random'
+                    ? t('screenshots.autoRunningRandom', {
+                        min: session.minIntervalSec ?? 30,
+                        max: session.maxIntervalSec ?? 120,
+                      })
+                    : t('screenshots.autoRunningFixed', {
+                        seconds: session.intervalSec ?? 60,
+                      });
+                const endsLabel = session.endsAt
+                  ? t('screenshots.autoEndsAt', {
+                      time: (() => {
+                        try {
+                          return new Date(session.endsAt).toLocaleString();
+                        } catch {
+                          return session.endsAt;
+                        }
+                      })(),
+                    })
+                  : t('screenshots.autoUntilStopped');
+                return (
+                  <div
+                    key={session.sessionId || session.employeeId}
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 10,
+                      justifyContent: 'space-between',
+                      padding: '8px 10px',
+                      background: 'var(--tt-surface)',
+                      borderRadius: 8,
+                      border: '1px solid var(--tt-border)',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+                      <div style={{ fontWeight: 650, fontSize: 13 }}>{empName}</div>
+                      <div className="tt-muted" style={{ fontSize: 12, marginTop: 2 }}>
+                        {intervalLabel} · {endsLabel}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="tt-btn"
+                      onClick={() => void handleStopAutomation(session.employeeId)}
+                      disabled={stoppingId === session.employeeId}
+                      style={{
+                        background: 'var(--tt-danger)',
+                        color: '#fff',
+                        border: 'none',
+                        fontWeight: 650,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {stoppingId === session.employeeId
+                        ? t('screenshots.autoStopping')
+                        : t('screenshots.autoStop')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div style={fieldRow}>
+          <label style={{ ...fieldLabel, minWidth: 160 }}>
+            {t('screenshots.autoMode')}
+            <select
+              className="tt-input"
+              value={autoMode}
+              onChange={e => setAutoMode(e.target.value === 'random' ? 'random' : 'fixed')}
+              disabled={autoRunning || autoBusy || !employeeId}
+              style={{ width: '100%', minWidth: 160 }}
+            >
+              <option value="fixed">{t('screenshots.autoFixed')}</option>
+              <option value="random">{t('screenshots.autoRandom')}</option>
+            </select>
+          </label>
           {autoMode === 'fixed' ? (
-            <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {t('screenshots.autoInterval')}:
+            <label style={{ ...fieldLabel, minWidth: 120 }}>
+              {t('screenshots.autoInterval')}
               <select
                 className="tt-input"
                 value={autoIntervalSec}
                 onChange={e => setAutoIntervalSec(Number(e.target.value))}
-                disabled={autoRunning || autoBusy}
-                style={{ width: 'auto', minWidth: '100px' }}
+                disabled={autoRunning || autoBusy || !employeeId}
+                style={{ width: 'auto', minWidth: 120 }}
               >
                 {AUTO_INTERVAL_OPTIONS.map(sec => (
                   <option key={sec} value={sec}>
@@ -608,14 +809,14 @@ export const Screenshots: React.FC = () => {
             </label>
           ) : (
             <>
-              <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {t('screenshots.autoMin')}:
+              <label style={{ ...fieldLabel, minWidth: 110 }}>
+                {t('screenshots.autoMin')}
                 <select
                   className="tt-input"
                   value={autoMinSec}
                   onChange={e => setAutoMinSec(Number(e.target.value))}
-                  disabled={autoRunning || autoBusy}
-                  style={{ width: 'auto', minWidth: '100px' }}
+                  disabled={autoRunning || autoBusy || !employeeId}
+                  style={{ width: 'auto', minWidth: 110 }}
                 >
                   {AUTO_INTERVAL_OPTIONS.map(sec => (
                     <option key={sec} value={sec}>
@@ -628,14 +829,14 @@ export const Screenshots: React.FC = () => {
                   ))}
                 </select>
               </label>
-              <label className="tt-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {t('screenshots.autoMax')}:
+              <label style={{ ...fieldLabel, minWidth: 110 }}>
+                {t('screenshots.autoMax')}
                 <select
                   className="tt-input"
                   value={autoMaxSec}
                   onChange={e => setAutoMaxSec(Number(e.target.value))}
-                  disabled={autoRunning || autoBusy}
-                  style={{ width: 'auto', minWidth: '100px' }}
+                  disabled={autoRunning || autoBusy || !employeeId}
+                  style={{ width: 'auto', minWidth: 110 }}
                 >
                   {AUTO_INTERVAL_OPTIONS.map(sec => (
                     <option key={sec} value={sec}>
@@ -650,12 +851,38 @@ export const Screenshots: React.FC = () => {
               </label>
             </>
           )}
+          <label style={{ ...fieldLabel, minWidth: 150 }}>
+            {t('screenshots.autoDuration')}
+            <select
+              className="tt-input"
+              value={autoDurationHours}
+              onChange={e => setAutoDurationHours(Number(e.target.value))}
+              disabled={autoRunning || autoBusy || !employeeId}
+              style={{ width: 'auto', minWidth: 150 }}
+              title={t('screenshots.autoDurationHint')}
+            >
+              {AUTO_DURATION_HOURS.map(h => (
+                <option key={h} value={h}>
+                  {h === 0
+                    ? t('screenshots.autoDurationUnlimited')
+                    : t('screenshots.autoDurationHours', { n: h })}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div style={actionRow}>
           {!autoRunning ? (
             <button
               type="button"
-              className="tt-btn tt-btn-primary"
+              className="tt-btn tt-btn-ghost"
               onClick={() => void handleStartAutomation()}
               disabled={autoBusy || !employeeId || !selectedOnline}
+              style={{
+                border: '1px solid var(--tt-border)',
+                fontWeight: 650,
+              }}
               title={
                 !employeeId
                   ? t('screenshots.autoNeedEmployee')
@@ -664,20 +891,44 @@ export const Screenshots: React.FC = () => {
                     : t('screenshots.offline')
               }
             >
+              <Timer size={15} style={{ marginInlineEnd: 6 }} />
               {autoBusy ? t('screenshots.autoStarting') : t('screenshots.autoStart')}
             </button>
           ) : (
             <button
               type="button"
-              className="tt-btn tt-btn-ghost"
-              onClick={() => void handleStopAutomation()}
+              className="tt-btn"
+              onClick={() => void handleStopAutomation(employeeId)}
               disabled={autoBusy || !employeeId}
+              style={{
+                background: 'var(--tt-danger)',
+                color: '#fff',
+                border: 'none',
+                fontWeight: 650,
+              }}
             >
               {autoBusy ? t('screenshots.autoStopping') : t('screenshots.autoStop')}
             </button>
           )}
-          {autoRunning && activeAuto && (
-            <span className="tt-badge" style={{ color: 'var(--tt-success)' }}>
+          {!employeeId && (
+            <span className="tt-muted" style={{ fontSize: 13 }}>
+              {t('screenshots.autoNeedEmployee')}
+            </span>
+          )}
+        </div>
+
+        {autoRunning && activeAuto ? (
+          <div style={statusBanner(true)} role="status">
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: 'var(--tt-success)',
+                flexShrink: 0,
+              }}
+            />
+            <strong style={{ fontWeight: 650 }}>
               {activeAuto.mode === 'random'
                 ? t('screenshots.autoRunningRandom', {
                     min: activeAuto.minIntervalSec ?? autoMinSec,
@@ -686,9 +937,26 @@ export const Screenshots: React.FC = () => {
                 : t('screenshots.autoRunningFixed', {
                     seconds: activeAuto.intervalSec ?? autoIntervalSec,
                   })}
+            </strong>
+            <span style={{ color: 'var(--tt-text-muted)', fontWeight: 400 }}>
+              {activeAuto.endsAt
+                ? t('screenshots.autoEndsAt', {
+                    time: (() => {
+                      try {
+                        return new Date(activeAuto.endsAt!).toLocaleString();
+                      } catch {
+                        return activeAuto.endsAt;
+                      }
+                    })(),
+                  })
+                : t('screenshots.autoRunningHint')}
             </span>
-          )}
-        </div>
+          </div>
+        ) : activeSessionList.length === 0 ? (
+          <div style={statusBanner(false)}>
+            {t('screenshots.autoIdleHint')}
+          </div>
+        ) : null}
       </PagePanel>
 
       {flash && <div className="tt-flash">{flash}</div>}
@@ -699,74 +967,76 @@ export const Screenshots: React.FC = () => {
         </div>
       )}
 
-      {!loading && shots.length === 0 && (
-        <PageEmpty
-          icon={Camera}
-          title={t('screenshots.emptyTitle')}
-          hint={t('screenshots.emptyHint')}
-        />
-      )}
+      <PagePanel title={t('screenshots.galleryTitle')} hint={shots.length ? undefined : t('screenshots.galleryHint')}>
+        {!loading && shots.length === 0 && (
+          <PageEmpty
+            icon={Camera}
+            title={t('screenshots.emptyTitle')}
+            hint={t('screenshots.emptyHint')}
+          />
+        )}
 
-      {shots.length > 0 && (
-        <div
-          className="tt-card-grid"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
-        >
-          {shots.map(s => {
-            const emp = employees.find(e => e.id === s.employeeId);
-            return (
-              <article key={s.id} className="tt-entity-card" style={{ padding: 0, minHeight: 'auto', overflow: 'hidden' }}>
-                <button
-                  type="button"
-                  onClick={() => setZoomed(s)}
-                  style={{
-                    padding: 0,
-                    border: 'none',
-                    background: 'none',
-                    cursor: 'zoom-in',
-                    display: 'block',
-                    width: '100%',
-                  }}
-                  aria-label="View full size"
-                >
-                  <img
-                    src={authenticatedFileUrl(s.fileUrl)}
-                    alt=""
-                    loading="lazy"
+        {shots.length > 0 && (
+          <div
+            className="tt-card-grid"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', marginTop: 4 }}
+          >
+            {shots.map(s => {
+              const emp = employees.find(e => e.id === s.employeeId);
+              return (
+                <article key={s.id} className="tt-entity-card" style={{ padding: 0, minHeight: 'auto', overflow: 'hidden' }}>
+                  <button
+                    type="button"
+                    onClick={() => setZoomed(s)}
                     style={{
-                      width: '100%',
-                      height: '140px',
-                      objectFit: 'cover',
+                      padding: 0,
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'zoom-in',
                       display: 'block',
-                      backgroundColor: 'var(--tt-surface-muted)',
+                      width: '100%',
                     }}
-                  />
-                </button>
-                <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>
-                    {emp?.name || s.employeeId.slice(0, 8)}
+                    aria-label="View full size"
+                  >
+                    <img
+                      src={authenticatedFileUrl(s.fileUrl)}
+                      alt=""
+                      loading="lazy"
+                      style={{
+                        width: '100%',
+                        height: '140px',
+                        objectFit: 'cover',
+                        display: 'block',
+                        backgroundColor: 'var(--tt-surface-muted)',
+                      }}
+                    />
+                  </button>
+                  <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>
+                      {emp?.name || s.employeeId.slice(0, 8)}
+                    </div>
+                    <div className="tt-muted" style={{ fontSize: 11 }}>
+                      {fmtTime(s.timestamp)} · {fmtSize(s.fileSizeBytes)}
+                    </div>
+                    {s.appName && (
+                      <div style={{ fontSize: 11, color: 'var(--tt-text-faint)' }}>{s.appName}</div>
+                    )}
+                    <div className="tt-entity-card-actions" style={{ marginTop: 8, paddingTop: 8 }}>
+                      <button
+                        type="button"
+                        className="tt-action-btn tt-action-btn-danger"
+                        onClick={() => handleDelete(s)}
+                      >
+                        {t('screenshots.delete')}
+                      </button>
+                    </div>
                   </div>
-                  <div className="tt-muted" style={{ fontSize: 11 }}>
-                    {fmtTime(s.timestamp)} · {fmtSize(s.fileSizeBytes)}
-                  </div>
-                  {s.appName && (
-                    <div style={{ fontSize: 11, color: 'var(--tt-text-faint)' }}>{s.appName}</div>
-                  )}
-                  <div className="tt-entity-card-actions" style={{ marginTop: 8, paddingTop: 8 }}>
-                    <button
-                      type="button"
-                      className="tt-action-btn tt-action-btn-danger"
-                      onClick={() => handleDelete(s)}
-                    >
-                      {t('screenshots.delete')}
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </PagePanel>
 
       {zoomed && (
         <div

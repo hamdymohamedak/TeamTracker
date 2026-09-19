@@ -28,6 +28,7 @@ import { consumeCommand, listCommandsForEmployee } from '../remote-commands.js';
 import { broadcastScreenshotNew, requestScreenshotCommand } from '../websocket.js';
 import { getPaths, ensureDataDirectories, resolveScreenshotAbsolutePath } from '../paths.js';
 import {
+  AUTOMATION_DURATION_HOURS,
   AUTOMATION_MAX_SEC,
   AUTOMATION_MIN_SEC,
   listAutomationsForOrg,
@@ -146,7 +147,11 @@ export function setupSummaryScreenshotRoutes(app: Express): void {
         success: true,
         data: {
           sessions: listAutomationsForOrg(req.orgId!),
-          limits: { minSec: AUTOMATION_MIN_SEC, maxSec: AUTOMATION_MAX_SEC },
+          limits: {
+            minSec: AUTOMATION_MIN_SEC,
+            maxSec: AUTOMATION_MAX_SEC,
+            durationHours: [...AUTOMATION_DURATION_HOURS],
+          },
         },
       });
     } catch (e) {
@@ -176,6 +181,7 @@ export function setupSummaryScreenshotRoutes(app: Express): void {
         intervalSec: typeof req.body?.intervalSec === 'number' ? req.body.intervalSec : undefined,
         minIntervalSec: typeof req.body?.minIntervalSec === 'number' ? req.body.minIntervalSec : undefined,
         maxIntervalSec: typeof req.body?.maxIntervalSec === 'number' ? req.body.maxIntervalSec : undefined,
+        durationHours: typeof req.body?.durationHours === 'number' ? req.body.durationHours : 0,
       });
 
       if (!result.ok) {

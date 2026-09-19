@@ -3,7 +3,7 @@
  *
  * Repeats on-demand screenshot commands on a fixed or random interval.
  * Sessions are in-memory (like live-view) and stop when the employee device
- * disconnects so timers never keep firing into the void.
+ * disconnects, when the admin stops them, or when the configured duration ends.
  */
 
 import { randomUUID } from 'crypto';
@@ -23,17 +23,31 @@ export interface ScreenshotAutomationSession {
   /** Random range in seconds (mode === 'random'). */
   minIntervalSec: number;
   maxIntervalSec: number;
+  /** Wall-clock end; null = run until stopped / disconnect. */
+  endsAt: string | null;
+  /** Total run budget in hours (0 = unlimited). */
+  durationHours: number;
   startedAt: string;
   timer: NodeJS.Timeout | null;
+  endTimer: NodeJS.Timeout | null;
 }
 
 export const AUTOMATION_MIN_SEC = 30;
 export const AUTOMATION_MAX_SEC = 15 * 60; // 15 minutes
+/** Allowed duration budgets (hours). 0 = until manually stopped. */
+export const AUTOMATION_DURATION_HOURS = [0, 1, 2, 4, 8, 12] as const;
+export const AUTOMATION_MAX_DURATION_HOURS = 12;
 
 const sessions = new Map<string, ScreenshotAutomationSession>();
 
 function clampSec(n: number): number {
   return Math.max(AUTOMATION_MIN_SEC, Math.min(AUTOMATION_MAX_SEC, Math.round(n)));
+}
+
+function clampDurationHours(n: unknown): number {
+  const h = typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : 0;
+  if (h <= 0) return 0;
+  return Math.min(AUTOMATION_MAX_DURATION_HOURS, h);
 }
 
 function nextDelayMs(session: ScreenshotAutomationSession): number {
@@ -55,15 +69,21 @@ function publicView(session: ScreenshotAutomationSession) {
     intervalSec: session.mode === 'fixed' ? session.intervalSec : undefined,
     minIntervalSec: session.mode === 'random' ? session.minIntervalSec : undefined,
     maxIntervalSec: session.mode === 'random' ? session.maxIntervalSec : undefined,
+    durationHours: session.durationHours,
+    endsAt: session.endsAt,
     startedAt: session.startedAt,
     startedBy: session.startedBy,
   };
 }
 
-function clearTimer(session: ScreenshotAutomationSession): void {
+function clearTimers(session: ScreenshotAutomationSession): void {
   if (session.timer) {
     clearTimeout(session.timer);
     session.timer = null;
+  }
+  if (session.endTimer) {
+    clearTimeout(session.endTimer);
+    session.endTimer = null;
   }
 }
 
@@ -84,18 +104,59 @@ function broadcastEnded(
   });
 }
 
+function isExpired(session: ScreenshotAutomationSession): boolean {
+  if (!session.endsAt) return false;
+  return Date.now() >= Date.parse(session.endsAt);
+}
+
 function scheduleNext(session: ScreenshotAutomationSession): void {
-  clearTimer(session);
+  if (session.timer) {
+    clearTimeout(session.timer);
+    session.timer = null;
+  }
   if (!sessions.has(session.employeeId)) return;
-  const delay = nextDelayMs(session);
+  if (isExpired(session)) {
+    endAutomationForEmployee(session.employeeId, 'duration-elapsed');
+    return;
+  }
+  let delay = nextDelayMs(session);
+  if (session.endsAt) {
+    const remaining = Date.parse(session.endsAt) - Date.now();
+    if (remaining <= 0) {
+      endAutomationForEmployee(session.employeeId, 'duration-elapsed');
+      return;
+    }
+    delay = Math.min(delay, remaining);
+  }
   session.timer = setTimeout(() => {
     void tick(session.employeeId);
   }, delay);
 }
 
+function scheduleHardEnd(session: ScreenshotAutomationSession): void {
+  if (session.endTimer) {
+    clearTimeout(session.endTimer);
+    session.endTimer = null;
+  }
+  if (!session.endsAt) return;
+  const ms = Date.parse(session.endsAt) - Date.now();
+  if (ms <= 0) {
+    endAutomationForEmployee(session.employeeId, 'duration-elapsed');
+    return;
+  }
+  session.endTimer = setTimeout(() => {
+    endAutomationForEmployee(session.employeeId, 'duration-elapsed');
+  }, ms);
+}
+
 function tick(employeeId: string): void {
   const session = sessions.get(employeeId);
   if (!session) return;
+
+  if (isExpired(session)) {
+    endAutomationForEmployee(employeeId, 'duration-elapsed');
+    return;
+  }
 
   if (!isEmployeeOnline(session.orgId, session.employeeId)) {
     endAutomationForEmployee(employeeId, 'device-offline');
@@ -140,6 +201,7 @@ export function startAutomation(input: {
   intervalSec?: number;
   minIntervalSec?: number;
   maxIntervalSec?: number;
+  durationHours?: number;
 }): { ok: true; session: ReturnType<typeof publicView> } | { ok: false; error: string; status: number } {
   if (!isEmployeeOnline(input.orgId, input.employeeId)) {
     return {
@@ -153,6 +215,7 @@ export function startAutomation(input: {
   let intervalSec = AUTOMATION_MIN_SEC;
   let minIntervalSec = AUTOMATION_MIN_SEC;
   let maxIntervalSec = 120;
+  const durationHours = clampDurationHours(input.durationHours);
 
   if (mode === 'fixed') {
     if (typeof input.intervalSec !== 'number' || !Number.isFinite(input.intervalSec)) {
@@ -180,6 +243,12 @@ export function startAutomation(input: {
   // Replace any existing session for this employee.
   endAutomationForEmployee(input.employeeId, 'replaced');
 
+  const startedAtMs = Date.now();
+  const endsAt =
+    durationHours > 0
+      ? new Date(startedAtMs + durationHours * 3600_000).toISOString()
+      : null;
+
   const session: ScreenshotAutomationSession = {
     sessionId: randomUUID(),
     orgId: input.orgId,
@@ -189,8 +258,11 @@ export function startAutomation(input: {
     intervalSec,
     minIntervalSec,
     maxIntervalSec,
-    startedAt: new Date().toISOString(),
+    durationHours,
+    endsAt,
+    startedAt: new Date(startedAtMs).toISOString(),
     timer: null,
+    endTimer: null,
   };
   sessions.set(input.employeeId, session);
 
@@ -216,6 +288,7 @@ export function startAutomation(input: {
     );
   }
 
+  scheduleHardEnd(session);
   scheduleNext(session);
   return { ok: true, session: publicView(session) };
 }
@@ -229,20 +302,20 @@ export function stopAutomation(
   if (!session || session.orgId !== orgId) {
     return { ok: false, error: 'No active automation for this employee', status: 404 };
   }
-  clearTimer(session);
+  clearTimers(session);
   sessions.delete(employeeId);
   broadcastEnded(session.orgId, session.employeeId, session.sessionId, reason);
   return { ok: true, session: publicView(session) };
 }
 
-/** Called when a device tracker disconnects (or is offline at tick). */
+/** Called when a device tracker disconnects, duration ends, or is offline at tick. */
 export function endAutomationForEmployee(
   employeeId: string,
   reason: string
 ): boolean {
   const session = sessions.get(employeeId);
   if (!session) return false;
-  clearTimer(session);
+  clearTimers(session);
   sessions.delete(employeeId);
   broadcastEnded(session.orgId, session.employeeId, session.sessionId, reason);
   return true;

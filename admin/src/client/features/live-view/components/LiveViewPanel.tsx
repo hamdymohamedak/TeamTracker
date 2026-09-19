@@ -21,12 +21,42 @@ import {
 import type { LiveViewQualityMode } from '../../../../../shared/live-view/quality';
 import type { LiveViewSignalPayload } from '../../../../../shared/live-view/protocol';
 import type { Employee } from '../../../../../shared-types';
+import { formatDurationSeconds } from '../../../../../shared-types';
 import type { EmployeeActivity } from '@/features/dashboard/types';
 import { liveViewStyles as styles } from '../live-view.styles';
 
 export interface LiveViewPanelProps {
   employees: Employee[];
   employeeActivity: EmployeeActivity[];
+}
+
+function formatRelativeAgo(
+  iso: string | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const diffSec = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (diffSec < 45) return t('live.agoJustNow');
+  if (diffSec < 3600) return t('live.agoMinutes', { n: Math.max(1, Math.round(diffSec / 60)) });
+  if (diffSec < 86400) return t('live.agoHours', { n: Math.max(1, Math.round(diffSec / 3600)) });
+  return t('live.agoDays', { n: Math.max(1, Math.round(diffSec / 86400)) });
+}
+
+function compactEmployeeStats(empActivity: EmployeeActivity | undefined, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  if (!empActivity) return '';
+  const parts: string[] = [];
+  if (typeof empActivity.productivityScore === 'number') {
+    parts.push(t('live.score', { score: empActivity.productivityScore }));
+  }
+  if (typeof empActivity.hoursToday === 'number') {
+    parts.push(t('live.hoursToday', { hours: empActivity.hoursToday }));
+  }
+  if (empActivity.suspiciousActivityCount > 0) {
+    parts.push(t('live.suspiciousShort', { count: empActivity.suspiciousActivityCount }));
+  }
+  return parts.join(' · ');
 }
 
 export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employeeActivity }) => {
@@ -537,6 +567,7 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                 liveContextByEmployee[emp.id] ||
                 empActivity?.currentActivity ||
                 (online ? t('live.online') : t('live.offline'));
+              const statsLine = compactEmployeeStats(empActivity, t);
               return (
                 <button
                   key={emp.id}
@@ -552,6 +583,18 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                     <span style={styles.liveEmployeeMeta as React.CSSProperties}>
                       {activityLabel}
                     </span>
+                    {statsLine ? (
+                      <span
+                        style={{
+                          ...styles.liveEmployeeMeta as React.CSSProperties,
+                          fontSize: 10,
+                          opacity: 0.85,
+                          marginTop: 1,
+                        }}
+                      >
+                        {statsLine}
+                      </span>
+                    ) : null}
                   </span>
                   <span style={online ? (styles.onlineBadge as React.CSSProperties) : (styles.offlineBadge as React.CSSProperties)}>
                     {online ? t('live.onlineBadge') : t('live.offlineBadge')}
@@ -582,6 +625,9 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
             }
 
             const canStart = online && isConnected && !liveStarting && !liveStreaming;
+            const presence = liveEmployeeId ? onlineEmployees.get(liveEmployeeId) : undefined;
+            const lastSeenAgo = formatRelativeAgo(presence?.lastSeen, t);
+            const lastActivityAgo = formatRelativeAgo(empActivity?.lastActivityAt, t);
 
             return (
               <>
@@ -601,6 +647,33 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                               : online
                                 ? t('live.ready')
                                 : t('live.trackerOffline')}
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '6px 12px',
+                        marginTop: 6,
+                        fontSize: 11,
+                        color: 'var(--tt-text-muted)',
+                      }}
+                    >
+                      {online && lastSeenAgo ? (
+                        <span title={t('live.lastSeenTracker')}>
+                          {t('live.lastSeenAgo', { ago: lastSeenAgo })}
+                        </span>
+                      ) : lastActivityAgo ? (
+                        <span>{t('live.lastActivity', { ago: lastActivityAgo })}</span>
+                      ) : null}
+                      {empActivity?.isIdle ? (
+                        <span style={{ color: 'var(--tt-amber)' }}>{t('live.currentlyIdle')}</span>
+                      ) : null}
+                      {typeof empActivity?.productivityScore === 'number' ? (
+                        <span>{t('live.score', { score: empActivity.productivityScore })}</span>
+                      ) : null}
+                      {typeof empActivity?.hoursToday === 'number' ? (
+                        <span>{t('live.hoursToday', { hours: empActivity.hoursToday })}</span>
+                      ) : null}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -715,6 +788,64 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                     )}
                   </div>
                 </div>
+
+                {/* Employee monitoring metrics (today) */}
+                {empActivity && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderBottom: '1px solid var(--tt-border)',
+                      background: 'var(--tt-surface-muted)',
+                      fontSize: 11,
+                      color: 'var(--tt-text-muted)',
+                    }}
+                    aria-label={t('live.metricsToday')}
+                  >
+                    <span style={{ fontWeight: 600, color: 'var(--tt-text)' }}>
+                      {t('live.metricsToday')}
+                    </span>
+                    <span>
+                      {t('live.metricProductive', {
+                        duration: formatDurationSeconds(empActivity.productiveSeconds ?? 0),
+                      })}
+                    </span>
+                    <span>
+                      {t('live.metricUnproductive', {
+                        duration: formatDurationSeconds(empActivity.unproductiveSeconds ?? 0),
+                      })}
+                    </span>
+                    <span>
+                      {t('live.metricIdle', {
+                        duration: formatDurationSeconds(empActivity.idleSeconds ?? 0),
+                      })}
+                    </span>
+                    {(empActivity.privacyMatchedSeconds ?? 0) > 0 && (
+                      <span title={t('live.metricPrivacyHint')}>
+                        {t('live.metricPrivacy', {
+                          duration: formatDurationSeconds(empActivity.privacyMatchedSeconds ?? 0),
+                        })}
+                      </span>
+                    )}
+                    {empActivity.topAppName && (
+                      <span>
+                        {t('live.metricTopApp', {
+                          app: empActivity.topAppName,
+                          duration: formatDurationSeconds(empActivity.topAppSeconds ?? 0),
+                        })}
+                      </span>
+                    )}
+                    {(empActivity.outsideHoursSeconds ?? 0) > 0 && (
+                      <span>
+                        {t('live.outsideHours', {
+                          duration: formatDurationSeconds(empActivity.outsideHoursSeconds ?? 0),
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Metrics row */}
                 {(liveStreaming || liveStarting) && liveMetrics && (

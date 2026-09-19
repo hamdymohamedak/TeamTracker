@@ -21,14 +21,27 @@ export interface EmployeeActivity {
   employeeName: string;
   currentActivity?: string;
   currentCategory?: string;
+  lastActivityAt?: string | null;
   productivityScore: number;
   hoursToday: number;
+  secondsToday?: number;
+  productiveSeconds?: number;
+  unproductiveSeconds?: number;
+  neutralSeconds?: number;
+  idleSeconds?: number;
+  topAppName?: string | null;
+  topAppSeconds?: number;
+  /** Estimate: today's activity matching privacy block patterns (app/title). */
+  privacyMatchedSeconds?: number;
   suspiciousActivityCount: number;
   isIdle?: boolean;
+  hasBusinessHours?: boolean;
+  outsideHoursSeconds?: number;
 }
 
 export interface DashboardStats {
   timezone: string;
+  scope?: DashboardScope;
   dayStart: string;
   dayEnd: string;
   totalEmployees: number;
