@@ -16,6 +16,7 @@ type LiveFrameHandler = (message: {
     appName?: string;
     windowTitle?: string;
     pattern?: string;
+    label?: string;
     signal?: unknown;
     transport?: string;
     state?: string;
@@ -93,7 +94,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       message.type === 'live-view:frame' ||
       message.type === 'live-view:ended' ||
       message.type === 'live-view:signal' ||
-      message.type === 'live-view:transport'
+      message.type === 'live-view:transport' ||
+      message.type === 'live-view:context'
     ) {
       liveFrameHandlersRef.current.forEach(fn => {
         try { fn(message); } catch { /* ignore */ }
@@ -235,7 +237,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       }
       try {
         const message = JSON.parse(typeof event.data === 'string' ? event.data : String(event.data));
-        if (message.type !== 'live-view:frame' && message.type !== 'live-view:signal') {
+        if (
+          message.type !== 'live-view:frame' &&
+          message.type !== 'live-view:signal' &&
+          message.type !== 'live-view:context'
+        ) {
           setLastMessage(message);
         }
         handleMessage(message);

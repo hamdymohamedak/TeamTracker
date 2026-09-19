@@ -21,12 +21,27 @@ import {
 import type { LiveViewQualityMode } from '../../../../../shared/live-view/quality';
 import type { LiveViewSignalPayload } from '../../../../../shared/live-view/protocol';
 import type { Employee } from '../../../../../shared-types';
+import { formatDurationSeconds } from '../../../../../shared-types';
 import type { EmployeeActivity } from '@/features/dashboard/types';
 import { liveViewStyles as styles } from '../live-view.styles';
 
 export interface LiveViewPanelProps {
   employees: Employee[];
   employeeActivity: EmployeeActivity[];
+}
+
+function formatRelativeAgo(
+  iso: string | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const diffSec = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (diffSec < 45) return t('live.agoJustNow');
+  if (diffSec < 3600) return t('live.agoMinutes', { n: Math.max(1, Math.round(diffSec / 60)) });
+  if (diffSec < 86400) return t('live.agoHours', { n: Math.max(1, Math.round(diffSec / 3600)) });
+  return t('live.agoDays', { n: Math.max(1, Math.round(diffSec / 86400)) });
 }
 
 export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employeeActivity }) => {
@@ -83,6 +98,14 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
   const [liveQuality, setLiveQuality] = useState<LiveViewQualityMode>('auto');
   const [liveMetrics, setLiveMetrics] = useState<LiveViewMetrics | null>(null);
   const [liveShowDetails, setLiveShowDetails] = useState(false);
+  /** Fresh focused-app labels from the device during an active live session. */
+  const [liveContextByEmployee, setLiveContextByEmployee] = useState<Record<string, string>>({});
+  /** Keep relative “last seen” labels fresh. */
+  const [, setRelativeTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setRelativeTick(n => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const liveImgRef = useRef<HTMLImageElement | null>(null);
@@ -349,6 +372,7 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
     return subscribeLiveFrames((message) => {
       if (message.type === 'live-view:ended') {
         const sid = message.data?.sessionId;
+        const endedEmp = message.data?.employeeId as string | undefined;
         if (!liveSessionRef.current || !sid || sid === liveSessionRef.current) {
           liveSessionRef.current = null;
           setLiveStreaming(false);
@@ -366,6 +390,35 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
             setLiveError(t('live.ended'));
           }
         }
+        if (endedEmp) {
+          setLiveContextByEmployee((prev) => {
+            if (!(endedEmp in prev)) return prev;
+            const next = { ...prev };
+            delete next[endedEmp];
+            return next;
+          });
+        } else if (liveEmployeeIdRef.current) {
+          const empId = liveEmployeeIdRef.current;
+          setLiveContextByEmployee((prev) => {
+            if (!(empId in prev)) return prev;
+            const next = { ...prev };
+            delete next[empId];
+            return next;
+          });
+        }
+        return;
+      }
+      if (message.type === 'live-view:context') {
+        const empId = message.data?.employeeId as string | undefined;
+        if (!empId) return;
+        const label =
+          (typeof message.data?.label === 'string' && message.data.label) ||
+          (typeof message.data?.appName === 'string' && message.data.appName) ||
+          null;
+        if (!label) return;
+        setLiveContextByEmployee((prev) =>
+          prev[empId] === label ? prev : { ...prev, [empId]: label }
+        );
         return;
       }
       if (message.type === 'live-view:signal') {
@@ -501,6 +554,13 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
               const empActivity = employeeActivity.find((e) => e.employeeId === emp.id);
               const online = isEmployeeOnline(emp.id);
               const selected = liveEmployeeId === emp.id;
+              const activityLabel =
+                liveContextByEmployee[emp.id] ||
+                empActivity?.currentActivity ||
+                (online ? t('live.online') : t('live.offline'));
+              const presence = onlineEmployees.get(emp.id);
+              const lastSeenIso = presence?.lastSeen || empActivity?.lastActivityAt || null;
+              const lastSeenAgo = formatRelativeAgo(lastSeenIso, t);
               return (
                 <button
                   key={emp.id}
@@ -512,13 +572,78 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                 >
                   <span style={(styles.statusIndicator as (o: boolean) => React.CSSProperties)(online)} />
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
-                    <span style={styles.liveEmployeeName as React.CSSProperties}>{emp.name}</span>
-                    <span style={styles.liveEmployeeMeta as React.CSSProperties}>
-                      {empActivity?.currentActivity || (online ? t('live.online') : t('live.offline'))}
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span style={{ ...styles.liveEmployeeName as React.CSSProperties, flex: 1, minWidth: 0 }}>
+                        {emp.name}
+                      </span>
+                      <span
+                        style={{
+                          ...(online
+                            ? (styles.onlineBadge as React.CSSProperties)
+                            : (styles.offlineBadge as React.CSSProperties)),
+                          flexShrink: 0,
+                        }}
+                      >
+                        {online ? t('live.onlineBadge') : t('live.offlineBadge')}
+                      </span>
                     </span>
-                  </span>
-                  <span style={online ? (styles.onlineBadge as React.CSSProperties) : (styles.offlineBadge as React.CSSProperties)}>
-                    {online ? t('live.onlineBadge') : t('live.offlineBadge')}
+                    <span
+                      style={{
+                        ...styles.liveEmployeeMeta as React.CSSProperties,
+                        whiteSpace: 'normal',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical' as const,
+                        overflow: 'hidden',
+                      }}
+                      title={activityLabel}
+                    >
+                      {activityLabel}
+                    </span>
+                    <span
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 2,
+                        marginTop: 6,
+                        fontSize: 11,
+                        lineHeight: 1.35,
+                        color: 'var(--tt-text-muted)',
+                      }}
+                    >
+                      {lastSeenAgo ? (
+                        <span title={t('live.lastSeenTracker')}>
+                          {t('live.lastSeenShort', { ago: lastSeenAgo })}
+                        </span>
+                      ) : null}
+                      {typeof empActivity?.productivityScore === 'number' ? (
+                        <span>
+                          {t('live.metricProductivityLine', {
+                            score: empActivity.productivityScore,
+                          })}
+                        </span>
+                      ) : null}
+                      {typeof empActivity?.hoursToday === 'number' ? (
+                        <span>
+                          {t('live.metricHoursLine', { hours: empActivity.hoursToday })}
+                        </span>
+                      ) : null}
+                      {empActivity && empActivity.suspiciousActivityCount > 0 ? (
+                        <span style={{ color: 'var(--tt-danger)' }}>
+                          {t('live.suspiciousShort', {
+                            count: empActivity.suspiciousActivityCount,
+                          })}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                 </button>
               );
@@ -546,6 +671,9 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
             }
 
             const canStart = online && isConnected && !liveStarting && !liveStreaming;
+            const presence = liveEmployeeId ? onlineEmployees.get(liveEmployeeId) : undefined;
+            const lastSeenAgo = formatRelativeAgo(presence?.lastSeen, t);
+            const lastActivityAgo = formatRelativeAgo(empActivity?.lastActivityAt, t);
 
             return (
               <>
@@ -557,14 +685,41 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                       {liveStreaming && livePrivacyBlocked
                         ? t('live.privacyBlocked')
                         : liveStreaming
-                          ? t('live.streaming')
+                          ? (liveContextByEmployee[liveEmployeeId] || t('live.streaming'))
                           : liveStarting
                             ? t('live.connecting')
-                            : empActivity?.currentActivity
-                              ? `${empActivity.currentActivity}${empActivity.currentCategory ? ` · ${empActivity.currentCategory}` : ''}`
+                            : (liveContextByEmployee[liveEmployeeId] || empActivity?.currentActivity)
+                              ? `${liveContextByEmployee[liveEmployeeId] || empActivity?.currentActivity}${empActivity?.currentCategory && !liveContextByEmployee[liveEmployeeId] ? ` · ${empActivity.currentCategory}` : ''}`
                               : online
                                 ? t('live.ready')
                                 : t('live.trackerOffline')}
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '6px 12px',
+                        marginTop: 6,
+                        fontSize: 11,
+                        color: 'var(--tt-text-muted)',
+                      }}
+                    >
+                      {online && lastSeenAgo ? (
+                        <span title={t('live.lastSeenTracker')}>
+                          {t('live.lastSeenAgo', { ago: lastSeenAgo })}
+                        </span>
+                      ) : lastActivityAgo ? (
+                        <span>{t('live.lastActivity', { ago: lastActivityAgo })}</span>
+                      ) : null}
+                      {empActivity?.isIdle ? (
+                        <span style={{ color: 'var(--tt-amber)' }}>{t('live.currentlyIdle')}</span>
+                      ) : null}
+                      {typeof empActivity?.productivityScore === 'number' ? (
+                        <span>{t('live.score', { score: empActivity.productivityScore })}</span>
+                      ) : null}
+                      {typeof empActivity?.hoursToday === 'number' ? (
+                        <span>{t('live.hoursToday', { hours: empActivity.hoursToday })}</span>
+                      ) : null}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -679,6 +834,64 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
                     )}
                   </div>
                 </div>
+
+                {/* Employee monitoring metrics (today) */}
+                {empActivity && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderBottom: '1px solid var(--tt-border)',
+                      background: 'var(--tt-surface-muted)',
+                      fontSize: 11,
+                      color: 'var(--tt-text-muted)',
+                    }}
+                    aria-label={t('live.metricsToday')}
+                  >
+                    <span style={{ fontWeight: 600, color: 'var(--tt-text)' }}>
+                      {t('live.metricsToday')}
+                    </span>
+                    <span>
+                      {t('live.metricProductive', {
+                        duration: formatDurationSeconds(empActivity.productiveSeconds ?? 0),
+                      })}
+                    </span>
+                    <span>
+                      {t('live.metricUnproductive', {
+                        duration: formatDurationSeconds(empActivity.unproductiveSeconds ?? 0),
+                      })}
+                    </span>
+                    <span>
+                      {t('live.metricIdle', {
+                        duration: formatDurationSeconds(empActivity.idleSeconds ?? 0),
+                      })}
+                    </span>
+                    {(empActivity.privacyMatchedSeconds ?? 0) > 0 && (
+                      <span title={t('live.metricPrivacyHint')}>
+                        {t('live.metricPrivacy', {
+                          duration: formatDurationSeconds(empActivity.privacyMatchedSeconds ?? 0),
+                        })}
+                      </span>
+                    )}
+                    {empActivity.topAppName && (
+                      <span>
+                        {t('live.metricTopApp', {
+                          app: empActivity.topAppName,
+                          duration: formatDurationSeconds(empActivity.topAppSeconds ?? 0),
+                        })}
+                      </span>
+                    )}
+                    {(empActivity.outsideHoursSeconds ?? 0) > 0 && (
+                      <span>
+                        {t('live.outsideHours', {
+                          duration: formatDurationSeconds(empActivity.outsideHoursSeconds ?? 0),
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Metrics row */}
                 {(liveStreaming || liveStarting) && liveMetrics && (

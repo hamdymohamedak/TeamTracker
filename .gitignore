@@ -43,6 +43,7 @@ Thumbs.db
 # Electron Builder / packaging output (never commit installers or unpacked apps)
 desktop/release/
 desktop-admin/release/
+desktop-admin/server-bundle/
 **/release/
 *.dmg
 *.exe

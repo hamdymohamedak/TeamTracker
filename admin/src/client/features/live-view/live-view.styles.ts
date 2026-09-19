@@ -12,8 +12,8 @@ export const liveViewStyles: { [key: string]: any } = {
   liveEmployeeList: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: 6,
-    maxHeight: 480,
+    gap: 8,
+    maxHeight: 560,
     overflowY: 'auto' as const,
     paddingRight: 4,
   },
@@ -24,7 +24,7 @@ export const liveViewStyles: { [key: string]: any } = {
   },
   liveEmployeeRow: (selected: boolean, online: boolean) => ({
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     width: '100%',
     textAlign: 'left' as const,
@@ -41,6 +41,8 @@ export const liveViewStyles: { [key: string]: any } = {
     height: '10px',
     borderRadius: '50%',
     backgroundColor: online ? 'var(--tt-success)' : 'var(--tt-text-faint)',
+    marginTop: 5,
+    flexShrink: 0,
   }),
   liveEmployeeName: {
     display: 'block',

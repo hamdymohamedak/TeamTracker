@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Employee } from '../../../../../shared-types';
 import { api } from '@/lib/api';
+import { buildActivationPayload, getPreferredActivationServerUrl } from '@/lib/lanInfo';
 import { useAuth } from '@/contexts/AuthContext';
 import { emptyFormData } from '../constants';
 import type { EmployeeFormData, InstallPromptState, SetupTokenState, UseEmployeesReturn } from '../types';
@@ -198,7 +199,12 @@ export function useEmployees(): UseEmployeesReturn {
     try {
       const res = await api.post('/api/auth/setup-token', { employeeId: employee.id });
       const tokenData = res.data || res;
-      setSetupToken({ token: tokenData.token || tokenData.setupToken, employeeName: employee.name });
+      const serverUrl = await getPreferredActivationServerUrl();
+      setSetupToken({
+        token: tokenData.token || tokenData.setupToken,
+        employeeName: employee.name,
+        serverUrl,
+      });
     } catch (err) {
       console.error('Error generating setup token:', err);
       alert(err instanceof Error ? err.message : 'Failed to generate setup token');
@@ -232,12 +238,12 @@ export function useEmployees(): UseEmployeesReturn {
       const token = tokenData.token || tokenData.setupToken;
       if (!token) throw new Error('Server did not return a setup token');
 
-      const payload = {
+      const serverUrl = await getPreferredActivationServerUrl();
+      const payload = buildActivationPayload({
         setupToken: token,
-        serverUrl: window.location.origin,
+        serverUrl,
         employeeName: employee.name,
-        createdAt: new Date().toISOString(),
-      };
+      });
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

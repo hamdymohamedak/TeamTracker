@@ -362,6 +362,53 @@
       display: none;
       flex-direction: column;
     }
+    .office-section { margin-bottom: 14px; }
+    .office-label {
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .office-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 160px;
+      overflow-y: auto;
+      margin-bottom: 6px;
+    }
+    .office-item {
+      display: block;
+      width: 100%;
+      text-align: start;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .office-item:hover { border-color: var(--accent); }
+    .office-item.selected {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+    .office-item .office-sub {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--faint);
+    }
+    .office-empty {
+      font-size: 12px;
+      color: var(--faint);
+      line-height: 1.45;
+      padding: 8px 0 4px;
+    }
   </style>
 </head>
 <body>
@@ -381,8 +428,13 @@
     </div>
     <div class="body">
       <div id="setup-view">
-        <p class="hint" data-i18n="setup.hint">Paste the one-time setup token from your administrator. After you connect once, you stay signed in until they reset access.</p>
+        <p class="hint" data-i18n="setup.hint">Choose your office on this network, then paste the one-time setup token from your administrator.</p>
         <div id="error" class="error"></div>
+        <div class="office-section">
+          <div class="office-label" data-i18n="setup.officeLabel">Choose your office</div>
+          <div id="office-list" class="office-list" role="listbox" aria-label="Offices"></div>
+          <div id="office-empty" class="office-empty" data-i18n="setup.officeSearching">Looking for offices on this network…</div>
+        </div>
         <label for="token" data-i18n="setup.tokenLabel">Setup token</label>
         <input id="token" type="text" data-i18n-placeholder="setup.tokenPlaceholder" placeholder="Paste your setup token" autocomplete="off" />
         <button type="button" class="advanced-toggle" id="advanced-toggle" data-i18n="setup.advancedShow">Advanced settings</button>
@@ -448,7 +500,10 @@
         'subtitle.offline': 'Working offline',
         'subtitle.syncing': 'Connected and syncing',
         'subtitle.tracking': 'Connected and tracking',
-        'setup.hint': 'Paste the one-time setup token from your administrator. After you connect once, you stay signed in until they reset access.',
+        'setup.hint': 'Choose your office on this network, then paste the one-time setup token from your administrator.',
+        'setup.officeLabel': 'Choose your office',
+        'setup.officeSearching': 'Looking for offices on this network…',
+        'setup.officeNone': 'No offices found yet. Ask your admin to open TeamTracker Admin, or enter the server URL under Advanced.',
         'setup.tokenLabel': 'Setup token',
         'setup.tokenPlaceholder': 'Paste your setup token',
         'setup.advancedShow': 'Advanced settings',
@@ -457,7 +512,7 @@
         'setup.connect': 'Connect',
         'setup.connecting': 'Connecting…',
         'setup.needToken': 'Please enter a setup token.',
-        'setup.needServer': 'Open Advanced settings and enter the server URL.',
+        'setup.needServer': 'Select an office above, or open Advanced settings and enter the server URL.',
         'setup.connectFailed': 'Connection failed. Check your token and try again.',
         'setup.connectFailedShort': 'Connection failed.',
         'status.signedIn': 'Signed in',
@@ -489,7 +544,10 @@
         'subtitle.offline': 'العمل دون اتصال',
         'subtitle.syncing': 'متصل وجارٍ المزامنة',
         'subtitle.tracking': 'متصل ويتتبع',
-        'setup.hint': 'الصق رمز التثبيت لمرة واحدة من المسؤول. بعد الاتصال مرة واحدة تبقى مسجّلاً حتى يعيد ضبط الصلاحية.',
+        'setup.hint': 'اختر مكتبك على هذه الشبكة، ثم الصق رمز التثبيت لمرة واحدة من المسؤول.',
+        'setup.officeLabel': 'اختر مكتبك',
+        'setup.officeSearching': 'جارٍ البحث عن المكاتب على هذه الشبكة…',
+        'setup.officeNone': 'لم يُعثر على مكاتب بعد. اطلب من المسؤول فتح TeamTracker Admin، أو أدخل رابط الخادم من الإعدادات المتقدمة.',
         'setup.tokenLabel': 'رمز التثبيت',
         'setup.tokenPlaceholder': 'الصق رمز التثبيت',
         'setup.advancedShow': 'إعدادات متقدمة',
@@ -498,7 +556,7 @@
         'setup.connect': 'اتصال',
         'setup.connecting': 'جارٍ الاتصال…',
         'setup.needToken': 'يرجى إدخال رمز التثبيت.',
-        'setup.needServer': 'افتح الإعدادات المتقدمة وأدخل رابط الخادم.',
+        'setup.needServer': 'اختر مكتباً أعلاه، أو افتح الإعدادات المتقدمة وأدخل رابط الخادم.',
         'setup.connectFailed': 'فشل الاتصال. تحقق من الرمز وحاول مجدداً.',
         'setup.connectFailedShort': 'فشل الاتصال.',
         'status.signedIn': 'مسجّل الدخول',
@@ -532,6 +590,10 @@
     let advancedOpen = false;
     let privacySitesCache = [];
     let privacyUrlMode = 'blocklist';
+    let selectedOfficeId = null;
+    let officesCache = [];
+    let unsubOffices = null;
+    let officeSearchStartedAt = 0;
 
     function privacyTitleKey() {
       return privacyUrlMode === 'allowlist' ? 'privacy.titleAllow' : 'privacy.title';
@@ -587,6 +649,7 @@
       document.getElementById('lang-ar').classList.toggle('active', locale === 'ar');
       if (!connectBtn.disabled) connectBtn.textContent = t('setup.connect');
       refreshPrivacyLabels();
+      if (officesCache.length || officeEmptyEl) renderOffices(officesCache);
     }
 
     function setLocale(next) {
@@ -613,9 +676,70 @@
     const privacyModal = document.getElementById('privacy-modal');
     const privacyList = document.getElementById('privacy-list');
     const privacyCloseBtn = document.getElementById('privacy-close-btn');
+    const officeListEl = document.getElementById('office-list');
+    const officeEmptyEl = document.getElementById('office-empty');
 
     document.getElementById('lang-en').addEventListener('click', () => setLocale('en'));
     document.getElementById('lang-ar').addEventListener('click', () => setLocale('ar'));
+
+    function renderOffices(offices) {
+      officesCache = Array.isArray(offices) ? offices : [];
+      if (!officeListEl || !officeEmptyEl) return;
+      officeListEl.innerHTML = '';
+      if (!officesCache.length) {
+        officeEmptyEl.style.display = 'block';
+        const elapsed = Date.now() - officeSearchStartedAt;
+        officeEmptyEl.textContent = elapsed > 4000 ? t('setup.officeNone') : t('setup.officeSearching');
+        return;
+      }
+      officeEmptyEl.style.display = 'none';
+      for (const office of officesCache) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'office-item' + (office.id === selectedOfficeId ? ' selected' : '');
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-selected', office.id === selectedOfficeId ? 'true' : 'false');
+        const title = document.createElement('span');
+        title.textContent = office.name;
+        btn.appendChild(title);
+        const sub = document.createElement('span');
+        sub.className = 'office-sub';
+        sub.textContent = office.serverUrl;
+        btn.appendChild(sub);
+        btn.addEventListener('click', () => {
+          selectedOfficeId = office.id;
+          serverInput.value = office.serverUrl;
+          renderOffices(officesCache);
+        });
+        officeListEl.appendChild(btn);
+      }
+    }
+
+    function startOfficeDiscovery() {
+      if (!window.teamtracker || typeof window.teamtracker.startOfficeBrowse !== 'function') return;
+      const first = !officeSearchStartedAt;
+      if (first) officeSearchStartedAt = Date.now();
+      if (typeof window.teamtracker.onOfficesUpdated === 'function' && !unsubOffices) {
+        unsubOffices = window.teamtracker.onOfficesUpdated((list) => renderOffices(list));
+      }
+      void window.teamtracker.startOfficeBrowse().then((list) => renderOffices(list)).catch(() => renderOffices([]));
+      if (first) {
+        setTimeout(() => {
+          if (!officesCache.length) renderOffices([]);
+        }, 4500);
+      }
+    }
+
+    function stopOfficeDiscovery() {
+      if (unsubOffices) {
+        try { unsubOffices(); } catch { /* ignore */ }
+        unsubOffices = null;
+      }
+      officeSearchStartedAt = 0;
+      if (window.teamtracker && typeof window.teamtracker.stopOfficeBrowse === 'function') {
+        void window.teamtracker.stopOfficeBrowse();
+      }
+    }
 
     function openPrivacyModal() {
       if (!privacySitesCache.length) return;
@@ -674,10 +798,14 @@
         statusView.style.display = 'none';
         document.getElementById('subtitle').textContent = t('subtitle.connect');
         headerDot.className = 'dot';
-        if (data.defaultServerUrl) serverInput.value = data.defaultServerUrl;
+        if (data.defaultServerUrl && !selectedOfficeId) {
+          serverInput.value = data.defaultServerUrl;
+        }
+        startOfficeDiscovery();
         return;
       }
 
+      stopOfficeDiscovery();
       setupView.style.display = 'none';
       statusView.style.display = 'flex';
       const name = cfg.employeeName || cfg.employeeId || t('status.employeeFallback');

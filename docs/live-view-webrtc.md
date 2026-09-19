@@ -34,7 +34,7 @@ Add to the admin server `.env` (all optional; defaults keep Live View working wi
 | `LIVE_VIEW_DEFAULT_QUALITY` | `auto` | `auto` / `low` / `medium` / `high` / `ultra` (Ultra is LAN-only in UI) |
 | `LIVE_VIEW_MAX_FRAME_BYTES` | `220000` | Max JPEG payload for binary frames |
 | `LIVE_VIEW_MAX_FPS` / `LIVE_VIEW_MIN_FPS` | `4` / `1` | **Binary WS** hard FPS caps |
-| `LAN_LIVE_VIEW_MAX_FPS` | `30` | LAN P2P max FPS |
+| `LAN_LIVE_VIEW_MAX_FPS` | `60` | LAN P2P max FPS |
 | `LAN_LIVE_VIEW_DEFAULT_FPS` | `12` | Default LAN Medium FPS |
 | `INTERNET_LIVE_VIEW_MAX_FPS` | `4` | Internet WebRTC max FPS |
 | `TURN_LIVE_VIEW_MAX_FPS` | `4` | TURN max FPS |
@@ -107,7 +107,7 @@ Logical presets stay `Auto` / `Low` / `Medium` / `High` (+ LAN-only `Ultra`). Ef
 | Internet / TURN | 480p @ 2 | 720p @ 2.5 | 1280p @ 3.5 | hidden → High |
 | Binary WS | Internet widths | FPS ≤ `LIVE_VIEW_MAX_FPS` | same clamp | never |
 
-Dashboard FPS options are discrete and path-bound (e.g. LAN: 5/10/12/15/20/30; Internet/TURN/WS: 1–4). Auto on LAN raises FPS before resolution; CPU / dropped-frame pressure steps FPS down.
+Dashboard FPS options are discrete and path-bound (e.g. LAN: 5/10/12/15/20/30/60; Internet/TURN/WS: 1–4). Auto on LAN raises FPS before resolution; CPU / dropped-frame pressure steps FPS down. 60 FPS is LAN WebRTC only — Binary WS / Internet / TURN stay at ≤4.
 
 Admins can change quality live via `admin:live-view-quality` → `command:live-view-quality` (includes `fps` / `width` / `networkPath`) without restarting the session.
 

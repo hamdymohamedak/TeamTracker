@@ -10,6 +10,9 @@
 //   GET    /api/screenshots             → list, scoped to org, optional filters
 //   GET    /api/screenshots/:id         → metadata (URL is in file_path)
 //   DELETE /api/screenshots/:id         → admin removes a single screenshot
+//   POST   /api/screenshots/request     → on-demand capture command
+//   GET    /api/screenshots/automation  → list active automation sessions
+//   POST   /api/screenshots/automation/start|stop → fixed/random recurring capture
 //
 // Storage: admin/data/uploads/screenshots/<orgId>/<employeeId>/<YYYY-MM-DD>/<id>.jpg
 // Served via the /uploads static mount in index.ts.
@@ -24,6 +27,14 @@ import { buildDailySummary, renderDailySummaryHtml, sendDailySummaryEmail } from
 import { consumeCommand, listCommandsForEmployee } from '../remote-commands.js';
 import { broadcastScreenshotNew, requestScreenshotCommand } from '../websocket.js';
 import { getPaths, ensureDataDirectories, resolveScreenshotAbsolutePath } from '../paths.js';
+import {
+  AUTOMATION_DURATION_HOURS,
+  AUTOMATION_MAX_SEC,
+  AUTOMATION_MIN_SEC,
+  listAutomationsForOrg,
+  startAutomation,
+  stopAutomation,
+} from '../screenshot-automation.js';
 
 ensureDataDirectories();
 const SCREENSHOTS_ROOT = getPaths().screenshotsDir;
@@ -124,6 +135,85 @@ export function setupSummaryScreenshotRoutes(app: Express): void {
             : 'Employee is online but the command could not be delivered. Retrying via poll…',
         },
       });
+    } catch (e) {
+      res.status(500).json({ success: false, error: String(e) });
+    }
+  });
+
+  // Admin: list active screenshot automation sessions for this org.
+  app.get('/api/screenshots/automation', requireAuth, async (req: Request, res: Response) => {
+    try {
+      res.json({
+        success: true,
+        data: {
+          sessions: listAutomationsForOrg(req.orgId!),
+          limits: {
+            minSec: AUTOMATION_MIN_SEC,
+            maxSec: AUTOMATION_MAX_SEC,
+            durationHours: [...AUTOMATION_DURATION_HOURS],
+          },
+        },
+      });
+    } catch (e) {
+      res.status(500).json({ success: false, error: String(e) });
+    }
+  });
+
+  // Admin: start fixed/random recurring screenshot capture for one employee.
+  app.post('/api/screenshots/automation/start', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const employeeId = typeof req.body?.employeeId === 'string' ? req.body.employeeId.trim() : '';
+      if (!employeeId) {
+        return res.status(400).json({ success: false, error: 'employeeId is required' });
+      }
+
+      const employee = await getEmployeeById(req.orgId!, employeeId);
+      if (!employee) {
+        return res.status(404).json({ success: false, error: 'Employee not found' });
+      }
+
+      const mode = req.body?.mode === 'random' ? 'random' : 'fixed';
+      const result = startAutomation({
+        orgId: req.orgId!,
+        employeeId,
+        startedBy: req.userId || 'admin',
+        mode,
+        intervalSec: typeof req.body?.intervalSec === 'number' ? req.body.intervalSec : undefined,
+        minIntervalSec: typeof req.body?.minIntervalSec === 'number' ? req.body.minIntervalSec : undefined,
+        maxIntervalSec: typeof req.body?.maxIntervalSec === 'number' ? req.body.maxIntervalSec : undefined,
+        durationHours: typeof req.body?.durationHours === 'number' ? req.body.durationHours : 0,
+      });
+
+      if (!result.ok) {
+        return res.status(result.status).json({ success: false, error: result.error });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          ...result.session,
+          employeeName: employee.name,
+        },
+      });
+    } catch (e) {
+      res.status(500).json({ success: false, error: String(e) });
+    }
+  });
+
+  // Admin: stop recurring screenshot capture for one employee.
+  app.post('/api/screenshots/automation/stop', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const employeeId = typeof req.body?.employeeId === 'string' ? req.body.employeeId.trim() : '';
+      if (!employeeId) {
+        return res.status(400).json({ success: false, error: 'employeeId is required' });
+      }
+
+      const result = stopAutomation(req.orgId!, employeeId, 'admin-stop');
+      if (!result.ok) {
+        return res.status(result.status).json({ success: false, error: result.error });
+      }
+
+      res.json({ success: true, data: result.session });
     } catch (e) {
       res.status(500).json({ success: false, error: String(e) });
     }

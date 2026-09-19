@@ -5,7 +5,7 @@
  * probes the server clock — behaviour previously inline in enrollWithSetupToken
  * but moved here to keep enrollment.ts free of sync/capture-loop imports.
  */
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { config, trackerState } from './state.js';
 import { getServerUrl } from '../config.js';
 import {
@@ -20,6 +20,12 @@ import { generateDailySummary } from '../classifier.js';
 import { getCapturePrivacyBlocks, getPrivacyUrlMode } from '../privacy-guard.js';
 import { getShowPrivacyBlocksToEmployees } from '../screenshot.js';
 import type { Config } from './types.js';
+import {
+  listDiscoveredOffices,
+  onOfficesUpdated,
+  startOfficeBrowse,
+  stopOfficeBrowse,
+} from '../lan-browse.js';
 
 export function setupIpcHandlers(): void {
   ipcMain.handle('tracker:getStatus', () => {
@@ -51,9 +57,33 @@ export function setupIpcHandlers(): void {
     };
   });
 
+  ipcMain.handle('tracker:listOffices', () => {
+    startOfficeBrowse();
+    return listDiscoveredOffices();
+  });
+
+  ipcMain.handle('tracker:startOfficeBrowse', () => {
+    startOfficeBrowse();
+    return listDiscoveredOffices();
+  });
+
+  ipcMain.handle('tracker:stopOfficeBrowse', () => {
+    stopOfficeBrowse();
+    return true;
+  });
+
+  onOfficesUpdated((offices) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('tracker:officesUpdated', offices);
+      }
+    }
+  });
+
   ipcMain.handle('tracker:enroll', async (_, setupToken: string, serverUrl?: string) => {
     const result = await enrollWithSetupToken(setupToken, serverUrl);
     if (result.success) {
+      stopOfficeBrowse();
       // Re-open presence WS after sign-out (or first enroll while app is running).
       startPresenceClient();
       void syncClockSkew();

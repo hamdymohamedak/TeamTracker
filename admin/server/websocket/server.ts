@@ -5,6 +5,7 @@ import { toBuffer, handleBinaryLiveFrame, endLiveViewForAdmin, endLiveViewSessio
 import { handleMessage } from './message-router.js';
 import { peekLiveViewBinaryMagic } from '../../shared/live-view/index.js';
 import { wsLog } from './log.js';
+import { endAutomationForEmployee } from '../screenshot-automation.js';
 
 export function setupWebSocket(wss: WebSocketServer): void {
   wss.on('connection', (ws: WebSocket, req: any) => {
@@ -64,6 +65,8 @@ export function setupWebSocket(wss: WebSocketServer): void {
           if (session) {
             endLiveViewSession(session, 'device-disconnect');
           }
+          // Stop any recurring screenshot automation for this employee.
+          endAutomationForEmployee(client.employeeId, 'device-disconnect');
         }
         // Only broadcast offline for device trackers — dashboard admins also
         // have an employeeId (userId) and must not clear live presence.

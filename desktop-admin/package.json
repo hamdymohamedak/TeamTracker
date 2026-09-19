@@ -1,7 +1,7 @@
 {
   "name": "@teamtracker/desktop-admin",
   "version": "1.0.0",
-  "description": "TeamTracker Admin desktop shell — opens the admin dashboard with an option to launch the website in a browser",
+  "description": "TeamTracker Admin desktop — embeds a local office server or opens a remote dashboard",
   "license": "MIT",
   "author": "TeamTracker <hamdymohamedak@users.noreply.github.com>",
   "homepage": "https://github.com/hamdymohamedak/TeamTracker",
@@ -10,16 +10,19 @@
   "scripts": {
     "postinstall": "node scripts/ensure-electron.mjs",
     "ensure-electron": "node scripts/ensure-electron.mjs",
-    "dev": "node scripts/ensure-electron.mjs && npm run build && electron .",
+    "bundle:server": "node scripts/bundle-admin-server.mjs",
+    "dev": "node scripts/ensure-electron.mjs && npm run build && TEAMTRACKER_EMBED_SERVER=0 electron .",
+    "dev:local": "node scripts/ensure-electron.mjs && npm run bundle:server && npm run build && TEAMTRACKER_EMBED_SERVER=1 electron .",
     "build": "vite build",
     "start": "npm run build && electron .",
+    "predist": "node scripts/bundle-admin-server.mjs",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64 --publish never",
-    "dist:mac:arm64": "npm run build && electron-builder --mac --arm64 --publish never",
-    "dist:mac:x64": "npm run build && electron-builder --mac --x64 --publish never",
-    "dist:win": "npm run build && electron-builder --win --publish never",
-    "dist:linux": "npm run build && electron-builder --linux --publish never",
-    "dist:all": "npm run build && electron-builder -mwl --publish never"
+    "dist:mac": "npm run bundle:server && npm run build && electron-builder --mac --arm64 --x64 --publish never",
+    "dist:mac:arm64": "npm run bundle:server && npm run build && electron-builder --mac --arm64 --publish never",
+    "dist:mac:x64": "npm run bundle:server && npm run build && electron-builder --mac --x64 --publish never",
+    "dist:win": "npm run bundle:server && npm run build && electron-builder --win --publish never",
+    "dist:linux": "npm run bundle:server && npm run build && electron-builder --linux --publish never",
+    "dist:all": "npm run bundle:server && npm run build && electron-builder -mwl --publish never"
   },
   "build": {
     "appId": "com.teamtracker.admin",
@@ -43,6 +46,11 @@
       {
         "from": "assets",
         "to": "assets"
+      },
+      {
+        "from": "server-bundle",
+        "to": "admin-server",
+        "filter": ["**/*"]
       }
     ],
     "afterPack": "scripts/afterPack.cjs",

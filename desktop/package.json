@@ -156,6 +156,7 @@
   },
   "dependencies": {
     "active-win": "^8.2.1",
+    "bonjour-service": "^1.4.4",
     "electron-store": "^8.2.0",
     "node-cron": "^3.0.3",
     "uuid": "^9.0.1",

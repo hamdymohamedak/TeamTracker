@@ -217,6 +217,27 @@ export async function handleMessage(ws: WebSocket, message: any): Promise<void> 
       break;
     }
 
+    case 'live-view:context': {
+      // Device → admin: focused app label for the Live Activity sidebar.
+      if (client.isAdmin || !client.employeeId || !client.orgId) break;
+      const session = liveByEmployee.get(client.employeeId);
+      if (!session || session.orgId !== client.orgId) break;
+      if (message.data?.sessionId && message.data.sessionId !== session.sessionId) break;
+      if (session.adminWs.readyState !== WebSocket.OPEN) break;
+      session.adminWs.send(JSON.stringify({
+        type: 'live-view:context',
+        data: {
+          sessionId: session.sessionId,
+          employeeId: client.employeeId,
+          appName: message.data?.appName || null,
+          windowTitle: message.data?.windowTitle || null,
+          label: message.data?.label || null,
+          capturedAt: message.data?.capturedAt || new Date().toISOString(),
+        },
+      }));
+      break;
+    }
+
     case 'live-view:frame': {
       // Legacy Base64 JSON path — still accepted for older desktop builds.
       if (client.isAdmin || !client.employeeId || !client.orgId) break;

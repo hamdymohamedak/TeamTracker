@@ -67,8 +67,8 @@ export async function startTracking(): Promise<void> {
   startScreenshotService(
     () => config.deviceToken || '',
     () => ({
-      appName: trackerState.lastActivity?.appName,
-      windowTitle: trackerState.lastActivity?.windowTitle
+      appName: trackerState.currentFocus?.appName ?? trackerState.lastActivity?.appName,
+      windowTitle: trackerState.currentFocus?.windowTitle ?? trackerState.lastActivity?.windowTitle
     })
   );
 

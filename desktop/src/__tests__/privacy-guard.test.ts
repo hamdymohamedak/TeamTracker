@@ -76,8 +76,8 @@ describe('matchUrlBlock', () => {
   });
 
   it('does not block when only a non-matching (e.g. foreground) URL is probed', () => {
-    // PrivacyGuard now probes active tabs only; a background WhatsApp tab
-    // never appears in this list, so capture stays allowed.
+    // PrivacyGuard probes the frontmost browser tab only; a background WhatsApp
+    // tab never appears in this list, so capture stays allowed.
     assert.equal(matchUrlBlock(whatsappBlock, ['https://google.com/']), null);
   });
 });
@@ -109,6 +109,17 @@ describe('decideFromProbe matrix', () => {
       { ok: true, urls: ['https://google.com/'], browsers: ['Brave Browser'] }
     );
     assert.equal(d.state, 'allow');
+  });
+
+  it('blocklist allows when probe returns empty urls (desktop app focused)', () => {
+    // Foreground gate: Cursor/VS Code focused → probe skips browsers → empty urls.
+    const d = decideFromProbe(
+      'screenshot',
+      [whatsappBlock],
+      { ok: true, urls: [], browsers: [] }
+    );
+    assert.equal(d.state, 'allow');
+    assert.equal(isCaptureBlocked(d), false);
   });
 
   it('returns unknown (fail-closed) when URL rules exist and probe fails', () => {

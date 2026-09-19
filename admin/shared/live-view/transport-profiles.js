@@ -7,14 +7,14 @@ import { LIVE_VIEW_QUALITY_PRESETS, } from './quality.js';
 export const DEFAULT_LIVE_VIEW_PROFILE_CONFIG = {
     wsMaxFps: 4,
     wsMinFps: 1,
-    lanMaxFps: 30,
+    lanMaxFps: 60,
     lanDefaultFps: 12,
     internetMaxFps: 4,
     turnMaxFps: 4,
     lanRttMaxMs: 40,
 };
 /** Discrete FPS choices exposed in the Dashboard per path. */
-export const LAN_FPS_OPTIONS = [5, 10, 12, 15, 20, 30];
+export const LAN_FPS_OPTIONS = [5, 10, 12, 15, 20, 30, 60];
 export const INTERNET_FPS_OPTIONS = [1, 2, 3, 4];
 /** LAN Auto: raise FPS at 720p before bumping resolution. */
 export const LAN_AUTO_FPS_LADDER = [5, 10, 12, 15];
@@ -208,14 +208,20 @@ export function resolveEffectivePreset(level, path, cfg = DEFAULT_LIVE_VIEW_PROF
         fps = Math.min(fps, cfg.wsMaxFps);
         fps = Math.max(fps, cfg.wsMinFps);
     }
-    const intervalMs = Math.max(33, Math.round(1000 / fps));
+    // Floor at 1ms so LAN WebRTC can reach 60 FPS (old Math.max(33, …) capped ~30).
+    const intervalMs = Math.max(1, Math.round(1000 / Math.max(0.5, fps)));
+    // Scale bitrate when LAN FPS override exceeds the level's baseline (e.g. Ultra 30→60).
+    let maxBitrateBps = spec.maxBitrateBps;
+    if (path === 'webrtc-p2p-lan' && fps > spec.fps && spec.fps > 0) {
+        maxBitrateBps = Math.round(spec.maxBitrateBps * (fps / spec.fps));
+    }
     return {
         level: safeLevel,
         width: spec.width,
         jpegQuality: spec.jpegQuality,
         fps,
         intervalMs,
-        maxBitrateBps: spec.maxBitrateBps,
+        maxBitrateBps,
         networkPath: path,
     };
 }

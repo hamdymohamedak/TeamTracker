@@ -161,10 +161,17 @@ export const Dashboard: React.FC = () => {
             />
             <StatCard
               title={t('dashboard.idleTime')}
-              value={formatDurationSeconds(stats?.distractedSecondsToday ?? (stats?.distractedTimeMinutes || 0) * 60)}
+              value={formatDurationSeconds(stats?.idleSecondsToday ?? 0)}
               icon={<Moon size={20} strokeWidth={2.1} />}
-              color="var(--tt-danger)"
+              color="var(--tt-text-muted)"
               tooltip={t('help.idleTime')}
+            />
+            <StatCard
+              title={t('dashboard.unproductiveTime')}
+              value={formatDurationSeconds(stats?.unproductiveSecondsToday ?? 0)}
+              icon={<Zap size={20} strokeWidth={2.1} />}
+              color="var(--tt-danger)"
+              tooltip={t('help.unproductiveTime')}
             />
             <StatCard
               title={t('dashboard.suspicious')}

@@ -18,6 +18,8 @@ export interface EmployeeFormData {
 export interface SetupTokenState {
   token: string;
   employeeName: string;
+  /** Preferred LAN-reachable server URL for QR / activation. */
+  serverUrl: string;
 }
 
 export interface InstallPromptState {

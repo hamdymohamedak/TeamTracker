@@ -9,6 +9,7 @@ import {
   EmployeeFormDialog,
   EmployeeSetupActions,
   EmployeeList,
+  LanNetworkBanner,
 } from '@/features/employees';
 
 export const Employees: React.FC = () => {
@@ -50,6 +51,8 @@ export const Employees: React.FC = () => {
           </button>
         }
       />
+
+      <LanNetworkBanner />
 
       {emp.employees.length > 0 && (
         <EmployeeToolbar
