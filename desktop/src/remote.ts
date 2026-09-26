@@ -126,6 +126,7 @@ function handleMessage(raw: WebSocket.RawData): void {
 
 function startPrivacyLiveLoop(): void {
   stopPrivacyLiveLoop();
+  void refreshLiveViewPrivacyGate();
   privacyLiveTimer = setInterval(() => {
     void refreshLiveViewPrivacyGate();
   }, 800);

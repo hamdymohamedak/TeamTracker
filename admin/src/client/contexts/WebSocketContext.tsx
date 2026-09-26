@@ -95,7 +95,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       message.type === 'live-view:ended' ||
       message.type === 'live-view:signal' ||
       message.type === 'live-view:transport' ||
-      message.type === 'live-view:context'
+      message.type === 'live-view:context' ||
+      message.type === 'live-view:privacy'
     ) {
       liveFrameHandlersRef.current.forEach(fn => {
         try { fn(message); } catch { /* ignore */ }
@@ -240,7 +241,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         if (
           message.type !== 'live-view:frame' &&
           message.type !== 'live-view:signal' &&
-          message.type !== 'live-view:context'
+          message.type !== 'live-view:context' &&
+          message.type !== 'live-view:privacy'
         ) {
           setLastMessage(message);
         }

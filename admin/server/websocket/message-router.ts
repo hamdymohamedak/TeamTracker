@@ -232,6 +232,30 @@ export async function handleMessage(ws: WebSocket, message: any): Promise<void> 
           appName: message.data?.appName || null,
           windowTitle: message.data?.windowTitle || null,
           label: message.data?.label || null,
+          privacyBlocked: !!message.data?.privacyBlocked,
+          pattern: message.data?.pattern || null,
+          capturedAt: message.data?.capturedAt || new Date().toISOString(),
+        },
+      }));
+      break;
+    }
+
+    case 'live-view:privacy': {
+      // Device → admin: privacy gate toggled (esp. WebRTC mute — no media flag otherwise).
+      if (client.isAdmin || !client.employeeId || !client.orgId) break;
+      const session = liveByEmployee.get(client.employeeId);
+      if (!session || session.orgId !== client.orgId) break;
+      if (message.data?.sessionId && message.data.sessionId !== session.sessionId) break;
+      if (session.adminWs.readyState !== WebSocket.OPEN) break;
+      session.adminWs.send(JSON.stringify({
+        type: 'live-view:privacy',
+        data: {
+          sessionId: session.sessionId,
+          employeeId: client.employeeId,
+          blocked: !!message.data?.blocked,
+          pattern: message.data?.pattern || null,
+          appName: message.data?.appName || null,
+          windowTitle: message.data?.windowTitle || null,
           capturedAt: message.data?.capturedAt || new Date().toISOString(),
         },
       }));
