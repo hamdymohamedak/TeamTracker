@@ -407,6 +407,14 @@ export class LiveViewSessionController {
     this.emitMetrics();
   }
 
+  /** Control-plane privacy gate (WebRTC mute has no binary flag). */
+  handlePrivacy(data: {
+    blocked: boolean;
+    pattern?: string | null;
+  }): void {
+    this.cb.onPrivacy?.(!!data.blocked, data.pattern ?? null);
+  }
+
   /** Legacy Base64 JSON frame (older devices). */
   handleLegacyFrame(data: {
     dataBase64?: string;
@@ -415,14 +423,15 @@ export class LiveViewSessionController {
     sessionId?: string;
   }): void {
     if (data.sessionId && this.sessionId && data.sessionId !== this.sessionId) return;
-    if (this.transport !== 'binary-ws') this.enterFallback('legacy_json');
-    const capturedAtMs = data.capturedAt ? Date.parse(data.capturedAt) : Date.now();
-    this.noteFrame(capturedAtMs);
+    // Privacy-only control frames must not kick WebRTC into JSON fallback.
     if (data.privacyBlocked) {
       this.cb.onPrivacy?.(true, null);
       this.cb.attachBinaryFrame?.(null, { width: 0, height: 0, privacyBlocked: true });
       return;
     }
+    if (this.transport !== 'binary-ws') this.enterFallback('legacy_json');
+    const capturedAtMs = data.capturedAt ? Date.parse(data.capturedAt) : Date.now();
+    this.noteFrame(capturedAtMs);
     const b64 = data.dataBase64 || '';
     if (!b64) return;
     this.cb.onPrivacy?.(false, null);

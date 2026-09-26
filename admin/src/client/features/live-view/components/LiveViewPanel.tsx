@@ -141,10 +141,16 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
           }
         }
       },
-      onPrivacy: (blocked) => {
+      onPrivacy: (blocked, pattern) => {
         setLivePrivacyBlocked(blocked);
         if (blocked) {
+          if (pattern) setLivePrivacyPattern(pattern);
           if (liveImgRef.current) liveImgRef.current.removeAttribute('src');
+          setLiveStreaming(true);
+          setLiveStarting(false);
+        } else {
+          setLivePrivacyPattern(null);
+          setLivePrivacyApp(null);
         }
       },
       attachVideo: (stream) => {
@@ -415,10 +421,53 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({ employees, employe
           (typeof message.data?.label === 'string' && message.data.label) ||
           (typeof message.data?.appName === 'string' && message.data.appName) ||
           null;
-        if (!label) return;
-        setLiveContextByEmployee((prev) =>
-          prev[empId] === label ? prev : { ...prev, [empId]: label }
-        );
+        if (label) {
+          setLiveContextByEmployee((prev) =>
+            prev[empId] === label ? prev : { ...prev, [empId]: label }
+          );
+        }
+        // Privacy piggybacked on context (WebRTC mute has no binary flag).
+        if (empId === liveEmployeeIdRef.current && typeof message.data?.privacyBlocked === 'boolean') {
+          const blocked = !!message.data.privacyBlocked;
+          setLivePrivacyBlocked(blocked);
+          liveControllerRef.current?.handlePrivacy({
+            blocked,
+            pattern: message.data?.pattern || null,
+          });
+          if (blocked) {
+            setLivePrivacyPattern(message.data?.pattern || null);
+            setLivePrivacyApp(
+              message.data?.windowTitle || message.data?.appName || message.data?.pattern || null,
+            );
+            setLiveStreaming(true);
+            setLiveStarting(false);
+          } else {
+            setLivePrivacyPattern(null);
+            setLivePrivacyApp(null);
+          }
+        }
+        return;
+      }
+      if (message.type === 'live-view:privacy') {
+        const empId = liveEmployeeIdRef.current;
+        if (!empId || message.data?.employeeId !== empId) return;
+        const blocked = !!message.data?.blocked;
+        setLivePrivacyBlocked(blocked);
+        liveControllerRef.current?.handlePrivacy({
+          blocked,
+          pattern: message.data?.pattern || null,
+        });
+        if (blocked) {
+          setLivePrivacyPattern(message.data?.pattern || null);
+          setLivePrivacyApp(
+            message.data?.windowTitle || message.data?.appName || message.data?.pattern || null,
+          );
+          setLiveStreaming(true);
+          setLiveStarting(false);
+        } else {
+          setLivePrivacyPattern(null);
+          setLivePrivacyApp(null);
+        }
         return;
       }
       if (message.type === 'live-view:signal') {

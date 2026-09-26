@@ -17,6 +17,8 @@ export const LV_MSG = {
     ENDED: 'live-view:ended',
     /** Fresh focused app/title while a live session is active. */
     CONTEXT: 'live-view:context',
+    /** Device → admin: privacy gate blocked/cleared (needed for WebRTC mute UI). */
+    PRIVACY: 'live-view:privacy',
     /** Legacy Base64 JSON frames — deprecated; binary is default. */
     FRAME_JSON: 'live-view:frame',
 };

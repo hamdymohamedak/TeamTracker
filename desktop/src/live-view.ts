@@ -76,13 +76,21 @@ function formatLiveLabel(appName?: string | null, windowTitle?: string | null): 
   return app || title || '';
 }
 
-function sendLiveContext(meta: { appName?: string | null; windowTitle?: string | null }): void {
+function sendLiveContext(meta: {
+  appName?: string | null;
+  windowTitle?: string | null;
+  privacyBlocked?: boolean;
+  privacyPattern?: string | null;
+  force?: boolean;
+}): void {
   if (!sendFn || !activeSessionId) return;
   const appName = meta.appName || null;
   const windowTitle = meta.windowTitle || null;
-  const key = `${appName || ''}|${windowTitle || ''}`;
+  const privacyBlocked = !!meta.privacyBlocked;
+  const privacyPattern = meta.privacyPattern || null;
+  const key = `${appName || ''}|${windowTitle || ''}|${privacyBlocked ? 1 : 0}|${privacyPattern || ''}`;
   const now = Date.now();
-  if (key === lastContextKey && now - lastContextSentAt < CONTEXT_MIN_INTERVAL_MS) return;
+  if (!meta.force && key === lastContextKey && now - lastContextSentAt < CONTEXT_MIN_INTERVAL_MS) return;
   lastContextKey = key;
   lastContextSentAt = now;
   sendFn({
@@ -92,8 +100,39 @@ function sendLiveContext(meta: { appName?: string | null; windowTitle?: string |
       appName,
       windowTitle,
       label: formatLiveLabel(appName, windowTitle) || null,
+      privacyBlocked,
+      pattern: privacyPattern,
       capturedAt: new Date().toISOString(),
     },
+  });
+}
+
+/** Notify admin dashboard of privacy gate state (WebRTC mute alone shows a black screen). */
+function sendPrivacyState(meta: {
+  blocked: boolean;
+  pattern?: string | null;
+  appName?: string | null;
+  windowTitle?: string | null;
+}): void {
+  if (!sendFn || !activeSessionId) return;
+  sendFn({
+    type: 'live-view:privacy',
+    data: {
+      sessionId: activeSessionId,
+      blocked: !!meta.blocked,
+      pattern: meta.pattern || null,
+      appName: meta.appName || null,
+      windowTitle: meta.windowTitle || null,
+      capturedAt: new Date().toISOString(),
+    },
+  });
+  // Also piggyback on context — proven path that already reaches the admin UI.
+  sendLiveContext({
+    appName: meta.appName,
+    windowTitle: meta.windowTitle,
+    privacyBlocked: meta.blocked,
+    privacyPattern: meta.pattern,
+    force: true,
   });
 }
 
@@ -231,7 +270,6 @@ async function privacyTick(): Promise<{
       windowTitle,
       forceRefresh: force,
     });
-    sendLiveContext({ appName, windowTitle });
     if (isCaptureBlocked(privacy)) {
       const pattern =
         privacy.state === 'block'
@@ -243,6 +281,12 @@ async function privacyTick(): Promise<{
         privacy.state === 'block'
           ? privacy.matchedUrl || windowTitle
           : windowTitle;
+      sendLiveContext({
+        appName,
+        windowTitle: blockedTitle,
+        privacyBlocked: true,
+        privacyPattern: pattern,
+      });
       return {
         blocked: true,
         pattern,
@@ -250,6 +294,7 @@ async function privacyTick(): Promise<{
         windowTitle: blockedTitle,
       };
     }
+    sendLiveContext({ appName, windowTitle, privacyBlocked: false });
     return { blocked: false, appName, windowTitle };
   } catch (err) {
     console.warn('[live-view] privacy check failed:', (err as Error).message);
@@ -271,6 +316,7 @@ async function binaryTick(): Promise<void> {
     if (privacy.blocked) {
       if (!lastPrivacyBlocked) {
         logEvent('privacy_block', { pattern: privacy.pattern || '' });
+        sendPrivacyState(privacy);
       }
       lastPrivacyBlocked = true;
       sendBlockedBinary(sessionId, privacy);
@@ -278,6 +324,7 @@ async function binaryTick(): Promise<void> {
     }
     if (lastPrivacyBlocked) {
       logEvent('privacy_cleared');
+      sendPrivacyState({ blocked: false, appName: privacy.appName, windowTitle: privacy.windowTitle });
     }
     lastPrivacyBlocked = false;
 
@@ -555,10 +602,17 @@ export function isLiveViewActive(): boolean {
 export async function refreshLiveViewPrivacyGate(): Promise<void> {
   if (!activeSessionId || transport !== 'webrtc') return;
   const privacy = await privacyTick();
-  if (privacy.blocked !== lastPrivacyBlocked) {
-    lastPrivacyBlocked = privacy.blocked;
-    setWebRtcPrivacyBlocked(privacy.blocked, privacy.pattern || null);
-  } else {
-    setWebRtcPrivacyBlocked(privacy.blocked, privacy.pattern || null);
+  const changed = privacy.blocked !== lastPrivacyBlocked;
+  lastPrivacyBlocked = privacy.blocked;
+  setWebRtcPrivacyBlocked(privacy.blocked, privacy.pattern || null);
+  // Tell the admin on every transition. While blocked, also re-announce periodically
+  // via context (privacyTick) so late-joining viewers still get the overlay.
+  if (changed) {
+    if (privacy.blocked) {
+      logEvent('privacy_block', { pattern: privacy.pattern || '' });
+    } else {
+      logEvent('privacy_cleared');
+    }
+    sendPrivacyState(privacy);
   }
 }
